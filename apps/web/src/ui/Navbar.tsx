@@ -47,15 +47,15 @@ function Logo() {
 
 const LANDING_LINKS = [
   { label: "Trade", href: "/trade" },
-  { label: "Earn", href: "#" },
+  { label: "Earn", href: "/earn" },
   { label: "Stats", href: "#" },
   { label: "Docs", href: "#" },
   { label: "Governance", href: "#" },
 ]
 
-const APP_LINKS: Array<{ label: string; to: "/trade" | null }> = [
+const APP_LINKS: Array<{ label: string; to: "/trade" | "/earn" | null }> = [
   { label: "Trade", to: "/trade" },
-  { label: "Earn", to: null },
+  { label: "Earn", to: "/earn" },
   { label: "Stats", to: null },
   { label: "Docs", to: null },
 ]
