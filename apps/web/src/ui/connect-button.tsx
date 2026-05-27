@@ -12,6 +12,7 @@ export function ConnectButton() {
   const [walletModalOpen, setWalletModalOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const modalRef = useRef<HTMLDivElement>(null)
+  const menuItemRefs = useRef<Array<HTMLButtonElement | null>>([])
   const connectTriggerRef = useRef<HTMLButtonElement>(null)
   const dropdownId = "wallet-account-menu"
 
@@ -105,12 +106,56 @@ export function ConnectButton() {
             id={dropdownId}
             role="menu"
             aria-labelledby="wallet-account-trigger"
+            onKeyDown={(event) => {
+              const items = menuItemRefs.current.filter(Boolean) as HTMLButtonElement[]
+              const currentIndex = items.findIndex((item) => item === document.activeElement)
+
+              if (event.key === "Escape") {
+                event.preventDefault()
+                setOpen(false)
+                return
+              }
+
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault()
+                if (items.length === 0) return
+                const delta = event.key === "ArrowDown" ? 1 : -1
+                const nextIndex =
+                  currentIndex === -1
+                    ? 0
+                    : (currentIndex + delta + items.length) % items.length
+                items[nextIndex]?.focus()
+                return
+              }
+
+              if (event.key === "Enter" && currentIndex >= 0) {
+                event.preventDefault()
+                items[currentIndex]?.click()
+              }
+            }}
             className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-border bg-background py-1 shadow-md"
           >
             <div className="border-b border-border px-3 py-2">
               <p className="truncate text-xs text-muted-foreground">{address}</p>
             </div>
             <button
+              ref={(node) => {
+                menuItemRefs.current[0] = node
+              }}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                void navigator.clipboard.writeText(address)
+                setOpen(false)
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              Copy address
+            </button>
+            <button
+              ref={(node) => {
+                menuItemRefs.current[1] = node
+              }}
               type="button"
               role="menuitem"
               onClick={() => { disconnect(); setOpen(false) }}
