@@ -7,13 +7,19 @@ import { toast } from "sonner"
 import { formatUsd } from "@/shared/lib/format"
 import { explorerTxUrl, NETWORK } from "@/app/config/network"
 import { queryClient } from "@/app/providers/QueryProvider"
-import { buildCreateOrderTransaction } from "@/lib/contracts/exchange-router-client"
+import {
+  buildCreateOrderTransaction,
+  buildCancelOrderTransaction,
+  buildSwapOrderTransaction,
+  buildBatchOrderTransaction,
+} from "@/lib/contracts/exchange-router-client"
 import { prepareAndSign } from "@/lib/soroban/tx-builder"
 import { sendAndPoll } from "@/lib/tx-builder"
 import { parseSorobanError } from "@/lib/soroban/errors"
 import { walletKit } from "@/features/wallet/lib/wallet-kit"
 import { queryKeys } from "./query-keys"
-import { toCreateOrderParams } from "./order-encoding"
+import { toCreateOrderParams, toDecreaseOrderParams, toSwapOrderParams } from "./order-encoding"
+import type { OrderKey, BatchOperation } from "@/lib/contracts/generated/exchange-router/src"
 
 const CHAIN_ID = "stellar-mainnet"
 
@@ -103,17 +109,36 @@ export async function createIncreaseOrder(params: IncreaseOrderParams): Promise<
 
 /** Close or reduce an open position */
 export async function createDecreaseOrder(params: DecreaseOrderParams): Promise<string> {
+  if (!isValidAccount(params.account)) {
+    throw new Error("Connect your wallet before placing an order.")
+  }
+
   const toastId = toast.loading(
     `Closing ${params.isLong ? "Long" : "Short"} ${params.marketAddress}…`,
   )
-  await fakeTxDelay()
 
-  toast.success("Position closed successfully", {
-    id: toastId,
-    description: "Tx: 0xDUMMY…(not real)",
-  })
+  try {
+    const contractParams = toDecreaseOrderParams(params)
+    const tx = await buildCreateOrderTransaction(contractParams)
+    const signedXdr = await prepareAndSign(tx, walletKit, NETWORK.networkPassphrase)
+    const { hash } = await sendAndPoll(signedXdr)
 
-  return "DUMMY_TX_HASH"
+    await queryClient.invalidateQueries({ queryKey: queryKeys.positions(CHAIN_ID, params.account) })
+
+    toast.success("Position closed successfully", {
+      id: toastId,
+      description: `Tx: ${hash.slice(0, 8)}…`,
+      action: {
+        label: "View on Stellar Expert",
+        onClick: () => window.open(explorerTxUrl(hash), "_blank", "noopener,noreferrer"),
+      },
+    })
+
+    return hash
+  } catch (error) {
+    toast.error(parseSorobanError(error), { id: toastId })
+    throw error
+  }
 }
 
 /** Swap one token for another */
