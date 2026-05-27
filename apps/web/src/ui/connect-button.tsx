@@ -3,7 +3,7 @@ import { Button } from "@workspace/ui/components/button"
 import { useWallet } from "@/app/providers"
 
 function shortenAddress(address: string): string {
-  return `${address.slice(0, 4)}…${address.slice(-4)}`
+  return `${address.slice(0, 6)}…`
 }
 
 export function ConnectButton() {
