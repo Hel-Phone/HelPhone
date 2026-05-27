@@ -11,15 +11,8 @@ export type WalletContextValue = {
   disconnect: () => Promise<void>
 }
 
-const WalletContext = createContext<WalletContextValue>({
-  address: null,
-  status: "disconnected",
-  connect: async () => {},
-  disconnect: async () => {},
-})
-
-export function useWallet(): WalletContextValue {
-  return useContext(WalletContext)
+function WalletProvider({ children }: { children: ReactNode }) {
+  return children
 }
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {

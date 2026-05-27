@@ -73,11 +73,13 @@ export function Navbar({ variant }: Props) {
   return (
     <nav className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md backdrop-saturate-150">
       <div
-        className={`mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-8 ${
+        className={`mx-auto flex min-w-0 items-center justify-between gap-2 px-3 sm:px-6 lg:px-8 ${
           isApp ? "h-14 max-w-full" : "h-16 max-w-330"
         }`}
       >
-        <Logo />
+        <div className="min-w-0 shrink">
+          <Logo />
+        </div>
 
         {/* Desktop links */}
         <ul className="hidden items-center gap-7 md:flex">
@@ -112,9 +114,9 @@ export function Navbar({ variant }: Props) {
         </ul>
 
         {/* Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
           <ThemeToggle />
-          <ConnectButton />
+          <ConnectButton compactMobile />
           {!isApp && (
             <Button
               variant="default"
