@@ -24,6 +24,8 @@ const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
   POSITION_NOT_FOUND: "Position was not found.",
   SLIPPAGE_EXCEEDED: "Price moved beyond your slippage limit. Try again.",
   UNAUTHORIZED: "You are not authorized to perform this action.",
+  ORDER_EXECUTION_FROZEN:
+    "Order execution is temporarily paused. Your order has been saved and will execute when trading resumes.",
 }
 
 const FALLBACK_MESSAGE = "Transaction failed. Please try again."
