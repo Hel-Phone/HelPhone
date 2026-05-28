@@ -1,11 +1,17 @@
 import { useState } from "react"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
-import {  useTraderStats } from "../../hooks/use-referrals-data"
-import { setTraderReferralCode, validateReferralCode } from "../../lib/referrals"
+import { useWalletStore } from "@/features/wallet/store/wallet-store"
+import { useTraderStats, useDistributions, type TimePeriod } from "../../hooks/use-referrals-data"
+import { useReferralStats } from "../../queries/useReferralStats"
+import {
+  claimRebates,
+  setTraderReferralCode,
+  validateReferralCode,
+} from "../../lib/referrals"
 import { TimePeriodFilter } from "../shared/time-period-filter"
 import { StatChartCard } from "../shared/stat-chart-card"
-import type {TimePeriod} from "../../hooks/use-referrals-data";
+import { formatUsd } from "@/shared/lib/format"
 
 function fmtDate(iso: string) {
   return new Intl.DateTimeFormat("en-US", {
@@ -24,20 +30,29 @@ type JoinCodeFormProps = {
 }
 
 function JoinCodeForm({ onSuccess }: JoinCodeFormProps) {
+  const account = useWalletStore((state) => state.address)
   const [code, setCode] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!account) {
+      setError("Connect your wallet first")
+      return
+    }
     const err = validateReferralCode(code)
-    if (err) { setError(err); return }
+    if (err) {
+      setError(err)
+      return
+    }
     setError(null)
     setPending(true)
     try {
-      // TODO: pass real wallet account from wallet context
-      await setTraderReferralCode("DUMMY_ACCOUNT", code.toUpperCase().trim())
+      await setTraderReferralCode(account, code.toUpperCase().trim())
       onSuccess()
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Failed to apply code")
     } finally {
       setPending(false)
     }
@@ -45,7 +60,6 @@ function JoinCodeForm({ onSuccess }: JoinCodeFormProps) {
 
   return (
     <div className="rounded-xl border border-border bg-card p-6">
-      {/* Benefits banner */}
       <div className="mb-6 flex gap-4 rounded-lg border border-blue-500/20 bg-blue-500/[0.06] p-4">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-500/10 text-blue-400">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -57,12 +71,11 @@ function JoinCodeForm({ onSuccess }: JoinCodeFormProps) {
           <p className="text-[13px] font-semibold">Enter a referral code to receive a fee discount</p>
           <p className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
             Get up to <span className="font-semibold text-green-400">5% off</span> every open and
-            close fee. Rewards scale with the affiliate's tier.
+            close fee. Rewards scale with the affiliate&apos;s tier.
           </p>
         </div>
       </div>
 
-      {/* Input */}
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="space-y-1.5">
           <label htmlFor="referral-code" className="text-[12px] font-medium text-muted-foreground">
@@ -84,7 +97,7 @@ function JoinCodeForm({ onSuccess }: JoinCodeFormProps) {
             <Button
               type="submit"
               size="sm"
-              disabled={pending || !code.trim()}
+              disabled={pending || !code.trim() || !account}
               className="h-9 shrink-0 px-5"
             >
               {pending ? "Applying…" : "Apply"}
@@ -94,7 +107,6 @@ function JoinCodeForm({ onSuccess }: JoinCodeFormProps) {
         </div>
       </form>
 
-      {/* Tier breakdown */}
       <div className="mt-6 border-t border-border pt-4">
         <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Discount tiers
@@ -121,12 +133,25 @@ function JoinCodeForm({ onSuccess }: JoinCodeFormProps) {
 
 type OverviewProps = {
   stats: ReturnType<typeof useTraderStats>["data"]
+  rebateStats: ReturnType<typeof useReferralStats>["data"]
   isLoading: boolean
   period: TimePeriod
   onPeriodChange: (p: TimePeriod) => void
+  onClaimRebates: () => void
+  claiming: boolean
 }
 
-function Overview({ stats, isLoading, period, onPeriodChange }: OverviewProps) {
+function Overview({
+  stats,
+  rebateStats,
+  isLoading,
+  period,
+  onPeriodChange,
+  onClaimRebates,
+  claiming,
+}: OverviewProps) {
+  const claimable = rebateStats?.claimableRebateUsd ?? stats?.claimableRebateUsd ?? 0
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -151,10 +176,22 @@ function Overview({ stats, isLoading, period, onPeriodChange }: OverviewProps) {
           <StatChartCard
             title="Discounts"
             tooltip="Total fee savings from your referral code"
-            value={stats?.discountUsd ?? 0}
+            value={stats?.discountUsd ?? rebateStats?.totalRebatesUsd ?? 0}
             period={period}
             accent="green"
           />
+        </div>
+      )}
+
+      {claimable > 0 && (
+        <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
+          <div>
+            <p className="text-[11px] text-muted-foreground">Claimable rebates</p>
+            <p className="text-lg font-semibold tabular-nums">{formatUsd(claimable)}</p>
+          </div>
+          <Button size="sm" disabled={claiming} onClick={onClaimRebates}>
+            {claiming ? "Claiming…" : "Claim rebates"}
+          </Button>
         </div>
       )}
 
@@ -168,27 +205,95 @@ function Overview({ stats, isLoading, period, onPeriodChange }: OverviewProps) {
   )
 }
 
+function DistributionsHistory() {
+  const { data: distributions = [], isLoading } = useDistributions()
+
+  if (isLoading) {
+    return <Skeleton className="h-32 rounded-xl" />
+  }
+
+  if (distributions.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border">
+      <div className="border-b border-border px-5 py-3.5">
+        <h3 className="text-[13px] font-semibold">Rebate history</h3>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border bg-muted/25 text-left">
+              <th className="px-5 py-3 font-medium text-muted-foreground">Epoch</th>
+              <th className="px-5 py-3 font-medium text-muted-foreground">Date</th>
+              <th className="px-5 py-3 text-right font-medium text-muted-foreground">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {distributions.map((d) => (
+              <tr key={d.id} className="border-b border-border/40 last:border-b-0">
+                <td className="px-5 py-3 font-mono text-muted-foreground">{d.epoch}</td>
+                <td className="px-5 py-3 text-muted-foreground">{d.date}</td>
+                <td className="px-5 py-3 text-right font-mono">{formatUsd(d.amountUsd)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 type Props = {
   onCodeApplied: () => void
 }
 
 export function TradersTab({ onCodeApplied }: Props) {
+  const account = useWalletStore((state) => state.address)
   const [period, setPeriod] = useState<TimePeriod>("total")
-  const { data: stats, isLoading } = useTraderStats(period)
+  const [claiming, setClaiming] = useState(false)
+
+  const { data: stats, isLoading, refetch } = useTraderStats(period)
+  const { data: rebateStats, isLoading: rebateLoading } = useReferralStats(
+    stats?.referralCode ?? null,
+    period,
+  )
 
   const hasCode = Boolean(stats?.referralCode)
 
+  async function handleClaimRebates() {
+    if (!account) return
+    const epochs =
+      rebateStats && rebateStats.claimableRebateUsd > 0
+        ? ["latest"]
+        : stats?.claimableRebateUsd
+          ? ["latest"]
+          : []
+    if (epochs.length === 0) return
+
+    setClaiming(true)
+    try {
+      await claimRebates(account, epochs)
+      await refetch()
+    } finally {
+      setClaiming(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
-      {!hasCode && !isLoading && (
-        <JoinCodeForm onSuccess={onCodeApplied} />
-      )}
+      {!hasCode && !isLoading && <JoinCodeForm onSuccess={onCodeApplied} />}
       <Overview
         stats={stats}
-        isLoading={isLoading}
+        rebateStats={rebateStats}
+        isLoading={isLoading || rebateLoading}
         period={period}
         onPeriodChange={setPeriod}
+        onClaimRebates={() => void handleClaimRebates()}
+        claiming={claiming}
       />
+      <DistributionsHistory />
     </div>
   )
 }

@@ -1,9 +1,11 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
+import { useQueryClient } from "@tanstack/react-query"
 import { Navbar } from "../../../ui/Navbar"
 import { useTraderStats } from "../hooks/use-referrals-data"
 import { useReferralCode } from "../queries/useReferralCode"
 import { useReferralTier } from "../queries/useReferralTier"
+import { queryKeys } from "@/shared/lib/query-keys"
 import { TradersTab } from "./traders/traders-tab"
 import { AffiliatesTab } from "./affiliates/affiliates-tab"
 import { DistributionsTab } from "./distributions/distributions-tab"
@@ -31,6 +33,7 @@ function LockIcon() {
 }
 
 export function ReferralsPage() {
+  const queryClient = useQueryClient()
   const [tab, setTab] = useState<ReferralsTab>("traders")
 
   const { data: traderStats } = useTraderStats()
@@ -76,7 +79,8 @@ export function ReferralsPage() {
               <TabsContent value="traders">
                 <TradersTab
                   onCodeApplied={() => {
-                    // TODO: invalidate trader stats query after code applied
+                    void queryClient.invalidateQueries({ queryKey: ["referrals", "trader-stats"] })
+                    void queryClient.invalidateQueries({ queryKey: queryKeys.referrals.tier(null) })
                   }}
                 />
               </TabsContent>

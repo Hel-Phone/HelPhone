@@ -16,12 +16,15 @@ import {
 } from "../../lib/trade-math"
 import { TradeInfoRows } from "./TradeInfoRows"
 import { ConfirmationDialog } from "./ConfirmationDialog"
+import { ApplyReferralCodePrompt } from "./ApplyReferralCodePrompt"
 import type { TradeType } from "../../hooks/useTradeState"
+import { useWalletStore } from "@/features/wallet/store/wallet-store"
 
 export function TradePanel() {
   const trade = useTradeState()
   const { getMidPrice } = useTokenPrices()
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const account = useWalletStore((state) => state.address)
 
   const {
     tradeType, tradeMode, tradeFlags,
@@ -183,6 +186,8 @@ export function TradePanel() {
         liquidationPrice={liquidationPrice}
         totalFeesUsd={fees.totalFeesUsd}
       />
+
+      <ApplyReferralCodePrompt account={account} />
     </div>
   )
 }

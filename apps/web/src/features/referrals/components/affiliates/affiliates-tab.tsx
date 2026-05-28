@@ -6,7 +6,10 @@ import { useAffiliateReferrals } from "../../hooks/use-referrals-data"
 import { useReferralCode } from "../../queries/useReferralCode"
 import { useReferralStats } from "../../queries/useReferralStats"
 import { useReferralTier } from "../../queries/useReferralTier"
+import { useWalletStore } from "@/features/wallet/store/wallet-store"
 import { createAffiliateCode, validateReferralCode } from "../../lib/referrals"
+import { useQueryClient } from "@tanstack/react-query"
+import { queryKeys } from "@/shared/lib/query-keys"
 import { TIERS, getNextTier, getTierByLevel } from "../../data/tiers"
 import { TimePeriodFilter } from "../shared/time-period-filter"
 import { StatChartCard } from "../shared/stat-chart-card"
@@ -18,20 +21,26 @@ import { formatAddress, formatUsd } from "@/shared/lib/format"
 // ── Create code wizard ──────────────────────────────────────────────────────
 
 function CreateCodeForm({ onSuccess }: { onSuccess: () => void }) {
+  const account = useWalletStore((state) => state.address)
   const [code, setCode] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!account) {
+      setError("Connect your wallet first")
+      return
+    }
     const err = validateReferralCode(code)
     if (err) { setError(err); return }
     setError(null)
     setPending(true)
     try {
-      // TODO: pass real wallet account from wallet context
-      await createAffiliateCode("DUMMY_ACCOUNT", code.toUpperCase().trim())
+      await createAffiliateCode(account, code.toUpperCase().trim())
       onSuccess()
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Failed to create code")
     } finally {
       setPending(false)
     }
@@ -233,6 +242,7 @@ function ReferralsTable() {
 }
 
 export function AffiliatesTab() {
+  const queryClient = useQueryClient()
   const [period, setPeriod] = useState<TimePeriod>("total")
   const { data: code, isLoading: codeLoading } = useReferralCode()
   const { data: tier } = useReferralTier()
@@ -240,8 +250,13 @@ export function AffiliatesTab() {
   const hasCode = Boolean(code)
   const isLoading = codeLoading || statsLoading
 
+  function handleCodeCreated() {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.referrals.code(null) })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.referrals.stats(code, period) })
+  }
+
   if (!hasCode && !codeLoading) {
-    return <CreateCodeForm onSuccess={() => {}} />
+    return <CreateCodeForm onSuccess={handleCodeCreated} />
   }
 
   return (

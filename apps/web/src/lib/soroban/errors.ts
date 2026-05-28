@@ -28,6 +28,8 @@ const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
   SLIPPAGE_EXCEEDED: "Price moved beyond your slippage limit. Try again.",
   UNAUTHORIZED: "You are not authorized to perform this action.",
   ORDER_EXECUTION_FROZEN: ORDER_EXECUTION_FROZEN_MESSAGE,
+  CODE_ALREADY_TAKEN: "Code already taken",
+  CODE_NOT_FOUND: "Referral code not found",
 }
 
 const FALLBACK_MESSAGE = "Transaction failed. Please try again."

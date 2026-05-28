@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Button } from "@workspace/ui/components/button"
 
+import { useWalletStore } from "@/features/wallet/store/wallet-store"
 import { useAffiliateStats, useDistributions } from "../../hooks/use-referrals-data"
 import { claimDistribution } from "../../lib/referrals"
 import { formatToken, formatUsd } from "@/shared/lib/format"
@@ -8,6 +9,7 @@ import { formatToken, formatUsd } from "@/shared/lib/format"
 
 
 export function DistributionsTab() {
+  const account = useWalletStore((state) => state.address)
   const { data: distributions = [], isLoading } = useDistributions()
   const { data: affiliateStats } = useAffiliateStats()
   const [claiming, setClaiming] = useState<string | null>(null)
@@ -15,10 +17,10 @@ export function DistributionsTab() {
   const hasAffiliateCode = Boolean(affiliateStats?.code)
 
   async function handleClaim(id: string) {
+    if (!account) return
     setClaiming(id)
     try {
-      // TODO: pass real wallet account from wallet context
-      await claimDistribution("DUMMY_ACCOUNT", id)
+      await claimDistribution(account, id)
     } finally {
       setClaiming(null)
     }
