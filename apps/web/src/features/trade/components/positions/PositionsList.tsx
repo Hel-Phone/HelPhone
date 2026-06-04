@@ -12,6 +12,7 @@ import { formatPct, formatUsd } from "@/shared/lib/format"
 import { queryKeys } from "../../lib/query-keys"
 import { useWalletStore } from "@/features/wallet/store/wallet-store"
 import { CollateralDialog } from "./CollateralDialog"
+import { TokenIcon } from "@/shared/components/TokenIcon"
 
 type Props = {
   onSelectPosition?: (position: Position) => void
@@ -154,6 +155,7 @@ export function PositionsList({ onSelectPosition }: Props) {
             >
               <td className="px-4 py-2">
                 <div className="flex items-center gap-1.5">
+                  <TokenIcon symbol={p.indexToken} size={20} />
                   <span className="font-medium">{p.marketName}</span>
                   <Badge
                     variant="secondary"

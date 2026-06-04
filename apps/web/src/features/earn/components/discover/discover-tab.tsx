@@ -7,32 +7,10 @@ import { formatPct, formatUsd, formatToken } from "@/shared/lib/format"
 import { useMarketPoolAmounts } from "../../hooks/useMarketPoolAmounts"
 import { useGLVVaultData, useGMPoolData, useStakingInfo } from "../../queries"
 import { fromSorobanAmount } from "@/shared/lib/bignum"
+import { TokenIcon } from "@/shared/components/TokenIcon"
 
 type Filter = "all" | "glv" | "gm"
 type SortKey = "apy" | "tvl"
-
-
-
-const TOKEN_COLORS: Record<string, string> = {
-  BTC: "bg-orange-500/10 text-orange-400 ring-orange-500/20",
-  ETH: "bg-indigo-500/10 text-indigo-400 ring-indigo-500/20",
-  XLM: "bg-sky-500/10 text-sky-400 ring-sky-500/20",
-  GLV: "bg-teal-500/10 text-teal-400 ring-teal-500/20",
-}
-
-function TokenAvatar({ symbol }: { symbol: string }) {
-  const color = TOKEN_COLORS[symbol] ?? "bg-muted/60 text-muted-foreground ring-border"
-  return (
-    <div
-      className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ring-1",
-        color,
-      )}
-    >
-      {symbol.slice(0, 2)}
-    </div>
-  )
-}
 
 function PoolCompositionBar({ longPct, shortPct }: { longPct: number; shortPct: number }) {
   return (
@@ -280,7 +258,7 @@ function DiscoverRow({
     <tr className={cn("transition-colors hover:bg-muted/20", !isLast && "border-b border-border/40")}>
       <td className="px-5 py-4">
         <div className="flex items-center gap-3">
-          <TokenAvatar symbol={row.longToken} />
+          <TokenIcon symbol={row.longToken} size={32} />
           <span className="font-medium">{row.name}</span>
         </div>
       </td>
