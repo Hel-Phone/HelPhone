@@ -3,6 +3,8 @@ import { usePoolRowData } from "../hooks/use-pool-row-data"
 import {
   getComposition,
   getEstimatedApy,
+  getFundingRatePerHourPct,
+  getOpenInterestUsd,
   getPoolTvlUsd,
   rawToDisplay,
 } from "../lib/pool-math"
@@ -42,9 +44,9 @@ export function GmPoolRow({ market, variant }: GmPoolRowProps) {
   const composition = getComposition(poolValue)
   const tvlUsd = getPoolTvlUsd(poolValue)
   const apy = getEstimatedApy(poolValue)
-  const openInterestUsd =
-    rawToDisplay(data?.openInterest?.long) + rawToDisplay(data?.openInterest?.short)
-  const funding = rawToDisplay(data?.fundingInfo?.fundingFactorPerSecond)
+  const openInterestUsd = getOpenInterestUsd(data?.openInterest)
+  // Display funding as an hourly percentage, matching the trade page convention.
+  const funding = getFundingRatePerHourPct(data?.fundingInfo?.fundingFactorPerSecond)
   const userGmBalance = data?.userGmBalance ?? 0n
   const hasUserGm = userGmBalance > 0n
   const hasFailures = (data?.failures.length ?? 0) > 0
