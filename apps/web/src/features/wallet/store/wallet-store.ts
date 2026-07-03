@@ -2,7 +2,7 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
 type WalletStatus = "disconnected" | "connecting" | "connected" | "error"
-type Network = "testnet" | "mainnet"
+type Network = string | null
 
 type WalletStore = {
   address: string | null
@@ -17,7 +17,7 @@ type WalletStore = {
 }
 
 const DEFAULT_NETWORK: Network =
-  (import.meta.env.VITE_NETWORK as Network) === "mainnet" ? "mainnet" : "testnet"
+  (import.meta.env.VITE_NETWORK as string) === "mainnet" ? "mainnet" : "testnet"
 
 export const useWalletStore = create<WalletStore>()(
   persist(

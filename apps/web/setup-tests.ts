@@ -1,12 +1,10 @@
+import "./register-dom"
 import "@testing-library/jest-dom/vitest"
-import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { server } from "./test/msw/server";
+import { cleanup } from "@testing-library/react";
 
-GlobalRegistrator.register();
-
-afterEach(async () => {
-  const { cleanup } = await import("@testing-library/react");
+afterEach(() => {
   cleanup();
 });
 

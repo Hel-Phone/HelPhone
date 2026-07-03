@@ -22,7 +22,7 @@ export function AccountBadge({ address, className, ...props }: AccountBadgeProps
   const balanceData = useBalance()
   const balance = balanceData?.xlm
   const isLoading = balanceData?.isLoading ?? false
-  const { isMainnet } = useNetwork()
+  const { displayLabel } = useNetwork()
 
   useEffect(() => {
     if (!open) return
@@ -103,7 +103,7 @@ export function AccountBadge({ address, className, ...props }: AccountBadgeProps
           <div className="space-y-2 text-sm">
             <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted p-3">
               <span className="text-muted-foreground">Network</span>
-              <span>{isMainnet ? "Mainnet" : "Testnet"}</span>
+              <span>{displayLabel}</span>
             </div>
 
             <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted p-3">

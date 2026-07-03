@@ -109,7 +109,7 @@ describe("ConnectButton - Disconnected State", () => {
       const dialog = screen.getByRole("dialog")
       expect(dialog).toBeInTheDocument()
 
-      const dialogTitle = screen.getByText("Connect Wallet")
+      const dialogTitle = screen.getByRole("heading", { name: "Connect Wallet" })
       expect(dialogTitle).toBeInTheDocument()
     })
 
@@ -259,7 +259,7 @@ describe("ConnectButton - Disconnected State", () => {
       render(<ConnectButton />)
 
       // Account badge should be rendered instead
-      expect(screen.getByText(/GAAAAAA/)).toBeInTheDocument()
+      expect(screen.getByText(/GAAAAA/)).toBeInTheDocument()
     })
   })
 
@@ -356,7 +356,7 @@ describe("ConnectButton - Disconnected State", () => {
       expect(
         screen.queryByRole("button", { name: /Connect wallet/i }),
       ).not.toBeInTheDocument()
-      expect(screen.getByText(/GAAAAAA/)).toBeInTheDocument()
+      expect(screen.getByText(/GAAAAA/)).toBeInTheDocument()
     })
   })
 
