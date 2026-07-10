@@ -1,45 +1,28 @@
-# Dependencies
-node_modules
-.pnp
-.pnp.js
-
-# Local env files
+node_modules/
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Testing
-coverage
-
-# Turbo
-.turbo
-
-# Vercel
-.vercel
-
-# Build Outputs
-dist
-.output
-.nitro
-.tanstack
-.vinxi
-
-# Debug
-npm-debug.log*
-
-# Misc
+dist/
 .DS_Store
-*.pem
+**/.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.vite/
+.thumbnail
 
-# Local planning docs
-implementation-plan.md
+# Rust/Soroban build output
+contract/**/target/
+contracts/**/target/
+contracts/noir_verifier/
+circuits/target/proof/
+circuits/target/vk/
 
-# Issue push progress tracker
-.issues-progress.json
-ISSUES.md
-push-issues.py
+# Prototype & design reference files
+*.dc.html
+screens/
+uploads/
+support.js
 
-# VSCode
-fix.md
+# Loose asset copies in root only
+/*.png
