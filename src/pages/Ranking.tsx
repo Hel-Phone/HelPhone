@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
 import { getRanking } from "../lib/contract";
 import type { RankingEntry } from "../types/index";
+import MainLayout from "../components/layout/MainLayout";
+import Badge from "../components/shared/Badge";
+import "./Ranking.css";
 
 const PERIODS = Object.freeze(["This Week", "This Month", "All Time"]);
 
@@ -30,104 +32,25 @@ export default function Ranking() {
   }, [period]);
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#ECE0CC",
-        fontFamily: "'Inter', 'Helvetica Neue', sans-serif",
-      }}
-    >
-      {/* Nav */}
-      <nav
-        style={{
-          background: "#234B4E",
-          padding: "16px 32px",
-          display: "flex",
-          alignItems: "center",
-          gap: "24px",
-          boxShadow: "0 2px 12px rgba(0,0,0,0.2)",
-        }}
-      >
-        <Link
-          to="/"
-          style={{
-            fontFamily: "'Instrument Serif', serif",
-            fontSize: "20px",
-            textDecoration: "none",
-            display: "flex",
-          }}
-        >
-          <span style={{ color: "#F4ECDC", fontStyle: "italic" }}>Hel</span>
-          <span style={{ color: "#a2a586" }}>Phone</span>
-        </Link>
-        <Link
-          to="/"
-          style={{
-            fontSize: "13px",
-            color: "rgba(242,236,220,0.6)",
-            textDecoration: "none",
-          }}
-        >
-          ← Back to home
-        </Link>
-      </nav>
-
-      {/* Content */}
-      <div
-        style={{
-          maxWidth: "860px",
-          margin: "0 auto",
-          padding: "60px 24px 80px",
-        }}
-      >
+    <MainLayout navbar="solid" footer={false}>
+      <div className="hp-ranking-content">
         {/* Header */}
-        <div style={{ marginBottom: "40px" }}>
-          <div
-            style={{
-              fontSize: "11px",
-              letterSpacing: "3px",
-              fontWeight: "600",
-              color: "#3F8487",
-              marginBottom: "12px",
-            }}
-          >
-            HELPHONE NETWORK
-          </div>
-          <h1
-            style={{
-              fontFamily: "'Instrument Serif', serif",
-              fontWeight: 400,
-              color: "#234B4E",
-              fontSize: "clamp(36px, 6vw, 64px)",
-              lineHeight: 1.05,
-              margin: "0 0 8px",
-            }}
-          >
-            Community Responders
-          </h1>
-          <p style={{ fontSize: "16px", color: "#7a7264", margin: 0 }}>
+        <div className="hp-ranking-header">
+          <div className="hp-ranking-label">HELPHONE NETWORK</div>
+          <h1 className="hp-ranking-title">Community Responders</h1>
+          <p className="hp-ranking-subtitle">
             The people who show up when it matters.
           </p>
         </div>
 
         {/* Period tabs */}
-        <div style={{ display: "flex", gap: "8px", marginBottom: "32px" }}>
+        <div className="hp-ranking-tabs">
           {Array.isArray(PERIODS) &&
             PERIODS.map((p) => (
               <button
                 key={p}
                 onClick={() => setPeriod(p)}
-                style={{
-                  padding: "8px 18px",
-                  borderRadius: "20px",
-                  border: `1.5px solid ${period === p ? "#3F8487" : "rgba(35,75,78,0.2)"}`,
-                  background: period === p ? "#3F8487" : "transparent",
-                  color: period === p ? "#fff" : "#234B4E",
-                  fontSize: "13px",
-                  fontWeight: "500",
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                }}
+                className={`hp-ranking-tab ${period === p ? "hp-ranking-tab--active" : ""}`}
               >
                 {p}
               </button>
@@ -136,29 +59,46 @@ export default function Ranking() {
 
         {/* Table */}
         {loading ? (
-          <p style={{ color: "#a2a586", fontSize: "15px" }}>Loading…</p>
-        ) : (
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: "16px",
-              overflow: "hidden",
-              boxShadow: "0 4px 24px rgba(35,75,78,0.08)",
-            }}
-          >
-            {/* Header row */}
-            <div
+          <div className="hp-ranking-card">
+            <div className="hp-ranking-card-header">
+              <span>#</span>
+              <span>RESPONDER</span>
+              <span style={{ textAlign: "center" }}>ARRIVALS</span>
+            </div>
+            <p
               style={{
-                display: "grid",
-                gridTemplateColumns: "48px 1fr 100px",
-                padding: "14px 20px",
-                borderBottom: "1px solid #e8e0d0",
-                fontSize: "11px",
-                letterSpacing: "1.5px",
-                fontWeight: "600",
-                color: "#a2a586",
+                color: "var(--color-muted)",
+                fontSize: "15px",
+                padding: "20px",
+                textAlign: "center",
+                margin: 0,
               }}
             >
+              Loading…
+            </p>
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="hp-ranking-card">
+            <div className="hp-ranking-card-header">
+              <span>#</span>
+              <span>RESPONDER</span>
+              <span style={{ textAlign: "center" }}>ARRIVALS</span>
+            </div>
+            <p
+              style={{
+                padding: "20px",
+                textAlign: "center",
+                color: "var(--color-muted)",
+                margin: 0,
+              }}
+            >
+              No responders yet
+            </p>
+          </div>
+        ) : (
+          <div className="hp-ranking-card">
+            {/* Header row */}
+            <div className="hp-ranking-card-header">
               <span>#</span>
               <span>RESPONDER</span>
               <span style={{ textAlign: "center" }}>ARRIVALS</span>
@@ -167,22 +107,16 @@ export default function Ranking() {
             {rows.map((row, i) => (
               <div
                 key={row.responder}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "48px 1fr 100px",
-                  padding: "16px 20px",
-                  borderBottom:
-                    i < rows.length - 1 ? "1px solid #f0e8d8" : "none",
-                  alignItems: "center",
-                  background: i % 2 === 0 ? "#fff" : "#fdfaf5",
-                }}
+                className={`hp-ranking-row ${i % 2 === 1 ? "hp-ranking-row--alt" : ""}`}
               >
                 {/* Rank */}
                 <span
+                  className="hp-ranking-rank"
                   style={{
-                    fontWeight: "700",
-                    fontSize: "18px",
-                    color: i < MEDALS.length ? "#3F8487" : "#a2a586",
+                    color:
+                      i < MEDALS.length
+                        ? "var(--color-teal)"
+                        : "var(--color-muted)",
                   }}
                 >
                   {i < MEDALS.length ? MEDALS[i] : `${i + 1}`}
@@ -193,68 +127,33 @@ export default function Ranking() {
                   style={{ display: "flex", alignItems: "center", gap: "10px" }}
                 >
                   <div
+                    className="hp-ranking-avatar"
                     style={{
-                      width: "36px",
-                      height: "36px",
-                      borderRadius: "50%",
-                      background: i < 3 ? "#3F8487" : "#ECE0CC",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "14px",
-                      fontWeight: "700",
-                      color: i < 3 ? "#fff" : "#234B4E",
-                      flexShrink: 0,
-                      fontFamily: "'Courier New', monospace",
+                      background:
+                        i < 3 ? "var(--color-teal)" : "var(--color-cream)",
+                      color: i < 3 ? "#fff" : "var(--color-primary)",
                     }}
                   >
                     {row.responder[7]?.toUpperCase() || "?"}
                   </div>
-                  <span
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: "500",
-                      color: "#234B4E",
-                      fontFamily: "'Courier New', monospace",
-                      letterSpacing: "-0.3px",
-                    }}
-                  >
+                  <span className="hp-ranking-address">
                     {row.responder.slice(0, 8)}…{row.responder.slice(-4)}
                   </span>
                 </div>
 
-                {/* Arrivals */}
+                {/* Arrivals — using shared Badge component */}
                 <div style={{ textAlign: "center" }}>
-                  <span
-                    style={{
-                      display: "inline-block",
-                      padding: "4px 10px",
-                      borderRadius: "12px",
-                      background: "#FF7A6B22",
-                      color: "#FF7A6B",
-                      fontSize: "13px",
-                      fontWeight: "600",
-                    }}
-                  >
-                    {row.total_arrivals}
-                  </span>
+                  <Badge variant="coral">{row.total_arrivals}</Badge>
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        <p
-          style={{
-            fontSize: "12px",
-            color: "#a2a586",
-            marginTop: "24px",
-            textAlign: "center",
-          }}
-        >
+        <p className="hp-ranking-footnote">
           On-chain leaderboard · {rows.length} responders
         </p>
       </div>
-    </div>
+    </MainLayout>
   );
 }

@@ -1,49 +1,15 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import LanguageSwitcher from './components/LanguageSwitcher'
+import RevealDiv from './components/animations/RevealDiv'
+import Button from './components/ui/Button'
+import SectionHeader from './components/shared/SectionHeader'
+import MainLayout from './components/layout/MainLayout'
 
 export default function App() {
   const { t } = useTranslation('common')
   const videoRef = useRef<HTMLVideoElement>(null)
-  const revealIdxRef = useRef(0)
-  const [visibleElements, setVisibleElements] = useState(new Set<number>())
-
-  useEffect(() => {
-    const elements = document.querySelectorAll<HTMLElement>('[data-reveal]')
-    const vh = window.innerHeight || 800
-
-    elements.forEach((_el, idx) => {
-      const rect = _el.getBoundingClientRect()
-      if (rect.top <= vh * 0.85) {
-        setVisibleElements((prev) => new Set([...prev, idx]))
-      }
-    })
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const idx = Array.from(elements).indexOf(entry.target as HTMLElement)
-            setVisibleElements((prev) => new Set([...prev, idx]))
-            observer.unobserve(entry.target)
-          }
-        })
-      },
-      { threshold: 0.12, rootMargin: '0px 0px -7% 0px' },
-    )
-
-    elements.forEach((el) => observer.observe(el))
-
-    const timeout = setTimeout(() => {
-      setVisibleElements(new Set(Array.from({ length: elements.length }, (_, i) => i)))
-    }, 4500)
-
-    return () => {
-      observer.disconnect()
-      clearTimeout(timeout)
-    }
-  }, [])
 
   // Video forward/reverse loop
   useEffect(() => {
@@ -88,33 +54,6 @@ export default function App() {
     }
   }, [])
 
-  revealIdxRef.current = 0
-  const getNextRevealIdx = () => revealIdxRef.current++
-
-  interface RevealDivProps extends React.HTMLAttributes<HTMLDivElement> {
-    index: number
-    children: React.ReactNode
-  }
-
-  const RevealDiv = ({ children, index, style, ...props }: RevealDivProps) => {
-    const isVisible = visibleElements.has(index)
-    return (
-      <div
-        data-reveal
-        {...props}
-        style={{
-          opacity: isVisible ? 1 : 0,
-          transform: isVisible ? 'none' : 'translateY(30px)',
-          transition:
-            'opacity 1.05s cubic-bezier(0.22, 0.75, 0.2, 1), transform 1.05s cubic-bezier(0.22, 0.75, 0.2, 1)',
-          ...style,
-        }}
-      >
-        {children}
-      </div>
-    )
-  }
-
   const splitHeadline = (key: string) =>
     t(key)
       .split('\n')
@@ -130,15 +69,16 @@ export default function App() {
       )
 
   return (
-    <div
-      style={{
-        fontFamily: "'Inter', system-ui, sans-serif",
-        color: '#2A2620',
-        background: '#ECE0CC',
-        overflowX: 'hidden',
-      }}
-    >
-      {/* NAVBAR */}
+    <MainLayout navbar={false} footer={false}>
+      <div
+        style={{
+          fontFamily: "'Inter', system-ui, sans-serif",
+          color: '#2A2620',
+          background: '#ECE0CC',
+          overflowX: 'hidden',
+        }}
+      >
+        {/* NAVBAR */}
       <nav
         style={{
           position: 'fixed',
@@ -221,12 +161,12 @@ export default function App() {
                 {t('hero.sub')}
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-                <Link to="/help" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '9px', color: '#fff', fontWeight: '600', fontSize: '16px', padding: '16px 30px', borderRadius: '13px', boxShadow: '0 16px 40px -16px rgba(255, 122, 107, 0.95)', backgroundColor: '#FF7A6B' }}>
-                  {t('hero.cta_primary')} <span style={{ fontSize: '18px', lineHeight: 0 }}>→</span>
-                </Link>
-                <a href="#community" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '9px', background: 'rgba(20, 30, 24, 0.35)', color: '#F4ECDC', fontWeight: '600', fontSize: '16px', padding: '15px 26px', borderRadius: '13px', border: '1.5px solid rgba(236, 224, 204, 0.42)', backdropFilter: 'blur(6px)', cursor: 'pointer' }}>
+                <Button to="/help" variant="primary" size="lg" icon="→">
+                  {t('hero.cta_primary')}
+                </Button>
+                <Button href="#community" variant="ghost" size="lg">
                   {t('hero.cta_secondary')}
-                </a>
+                </Button>
               </div>
             </div>
           </div>
@@ -236,7 +176,7 @@ export default function App() {
       {/* SECTION 2 — PROBLEM */}
       <section style={{ padding: '108px 0 96px', background: '#ECE0CC', position: 'relative' }}>
         <div style={{ width: 'min(1180px, calc(100% - 40px))', margin: '0 auto' }}>
-          <RevealDiv index={getNextRevealIdx()} style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '40px', marginBottom: '54px', position: 'relative' }}>
+          <RevealDiv style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '40px', marginBottom: '54px', position: 'relative' }}>
             <div style={{ maxWidth: '560px' }}>
               <div style={{ fontSize: '12px', letterSpacing: '3px', fontWeight: '600', color: '#3F8487', marginBottom: '18px' }}>
                 {t('problem.eyebrow')}
@@ -258,7 +198,7 @@ export default function App() {
               { num: '03', titleKey: 'problem.cards.unsafe_title', descKey: 'problem.cards.unsafe_desc' },
               { num: '04', titleKey: 'problem.cards.needAssistance_title', descKey: 'problem.cards.needAssistance_desc' },
             ] as const).map((card, i) => (
-              <RevealDiv key={i} index={getNextRevealIdx()} style={{ background: '#F2E8D6', border: '1px solid #C9BCA4', borderRadius: '16px', padding: '24px 22px 26px' }}>
+              <RevealDiv key={i} style={{ background: '#F2E8D6', border: '1px solid #C9BCA4', borderRadius: '16px', padding: '24px 22px 26px' }}>
                 <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '34px', color: '#FF7A6B', lineHeight: 1, marginBottom: '34px' }}>{card.num}</div>
                 <h3 style={{ fontSize: '19px', fontWeight: '600', color: '#234B4E', margin: '0 0 8px' }}>{t(card.titleKey)}</h3>
                 <p style={{ fontSize: '14.5px', lineHeight: 1.55, color: '#6b6457', margin: 0 }}>{t(card.descKey)}</p>
@@ -271,7 +211,7 @@ export default function App() {
       {/* SECTION 3 — HOW IT WORKS */}
       <section id="how" style={{ padding: '104px 0 110px', background: '#E4D6BD' }}>
         <div style={{ width: 'min(1180px, calc(100% - 40px))', margin: '0 auto', position: 'relative' }}>
-          <RevealDiv index={getNextRevealIdx()} style={{ textAlign: 'center', maxWidth: '620px', margin: '0 auto 64px' }}>
+          <RevealDiv style={{ textAlign: 'center', maxWidth: '620px', margin: '0 auto 64px' }}>
             <div style={{ fontSize: '12px', letterSpacing: '3px', fontWeight: '600', color: '#3F8487', marginBottom: '18px' }}>{t('howItWorks.eyebrow')}</div>
             <h2 style={{ fontFamily: "'Instrument Serif', serif", fontWeight: 400, color: '#234B4E', fontSize: 'clamp(34px, 5vw, 60px)', lineHeight: 1.02, letterSpacing: '-0.4px', margin: 0 }}>
               {t('howItWorks.heading')}
@@ -284,7 +224,7 @@ export default function App() {
               { num: '2', titleKey: 'howItWorks.steps.appearOnMap_title', descKey: 'howItWorks.steps.appearOnMap_desc', color: '#7357FF' },
               { num: '3', titleKey: 'howItWorks.steps.receiveHelp_title', descKey: 'howItWorks.steps.receiveHelp_desc', color: '#FF7A6B' },
             ] as const).map((step, i) => (
-              <RevealDiv key={i} index={getNextRevealIdx()} style={{ textAlign: 'center' }}>
+              <RevealDiv key={i} style={{ textAlign: 'center' }}>
                 <div style={{ width: '70px', height: '70px', margin: '0 auto 22px', borderRadius: '50%', background: '#ECE0CC', border: `1.5px solid ${step.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Instrument Serif', serif", fontSize: '30px', color: '#234B4E' }}>
                   {step.num}
                 </div>
@@ -300,7 +240,7 @@ export default function App() {
       {/* SECTION 4 — LIVE COMMUNITY MAP */}
       <section id="community" style={{ padding: '104px 0 110px', background: '#ECE0CC' }}>
         <div style={{ width: 'min(1180px, calc(100% - 40px))', margin: '0 auto' }}>
-          <RevealDiv index={getNextRevealIdx()} style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '30px', flexWrap: 'wrap', marginBottom: '34px' }}>
+          <RevealDiv style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '30px', flexWrap: 'wrap', marginBottom: '34px' }}>
             <div style={{ maxWidth: '560px' }}>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '12px', letterSpacing: '3px', fontWeight: '600', color: '#3F8487', marginBottom: '16px' }}>
                 <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#FF7A6B', animation: 'mdblink 1.4s steps(1) infinite' }} />
@@ -326,7 +266,7 @@ export default function App() {
           </RevealDiv>
 
           {/* SVG Map */}
-          <RevealDiv index={getNextRevealIdx()} style={{ position: 'relative', border: '1px solid #B9AE9C', borderRadius: '22px', overflow: 'hidden', background: '#E7DAC2', boxShadow: '0 30px 70px -40px rgba(35, 75, 78, 0.6)' }}>
+          <RevealDiv style={{ position: 'relative', border: '1px solid #B9AE9C', borderRadius: '22px', overflow: 'hidden', background: '#E7DAC2', boxShadow: '0 30px 70px -40px rgba(35, 75, 78, 0.6)' }}>
             <svg viewBox="0 0 1140 540" style={{ display: 'block', width: '100%', height: 'auto' }}>
               <defs>
                 <pattern id="mdgrid" width="48" height="48" patternUnits="userSpaceOnUse">
@@ -383,7 +323,7 @@ export default function App() {
       {/* SECTION 5 — WHY PEOPLE RESPOND */}
       <section style={{ padding: '104px 0 110px', background: '#234B4E' }}>
         <div style={{ width: 'min(1180px, calc(100% - 40px))', margin: '0 auto', position: 'relative' }}>
-          <RevealDiv index={getNextRevealIdx()} style={{ maxWidth: '680px', marginBottom: '56px' }}>
+          <RevealDiv style={{ maxWidth: '680px', marginBottom: '56px' }}>
             <div style={{ fontSize: '12px', letterSpacing: '3px', fontWeight: '600', color: '#8FC3C2', marginBottom: '18px' }}>{t('whyPeopleRespond.eyebrow')}</div>
             <h2 style={{ fontFamily: "'Instrument Serif', serif", fontWeight: 400, color: '#F4ECDC', fontSize: 'clamp(34px, 5vw, 60px)', lineHeight: 1.02, letterSpacing: '-0.4px', margin: 0 }}>
               {t('whyPeopleRespond.heading')}
@@ -397,7 +337,7 @@ export default function App() {
               { titleKey: 'whyPeopleRespond.values.sharedResponsibility_title', descKey: 'whyPeopleRespond.values.sharedResponsibility_desc', color: '#A99BFF' },
               { titleKey: 'whyPeopleRespond.values.humanConnection_title', descKey: 'whyPeopleRespond.values.humanConnection_desc', color: '#F4ECDC' },
             ] as const).map((item, i) => (
-              <RevealDiv key={i} index={getNextRevealIdx()} style={{ background: '#234B4E', padding: '34px 28px' }}>
+              <RevealDiv key={i} style={{ background: '#234B4E', padding: '34px 28px' }}>
                 <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '26px', color: item.color, marginBottom: '18px' }}>{t(item.titleKey)}</div>
                 <p style={{ fontSize: '15px', lineHeight: 1.6, color: '#cfdcd4', margin: 0 }}>{t(item.descKey)}</p>
               </RevealDiv>
@@ -409,7 +349,7 @@ export default function App() {
       {/* SECTION 6 — FEATURES */}
       <section id="coverage" style={{ padding: '104px 0 110px', background: '#ECE0CC', position: 'relative' }}>
         <div style={{ width: 'min(1180px, calc(100% - 40px))', margin: '0 auto', position: 'relative' }}>
-          <RevealDiv index={getNextRevealIdx()} style={{ maxWidth: '680px', marginBottom: '50px' }}>
+          <RevealDiv style={{ maxWidth: '680px', marginBottom: '50px' }}>
             <div style={{ fontSize: '12px', letterSpacing: '3px', fontWeight: '600', color: '#3F8487', marginBottom: '18px' }}>{t('features.eyebrow')}</div>
             <h2 style={{ fontFamily: "'Instrument Serif', serif", fontWeight: 400, color: '#234B4E', fontSize: 'clamp(34px, 5vw, 60px)', lineHeight: 1.02, letterSpacing: '-0.4px', margin: 0 }}>
               {t('features.heading')}
@@ -423,7 +363,7 @@ export default function App() {
               { icon: '#3F8487', titleKey: 'features.items.statusUpdates_title', descKey: 'features.items.statusUpdates_desc' },
               { icon: '#3F8487', titleKey: 'features.items.realtimeLocation_title', descKey: 'features.items.realtimeLocation_desc' },
             ] as const).map((feature, i) => (
-              <RevealDiv key={i} index={getNextRevealIdx()} style={{ background: '#F2E8D6', border: '1px solid #C9BCA4', borderRadius: '15px', padding: '26px 24px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+              <RevealDiv key={i} style={{ background: '#F2E8D6', border: '1px solid #C9BCA4', borderRadius: '15px', padding: '26px 24px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
                 <span style={{ width: '10px', height: '10px', marginTop: '7px', borderRadius: '50%', background: feature.icon, flexShrink: 0 }} />
                 <div>
                   <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#234B4E', margin: '0 0 6px' }}>{t(feature.titleKey)}</h3>
@@ -440,7 +380,7 @@ export default function App() {
       {/* SECTION 7 — TRUST */}
       <section id="trust" style={{ padding: '104px 0 110px', background: '#1d3f42' }}>
         <div style={{ width: 'min(1180px, calc(100% - 40px))', margin: '0 auto' }}>
-          <RevealDiv index={getNextRevealIdx()} style={{ textAlign: 'center', maxWidth: '640px', margin: '0 auto 58px' }}>
+          <RevealDiv style={{ textAlign: 'center', maxWidth: '640px', margin: '0 auto 58px' }}>
             <div style={{ fontSize: '12px', letterSpacing: '3px', fontWeight: '600', color: '#8FC3C2', marginBottom: '18px' }}>{t('trust.eyebrow')}</div>
             <h2 style={{ fontFamily: "'Instrument Serif', serif", fontWeight: 400, color: '#F4ECDC', fontSize: 'clamp(34px, 5vw, 60px)', lineHeight: 1.02, letterSpacing: '-0.4px', margin: '0 0 16px' }}>
               {t('trust.heading')}
@@ -455,7 +395,7 @@ export default function App() {
               { titleKey: 'trust.items.privacy_title', descKey: 'trust.items.privacy_desc', icon: 'phone' },
               { titleKey: 'trust.items.responseTracking_title', descKey: 'trust.items.responseTracking_desc', icon: 'loading' },
             ] as const).map((item, i) => (
-              <RevealDiv key={i} index={getNextRevealIdx()} style={{ background: 'rgba(63, 132, 135, 0.16)', border: '1px solid rgba(143, 195, 194, 0.3)', borderRadius: '16px', padding: '28px 24px' }}>
+              <RevealDiv key={i} style={{ background: 'rgba(63, 132, 135, 0.16)', border: '1px solid rgba(143, 195, 194, 0.3)', borderRadius: '16px', padding: '28px 24px' }}>
                 <div style={{ width: '42px', height: '42px', borderRadius: '11px', background: '#3F8487', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {item.icon === 'circle' && <span style={{ width: '14px', height: '14px', border: '2.5px solid #ECE0CC', borderRadius: '50%' }} />}
                   {item.icon === 'square' && <span style={{ width: '14px', height: '14px', background: '#ECE0CC', borderRadius: '3px' }} />}
@@ -472,7 +412,7 @@ export default function App() {
 
       {/* SECTION 8 — FINAL CTA */}
       <section id="cta" style={{ padding: '140px 0 120px', background: '#E4D6BD', textAlign: 'center' }}>
-        <RevealDiv index={getNextRevealIdx()} style={{ width: 'min(900px, calc(100% - 40px))', margin: '0 auto' }}>
+        <RevealDiv style={{ width: 'min(900px, calc(100% - 40px))', margin: '0 auto' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '9px', marginBottom: '30px' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#a2a586' }} />
             <span style={{ fontSize: '12px', letterSpacing: '3px', fontWeight: '600', color: '#3F8487' }}>
@@ -483,9 +423,9 @@ export default function App() {
             {splitHeadline('cta.heading')}
             <img src="/assets/chars/jumping-air.png" alt="" style={{ height: '472px', width: '477px', mixBlendMode: 'multiply', opacity: 0.88, position: 'absolute', left: '-209px', top: '-127px', pointerEvents: 'none' }} />
           </h2>
-          <a href="#top" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '11px', color: '#fff', fontWeight: '600', fontSize: '18px', padding: '19px 38px', borderRadius: '15px', boxShadow: '0px 22px 50px -18px rgba(167, 195, 29, 0.95)', backgroundColor: '#a2a586', cursor: 'pointer' }}>
-            {t('cta.button')} <span style={{ fontSize: '20px', lineHeight: 0 }}>→</span>
-          </a>
+          <Button href="#top" variant="muted" size="lg" icon="→">
+            {t('cta.button')}
+          </Button>
           <p style={{ margin: '24px 0 0', fontSize: '14px', color: '#7a7264' }}>{t('cta.sub')}</p>
         </RevealDiv>
       </section>
@@ -522,6 +462,7 @@ export default function App() {
           </div>
         </div>
       </footer>
-    </div>
+      </div>
+    </MainLayout>
   )
 }
