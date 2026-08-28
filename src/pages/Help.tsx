@@ -32,11 +32,6 @@ import {
   subscribeToContractEvents,
   clearWalletAddress,
 } from "../lib/contract";
-import {
-  buildLocationProofZone,
-  generateLocationProof,
-  shortProofId,
-} from "../lib/zk";
 import useDocumentTitle from "../lib/useDocumentTitle";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
@@ -45,6 +40,25 @@ import MainLayout from "../components/layout/MainLayout";
 import "./Help.css";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+
+// The ZK prover (Noir + Barretenberg WASM, several MB) is only fetched once a
+// proof is actually requested. Everything else in the module (zone building,
+// proof-id truncation) is cheap, but keeping the whole module out of the
+// initial bundle avoids pulling @stellar/stellar-sdk and WASM into the route
+// chunk until proof generation begins.
+let _zkModule: typeof import("../lib/zk") | null = null;
+function loadZk() {
+  if (!_zkModule) {
+    _zkModule = import("../lib/zk");
+  }
+  return _zkModule;
+}
+
+function shortProofId(value: unknown): string {
+  const text = String(value || "");
+  if (text.length <= 18) return text;
+  return `${text.slice(0, 10)}...${text.slice(-6)}`;
+}
 
 const MAP_STYLES = [
   {
@@ -2714,11 +2728,13 @@ export default function Help() {
     address,
     radiusMeters = 3000,
   }) {
-    const zone = buildLocationProofZone({ lat, lng, radiusMeters });
     dispatchZk({ type: "SET_STATUS", payload: "proving" });
     dispatchZk({ type: "SET_ERROR", payload: "" });
     dispatchZk({ type: "PUSH_LOG", payload: "Preparing private witness" });
-    const proof = await generateLocationProof({
+    // Load the ZK prover only now that a proof is actually requested.
+    const zk = await loadZk();
+    const zone = zk.buildLocationProofZone({ lat, lng, radiusMeters });
+    const proof = await zk.generateLocationProof({
       lat,
       lng,
       campaignId,

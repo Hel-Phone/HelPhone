@@ -140,6 +140,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
           if (id.includes("mapbox-gl") || id.includes("react-map-gl"))
             return "mapbox";
           if (
@@ -149,6 +150,18 @@ export default defineConfig({
             return "stellar";
           if (id.includes("@noir-lang") || id.includes("@aztec/bb.js"))
             return "zk";
+          if (
+            id.includes("react") ||
+            id.includes("react-dom") ||
+            id.includes("react-router") ||
+            id.includes("scheduler") ||
+            id.includes("react-i18next") ||
+            id.includes("i18next")
+          )
+            return "react-vendor";
+          if (id.includes("@supabase")) return "supabase";
+          if (id.includes("buffer")) return "buffer";
+          return "vendor";
         },
       },
     },

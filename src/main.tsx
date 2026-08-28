@@ -1,13 +1,37 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { WalletProvider } from "./contexts/WalletContext";
 import { i18nReady } from "./i18n";
 import App from "./App";
-import Help from "./pages/Help";
-import Ranking from "./pages/Ranking";
 import "./App.css";
 import "./styles/theme.css";
+
+// Heavy routes (Mapbox GL, ZK/WASM prover, Stellar RPC) are code-split so they
+// are only fetched when the user actually navigates to them, keeping the
+// initial bundle and Time-To-Interactive low.
+const Help = lazy(() => import("./pages/Help"));
+const Ranking = lazy(() => import("./pages/Ranking"));
+
+function RouteFallback() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "100vh",
+        color: "#234B4E",
+        fontFamily: "system-ui, sans-serif",
+        fontSize: "0.95rem",
+      }}
+    >
+      Loading…
+    </div>
+  );
+}
 
 function render() {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
@@ -20,11 +44,13 @@ function render() {
       */}
       <WalletProvider>
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<App />} />
-            <Route path="/help" element={<Help />} />
-            <Route path="/ranking" element={<Ranking />} />
-          </Routes>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/" element={<App />} />
+              <Route path="/help" element={<Help />} />
+              <Route path="/ranking" element={<Ranking />} />
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </WalletProvider>
     </React.StrictMode>,
