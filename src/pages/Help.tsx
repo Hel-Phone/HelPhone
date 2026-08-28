@@ -38,6 +38,11 @@ import {
   shortProofId,
 } from "../lib/zk";
 import useDocumentTitle from "../lib/useDocumentTitle";
+import Button from "../components/ui/Button";
+import Input from "../components/ui/Input";
+import Modal from "../components/ui/Modal";
+import MainLayout from "../components/layout/MainLayout";
+import "./Help.css";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -3233,15 +3238,13 @@ export default function Help() {
   };
 
   return (
-    <div
-      id="helphone-help-wrap"
-      style={{
-        display: "flex",
-        height: "100vh",
-        fontFamily: "'Inter','Helvetica Neue',sans-serif",
-      }}
+    <MainLayout
+      navbar={false}
+      footer={false}
+      style={{ padding: 0, background: "var(--color-bg)" }}
     >
-      {/* Issue #101 — visually hidden live region for screen reader announcements */}
+      <div id="helphone-help-wrap" className="hp-help-wrap">
+        {/* Issue #101 — visually hidden live region for screen reader announcements */}
       <div
         aria-live="polite"
         aria-atomic="true"
@@ -3265,17 +3268,7 @@ export default function Help() {
         id="helphone-help-sidebar"
         role="complementary"
         aria-label="Request panel"
-        style={{
-          width: "340px",
-          minWidth: "340px",
-          background: "#234B4E",
-          color: "rgba(242,236,220,0.9)",
-          display: "flex",
-          flexDirection: "column",
-          overflowY: "auto",
-          zIndex: 1000,
-          boxShadow: "4px 0 32px rgba(0,0,0,0.25)",
-        }}
+        className="hp-help-sidebar hp-scrollbar"
       >
         {/* Mobile drag handle — hidden on desktop via CSS */}
         <button
@@ -6280,6 +6273,7 @@ export default function Help() {
           }
         }
       `}</style>
-    </div>
+      </div>
+    </MainLayout>
   );
 }

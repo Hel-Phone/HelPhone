@@ -7,6 +7,7 @@ import App from "./App";
 import Help from "./pages/Help";
 import Ranking from "./pages/Ranking";
 import "./App.css";
+import "./styles/theme.css";
 
 function render() {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
