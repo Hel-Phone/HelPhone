@@ -1313,6 +1313,40 @@ export function HelpOnboardingModal({ open, onClose, onConnectWallet }) {
   );
 }
 
+// ── ETA countdown timer (#141) ──────────────────────────────────────────────
+// Live countdown that updates every second without layout shift.
+function EtaCountdown({ etaSeconds, isArrived }) {
+  const [remaining, setRemaining] = useState(
+    etaSeconds != null && Number.isFinite(etaSeconds) ? etaSeconds : null,
+  );
+
+  useEffect(() => {
+    if (etaSeconds == null || !Number.isFinite(etaSeconds) || etaSeconds <= 0) {
+      setRemaining(null);
+      return;
+    }
+    setRemaining(etaSeconds);
+  }, [etaSeconds]);
+
+  useEffect(() => {
+    if (remaining == null || remaining <= 0 || isArrived) return;
+    const timer = setInterval(() => {
+      setRemaining((prev) => (prev != null && prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [remaining != null && remaining > 0 && !isArrived]);
+
+  if (isArrived) return <span>Arrived</span>;
+  if (remaining == null || remaining <= 0) return <span>—</span>;
+
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+  if (mins > 0) {
+    return <span>{mins}m {String(secs).padStart(2, "0")}s</span>;
+  }
+  return <span>{secs}s</span>;
+}
+
 function TrackingScreen({
   responderLat,
   responderLng,
@@ -1516,8 +1550,8 @@ function TrackingScreen({
               >
                 ETA
               </div>
-              <div style={{ fontSize: "11px", color: "#F4ECDC" }}>
-                {isArrived ? "Arrived" : etaMin != null ? `${etaMin} min` : "—"}
+              <div style={{ fontSize: "11px", color: "#F4ECDC", fontVariantNumeric: "tabular-nums" }}>
+                <EtaCountdown etaSeconds={etaSeconds} isArrived={isArrived} />
               </div>
             </div>
             <div
@@ -1612,10 +1646,200 @@ function TrackingScreen({
   );
 }
 
+// ── Sound & haptic feedback (#142) ──────────────────────────────────────────
+const ALERT_PREFS_KEY = "hp_alert_prefs";
+
+function loadAlertPrefs() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ALERT_PREFS_KEY) || "{}");
+    return {
+      soundEnabled: raw.soundEnabled !== false,
+      hapticEnabled: raw.hapticEnabled !== false,
+    };
+  } catch {
+    return { soundEnabled: true, hapticEnabled: true };
+  }
+}
+
+function saveAlertPrefs(prefs) {
+  try {
+    localStorage.setItem(ALERT_PREFS_KEY, JSON.stringify(prefs));
+  } catch {}
+}
+
+function useAlertFeedback() {
+  const [prefs, setPrefs] = useState(loadAlertPrefs);
+  const audioCtxRef = useRef(null);
+
+  useEffect(() => {
+    saveAlertPrefs(prefs);
+  }, [prefs]);
+
+  const playChime = useCallback(() => {
+    if (!prefs.soundEnabled) return;
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.4);
+    } catch {}
+  }, [prefs.soundEnabled]);
+
+  const triggerHaptic = useCallback(() => {
+    if (!prefs.hapticEnabled) return;
+    try {
+      if (navigator.vibrate) {
+        navigator.vibrate([100, 50, 100]);
+      }
+    } catch {}
+  }, [prefs.hapticEnabled]);
+
+  const alertNewRequest = useCallback(() => {
+    playChime();
+    triggerHaptic();
+  }, [playChime, triggerHaptic]);
+
+  const toggleSound = useCallback(() => {
+    setPrefs((p) => ({ ...p, soundEnabled: !p.soundEnabled }));
+  }, []);
+
+  const toggleHaptic = useCallback(() => {
+    setPrefs((p) => ({ ...p, hapticEnabled: !p.hapticEnabled }));
+  }, []);
+
+  return { prefs, alertNewRequest, toggleSound, toggleHaptic };
+}
+
 function logEmergencySelection(typeId) {
   try {
     console.info(`[HelPhone] Emergency type selected: ${typeId}`);
   } catch {}
+}
+
+// ── Request history list with filtering (#143) ──────────────────────────────
+function FilteredRequestList({
+  requests,
+  historyFilter,
+  requestId,
+  setRequestId,
+  setRequestStatus,
+  setShowCancelConfirm,
+}) {
+  const filtered = historyFilter === 'all'
+    ? requests
+    : requests.filter((r) => {
+        if (historyFilter === 'active') return r.status === 'Pending' || r.status === 'Enroute';
+        return r.status?.toLowerCase() === historyFilter;
+      });
+
+  if (filtered.length === 0) {
+    return (
+      <p style={{ fontSize: "12px", color: "rgba(242,236,220,0.3)" }}>
+        No requests match this filter.
+      </p>
+    );
+  }
+
+  return (
+    <>
+      {filtered.slice(0, 10).map((req) => {
+        const isActive = req.id === requestId;
+        const statusColors = {
+          Pending: { color: "#a2a586", bg: "rgba(162,165,134,0.15)" },
+          Enroute: { color: "#7357FF", bg: "rgba(115,87,255,0.15)" },
+          Resolved: { color: "#3F8487", bg: "rgba(63,132,135,0.15)" },
+          Cancelled: { color: "rgba(242,236,220,0.3)", bg: "rgba(255,255,255,0.04)" },
+        };
+        const sc = statusColors[req.status] || statusColors.Cancelled;
+        const et = EMERGENCY_TYPES.find((e) => e.id === req.emergency_type);
+        const timeAgo = req.created_at
+          ? (() => {
+              const d = Math.floor((Date.now() / 1000 - req.created_at) / 60);
+              return d < 1 ? "just now" : d < 60 ? `${d}m ago` : `${Math.floor(d / 60)}h ago`;
+            })()
+          : "";
+        return (
+          <div
+            key={req.id}
+            onClick={() => {
+              if (req.status === "Pending" || req.status === "Enroute") {
+                setRequestId(req.id);
+                setRequestStatus(req.status);
+              }
+            }}
+            style={{
+              padding: "10px 12px",
+              marginBottom: "8px",
+              borderRadius: "10px",
+              cursor: "pointer",
+              background: isActive ? "rgba(63,132,135,0.12)" : "rgba(255,255,255,0.04)",
+              border: isActive ? "1px solid rgba(63,132,135,0.3)" : "1px solid rgba(255,255,255,0.06)",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "rgba(255,255,255,0.07)"; }}
+            onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "12px", fontWeight: "600", color: "#F4ECDC" }}>#{req.id}</span>
+                  <span
+                    style={{
+                      fontSize: "9px",
+                      fontWeight: "700",
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                      background: sc.bg,
+                      color: sc.color,
+                      letterSpacing: "0.5px",
+                    }}
+                  >
+                    {req.status?.toUpperCase()}
+                  </span>
+                </div>
+                <div style={{ fontSize: "10px", color: "rgba(242,236,220,0.35)", marginTop: "3px", lineHeight: 1.4 }}>
+                  {et ? `${et.icon} ${et.label}` : req.emergency_type || "Unknown"}
+                  {timeAgo && (
+                    <span style={{ marginLeft: "6px", color: "rgba(242,236,220,0.2)" }}>· {timeAgo}</span>
+                  )}
+                </div>
+              </div>
+              {isActive && req.status === "Pending" && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowCancelConfirm(req.id); }}
+                  style={{
+                    padding: "5px 9px",
+                    borderRadius: "6px",
+                    flexShrink: 0,
+                    background: "rgba(255,122,107,0.12)",
+                    border: "1px solid rgba(255,122,107,0.25)",
+                    color: "#FF7A6B",
+                    fontSize: "10px",
+                    fontWeight: "700",
+                    cursor: "pointer",
+                    lineHeight: 1,
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
 }
 
 const EMERGENCY_TYPES = [
@@ -2394,7 +2618,45 @@ export default function Help() {
 
   // Issue #101 — screen-reader announcement for async ZK operations
   const [zkAnnouncement, setZkAnnouncement] = useState('');
+  const [historyFilter, setHistoryFilter] = useState('all');
+  const [mediaFile, setMediaFile] = useState(null);
+  const [mediaPreview, setMediaPreview] = useState(null);
 
+  // #144: Compress and preview selected image
+  const handleMediaSelect = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      let { width, height } = img;
+      const MAX = 800;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round((height / width) * MAX); width = MAX; }
+        else { width = Math.round((width / height) * MAX); height = MAX; }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (blob) {
+          setMediaFile(blob);
+          setMediaPreview(URL.createObjectURL(blob));
+        }
+        URL.revokeObjectURL(url);
+      }, 'image/jpeg', 0.8);
+    };
+    img.src = url;
+  }, []);
+
+  const {
+    prefs: alertPrefs,
+    alertNewRequest,
+    toggleSound,
+    toggleHaptic,
+  } = useAlertFeedback();
   const styleSelectorRef = useRef(null);
   const profileRef = useRef(null);
   const sidebarRef = useRef(null);
@@ -2507,6 +2769,10 @@ export default function Help() {
           const map = new globalThis.Map(
             requests.map((req) => [Number(req.id), req]),
           );
+          // #142: alert on new requests when switching to offer mode
+          if (openRequests.size === 0 && map.size > 0) {
+            alertNewRequest();
+          }
           setOpenRequests(map);
           setSelectedRequest((current) => {
             if (!current) return current;
@@ -3701,9 +3967,13 @@ export default function Help() {
                             marginLeft: "auto",
                             fontSize: "12px",
                             color: "rgba(242,236,220,0.5)",
+                            fontVariantNumeric: "tabular-nums",
                           }}
                         >
-                          ETA {Math.round(responders[0].eta_seconds / 60)} min
+                          ETA <EtaCountdown
+                            etaSeconds={responders[0].eta_seconds}
+                            isArrived={responderArrived}
+                          />
                         </span>
                       )}
                   </div>
@@ -3748,10 +4018,10 @@ export default function Help() {
                         {responders[0].eta_seconds && !responderArrived && (
                           <>
                             {" "}
-                            · ETA {Math.round(
-                              responders[0].eta_seconds / 60,
-                            )}{" "}
-                            min
+                            · ETA <EtaCountdown
+                              etaSeconds={responders[0].eta_seconds}
+                              isArrived={responderArrived}
+                            />
                           </>
                         )}
                         {location &&
@@ -4143,6 +4413,74 @@ export default function Help() {
                       }}
                     >
                       Phone (+country code) or @telegram handle. Stored on-chain.
+                    </div>
+                    {/* #144: Media attachment */}
+                    <div style={{ marginTop: "8px" }}>
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          padding: "8px 12px",
+                          borderRadius: "8px",
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                          color: "rgba(242,236,220,0.5)",
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                          <circle cx="8.5" cy="8.5" r="1.5" />
+                          <polyline points="21 15 16 10 5 21" />
+                        </svg>
+                        {mediaPreview ? "Change photo" : "Attach photo"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={handleMediaSelect}
+                          style={{ display: "none" }}
+                        />
+                      </label>
+                      {mediaPreview && (
+                        <div style={{ marginTop: "8px", position: "relative" }}>
+                          <img
+                            src={mediaPreview}
+                            alt="Attached"
+                            style={{
+                              width: "100%",
+                              maxHeight: "120px",
+                              objectFit: "cover",
+                              borderRadius: "8px",
+                              border: "1px solid rgba(255,255,255,0.1)",
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => { setMediaPreview(null); setMediaFile(null); }}
+                            style={{
+                              position: "absolute",
+                              top: "6px",
+                              right: "6px",
+                              width: "24px",
+                              height: "24px",
+                              borderRadius: "50%",
+                              background: "rgba(0,0,0,0.6)",
+                              border: "none",
+                              color: "#fff",
+                              fontSize: "12px",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -4658,6 +4996,44 @@ export default function Help() {
                     </span>
                   )}
                 </div>
+                {/* #143: History filter tabs */}
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "4px",
+                    marginBottom: "10px",
+                    padding: "3px",
+                    background: "rgba(0,0,0,0.2)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  {[
+                    ["all", "All"],
+                    ["active", "Active"],
+                    ["resolved", "Resolved"],
+                    ["cancelled", "Cancelled"],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setHistoryFilter(key)}
+                      style={{
+                        flex: 1,
+                        padding: "6px 0",
+                        borderRadius: "6px",
+                        border: "none",
+                        background: historyFilter === key ? "rgba(63,132,135,0.25)" : "transparent",
+                        color: historyFilter === key ? "#3F8487" : "rgba(242,236,220,0.35)",
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 {myRequestsLoading && myRequests.length === 0 ? (
                   <div
                     style={{
@@ -4729,167 +5105,14 @@ export default function Help() {
                     You haven&apos;t requested help yet.
                   </p>
                 ) : (
-                  myRequests.slice(0, 10).map((req) => {
-                    const isActive = req.id === requestId;
-                    const statusColors = {
-                      Pending: {
-                        color: "#a2a586",
-                        bg: "rgba(162,165,134,0.15)",
-                      },
-                      Enroute: {
-                        color: "#7357FF",
-                        bg: "rgba(115,87,255,0.15)",
-                      },
-                      Resolved: {
-                        color: "#3F8487",
-                        bg: "rgba(63,132,135,0.15)",
-                      },
-                      Cancelled: {
-                        color: "rgba(242,236,220,0.3)",
-                        bg: "rgba(255,255,255,0.04)",
-                      },
-                    };
-                    const sc =
-                      statusColors[req.status] || statusColors.Cancelled;
-                    const et = EMERGENCY_TYPES.find(
-                      (e) => e.id === req.emergency_type,
-                    );
-                    const timeAgo = req.created_at
-                      ? (() => {
-                          const d = Math.floor(
-                            (Date.now() / 1000 - req.created_at) / 60,
-                          );
-                          return d < 1
-                            ? "just now"
-                            : d < 60
-                              ? `${d}m ago`
-                              : `${Math.floor(d / 60)}h ago`;
-                        })()
-                      : "";
-                    return (
-                      <div
-                        key={req.id}
-                        onClick={() => {
-                          if (
-                            req.status === "Pending" ||
-                            req.status === "Enroute"
-                          ) {
-                            setRequestId(req.id);
-                            setRequestStatus(req.status);
-                          }
-                        }}
-                        style={{
-                          padding: "10px 12px",
-                          marginBottom: "8px",
-                          borderRadius: "10px",
-                          cursor: "pointer",
-                          background: isActive
-                            ? "rgba(63,132,135,0.12)"
-                            : "rgba(255,255,255,0.04)",
-                          border: isActive
-                            ? "1px solid rgba(63,132,135,0.3)"
-                            : "1px solid rgba(255,255,255,0.06)",
-                          transition: "background 0.15s",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isActive)
-                            e.currentTarget.style.background =
-                              "rgba(255,255,255,0.07)";
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isActive)
-                            e.currentTarget.style.background =
-                              "rgba(255,255,255,0.04)";
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "flex-start",
-                            gap: "8px",
-                          }}
-                        >
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "6px",
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontSize: "12px",
-                                  fontWeight: "600",
-                                  color: "#F4ECDC",
-                                }}
-                              >
-                                #{req.id}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: "9px",
-                                  fontWeight: "700",
-                                  padding: "2px 6px",
-                                  borderRadius: "4px",
-                                  background: sc.bg,
-                                  color: sc.color,
-                                  letterSpacing: "0.5px",
-                                }}
-                              >
-                                {req.status?.toUpperCase()}
-                              </span>
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "10px",
-                                color: "rgba(242,236,220,0.35)",
-                                marginTop: "3px",
-                                lineHeight: 1.4,
-                              }}
-                            >
-                              {et
-                                ? `${et.icon} ${et.label}`
-                                : req.emergency_type || "Unknown"}
-                              {timeAgo && (
-                                <span
-                                  style={{
-                                    marginLeft: "6px",
-                                    color: "rgba(242,236,220,0.2)",
-                                  }}
-                                >
-                                  · {timeAgo}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          {isActive && req.status === "Pending" && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setShowCancelConfirm(req.id);
-                              }}
-                              style={{
-                                padding: "5px 9px",
-                                borderRadius: "6px",
-                                flexShrink: 0,
-                                background: "rgba(255,122,107,0.12)",
-                                border: "1px solid rgba(255,122,107,0.25)",
-                                color: "#FF7A6B",
-                                fontSize: "10px",
-                                fontWeight: "700",
-                                cursor: "pointer",
-                                lineHeight: 1,
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
+                  <FilteredRequestList
+                    requests={myRequests}
+                    historyFilter={historyFilter}
+                    requestId={requestId}
+                    setRequestId={setRequestId}
+                    setRequestStatus={setRequestStatus}
+                    setShowCancelConfirm={setShowCancelConfirm}
+                  />
                 )}
               </div>
             </>
@@ -5631,6 +5854,68 @@ export default function Help() {
                         : "Auto-pick · tap to choose"}
                     </span>
                   </button>
+                </div>
+
+                {/* #142: Alert settings */}
+                <div>
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      color: "rgba(242,236,220,0.5)",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    Alerts
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {[
+                      { label: "Sound alerts", enabled: alertPrefs.soundEnabled, onToggle: toggleSound },
+                      { label: "Haptic feedback", enabled: alertPrefs.hapticEnabled, onToggle: toggleHaptic },
+                    ].map(({ label, enabled, onToggle }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={onToggle}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "8px 12px",
+                          borderRadius: "8px",
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          cursor: "pointer",
+                          width: "100%",
+                        }}
+                      >
+                        <span style={{ fontSize: "12px", color: "rgba(242,236,220,0.6)" }}>{label}</span>
+                        <span
+                          style={{
+                            width: "36px",
+                            height: "20px",
+                            borderRadius: "10px",
+                            background: enabled ? "#3F8487" : "rgba(255,255,255,0.12)",
+                            position: "relative",
+                            transition: "background 0.2s",
+                          }}
+                        >
+                          <span
+                            style={{
+                              position: "absolute",
+                              top: "2px",
+                              left: enabled ? "18px" : "2px",
+                              width: "16px",
+                              height: "16px",
+                              borderRadius: "50%",
+                              background: "#fff",
+                              transition: "left 0.2s",
+                            }}
+                          />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
