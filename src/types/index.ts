@@ -3,6 +3,9 @@
 /** On-chain request status values returned by the Soroban contract. */
 export type RequestStatus = 'Pending' | 'Enroute' | 'Resolved' | 'Cancelled'
 
+/** Priority level for a help request. */
+export type PriorityLevel = 'Low' | 'Medium' | 'High' | 'Critical'
+
 /** A help request as decoded from the Soroban contract. */
 export interface HelpRequest {
   id: number
@@ -13,6 +16,7 @@ export interface HelpRequest {
   nickname: string
   contact: string
   status: RequestStatus
+  priority: PriorityLevel
   created_at: number
   resolved_at: number | null
 }

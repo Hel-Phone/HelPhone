@@ -16,6 +16,8 @@ import { useHelpUiState } from "../hooks/useHelpUiState";
 import { useLocationSearch } from "../hooks/useLocationSearch";
 import { useRequestMapState } from "../hooks/useRequestMapState";
 import { useWalletState } from "../hooks/useWalletState";
+import { useClusterer } from "../hooks/useClusterer";
+import { useGeofencing } from "../hooks/useGeofencing";
 import {
   getRequest,
   getActiveRequests,
@@ -32,11 +34,6 @@ import {
   subscribeToContractEvents,
   clearWalletAddress,
 } from "../lib/contract";
-import {
-  buildLocationProofZone,
-  generateLocationProof,
-  shortProofId,
-} from "../lib/zk";
 import useDocumentTitle from "../lib/useDocumentTitle";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
@@ -45,6 +42,25 @@ import MainLayout from "../components/layout/MainLayout";
 import "./Help.css";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+
+// The ZK prover (Noir + Barretenberg WASM, several MB) is only fetched once a
+// proof is actually requested. Everything else in the module (zone building,
+// proof-id truncation) is cheap, but keeping the whole module out of the
+// initial bundle avoids pulling @stellar/stellar-sdk and WASM into the route
+// chunk until proof generation begins.
+let _zkModule: typeof import("../lib/zk") | null = null;
+function loadZk() {
+  if (!_zkModule) {
+    _zkModule = import("../lib/zk");
+  }
+  return _zkModule;
+}
+
+function shortProofId(value: unknown): string {
+  const text = String(value || "");
+  if (text.length <= 18) return text;
+  return `${text.slice(0, 10)}...${text.slice(-6)}`;
+}
 
 const MAP_STYLES = [
   {
@@ -1881,6 +1897,20 @@ const EMERGENCY_TYPES = [
   },
 ];
 
+const PRIORITY_LEVELS = [
+  { id: "Low", label: "Low", color: "#3F8487" },
+  { id: "Medium", label: "Medium", color: "#a2a586" },
+  { id: "High", label: "High", color: "#d69e2e" },
+  { id: "Critical", label: "Critical", color: "#e53e3e" },
+];
+
+const PRIORITY_COLORS = Object.freeze({
+  Low: "#3F8487",
+  Medium: "#a2a586",
+  High: "#d69e2e",
+  Critical: "#e53e3e",
+});
+
 const ET_ICONS = {
   lost: (
     <svg
@@ -2657,6 +2687,13 @@ export default function Help() {
     toggleSound,
     toggleHaptic,
   } = useAlertFeedback();
+  // Issue #155 — request priority level
+  const [requestPriority, setRequestPriority] = useState('Medium');
+
+  // Issue #156 — responder availability
+  const [responderActive, setResponderActive] = useState(true);
+  const [responderStatusLoading, setResponderStatusLoading] = useState(false);
+
   const styleSelectorRef = useRef(null);
   const profileRef = useRef(null);
   const sidebarRef = useRef(null);
@@ -2980,11 +3017,13 @@ export default function Help() {
     address,
     radiusMeters = 3000,
   }) {
-    const zone = buildLocationProofZone({ lat, lng, radiusMeters });
     dispatchZk({ type: "SET_STATUS", payload: "proving" });
     dispatchZk({ type: "SET_ERROR", payload: "" });
     dispatchZk({ type: "PUSH_LOG", payload: "Preparing private witness" });
-    const proof = await generateLocationProof({
+    // Load the ZK prover only now that a proof is actually requested.
+    const zk = await loadZk();
+    const zone = zk.buildLocationProofZone({ lat, lng, radiusMeters });
+    const proof = await zk.generateLocationProof({
       lat,
       lng,
       campaignId,
@@ -3132,6 +3171,7 @@ export default function Help() {
         "",
         "",
         StellarWalletsKit,
+        requestPriority,
       );
       setRequestId(id);
       setRequestStatus("Pending");
@@ -3473,6 +3513,78 @@ export default function Help() {
   const showTracking =
     (requestStatus === "Enroute" && responders.length > 0) ||
     (lastOfferReceipt && !responderArrived);
+
+  // Issue #153 — clustering for offer mode open requests
+  const openRequestsPoints = useMemo(() => {
+    if (isGetMode) return [];
+    return openRequestsArray.filter(
+      (r) => Number.isFinite(r.lat) && Number.isFinite(r.lng),
+    );
+  }, [isGetMode, openRequestsArray]);
+
+  const mapBounds = useMemo(() => {
+    if (!settledViewport) return undefined;
+    const { longitude, latitude, zoom } = settledViewport;
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return undefined;
+    const halfWidth = 360 / Math.pow(2, zoom + 2);
+    const halfHeight = 180 / Math.pow(2, zoom + 2);
+    return [
+      longitude - halfWidth,
+      latitude - halfHeight,
+      longitude + halfWidth,
+      latitude + halfHeight,
+    ];
+  }, [settledViewport]);
+
+  const { clusters, getClusterExpansionZoom } = useClusterer(
+    openRequestsPoints,
+    settledViewport?.zoom ?? 12,
+    mapBounds,
+  );
+
+  // Issue #154 — geofencing alerts
+  const { triggered: geofenceAlerts, dismissAlert: dismissGeofenceAlert } =
+    useGeofencing(openRequestsArray, location, isGetMode);
+
+  const handleClusterClick = useCallback(
+    (clusterId, clusterLng, clusterLat) => {
+      const zoom = getClusterExpansionZoom(clusterId);
+      const map = document.querySelector(".mapboxgl-map");
+      if (map && map.__mapbox_map) {
+        map.__mapbox_map.flyTo({
+          center: [clusterLng, clusterLat],
+          zoom: Math.min(zoom, 18),
+          duration: 800,
+        });
+      }
+    },
+    [getClusterExpansionZoom],
+  );
+
+  // Issue #156 — responder status sync
+  useEffect(() => {
+    if (!activeWalletAddress) return;
+    fetch(`${SERVER_BASE}/api/responder-status/${activeWalletAddress}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && typeof data.active === "boolean") {
+          setResponderActive(data.active);
+        }
+      })
+      .catch(() => {});
+  }, [activeWalletAddress]);
+
+  useEffect(() => {
+    if (!activeWalletAddress) return;
+    setResponderStatusLoading(true);
+    fetch(`${SERVER_BASE}/api/responder-status/${activeWalletAddress}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: responderActive }),
+    })
+      .catch(() => {})
+      .finally(() => setResponderStatusLoading(false));
+  }, [activeWalletAddress, responderActive]);
 
   const S = {
     input: {
@@ -4481,6 +4593,47 @@ export default function Help() {
                           </button>
                         </div>
                       )}
+                    {/* Issue #155 — Priority level selector */}
+                    <div style={{ marginTop: "8px" }}>
+                      <div
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 600,
+                          color: "rgba(242,236,220,0.45)",
+                          marginBottom: "6px",
+                        }}
+                      >
+                        Priority level
+                      </div>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        {PRIORITY_LEVELS.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setRequestPriority(p.id)}
+                            style={{
+                              flex: 1,
+                              padding: "7px 4px",
+                              borderRadius: "6px",
+                              border: `1.5px solid ${requestPriority === p.id ? p.color : "rgba(255,255,255,0.1)"}`,
+                              background:
+                                requestPriority === p.id
+                                  ? `${p.color}22`
+                                  : "rgba(255,255,255,0.04)",
+                              color:
+                                requestPriority === p.id
+                                  ? p.color
+                                  : "rgba(242,236,220,0.4)",
+                              fontSize: "10px",
+                              fontWeight: requestPriority === p.id ? 700 : 500,
+                              cursor: "pointer",
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -4698,14 +4851,31 @@ export default function Help() {
                       alt=""
                     />
                     <div>
-                      <div
-                        style={{
-                          fontSize: "14px",
-                          fontWeight: "600",
-                          color: "#F4ECDC",
-                        }}
-                      >
-                        {selectedRequest.nickname || "Anonymous"}
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <div
+                          style={{
+                            fontSize: "14px",
+                            fontWeight: "600",
+                            color: "#F4ECDC",
+                          }}
+                        >
+                          {selectedRequest.nickname || "Anonymous"}
+                        </div>
+                        {selectedRequest.priority && selectedRequest.priority !== "Medium" && (
+                          <span
+                            style={{
+                              fontSize: "8px",
+                              fontWeight: 700,
+                              padding: "2px 5px",
+                              borderRadius: "3px",
+                              background: `${PRIORITY_COLORS[selectedRequest.priority]}22`,
+                              color: PRIORITY_COLORS[selectedRequest.priority],
+                              letterSpacing: "0.3px",
+                            }}
+                          >
+                            {selectedRequest.priority.toUpperCase()}
+                          </span>
+                        )}
                       </div>
                       {(() => {
                         const et = EMERGENCY_TYPES.find(
@@ -4912,7 +5082,7 @@ export default function Help() {
                           marginBottom: "8px",
                           padding: "10px 12px",
                           background: "rgba(255,255,255,0.06)",
-                          border: "1px solid rgba(255,255,255,0.1)",
+                          border: `1px solid ${req.priority && req.priority !== "Medium" ? `${PRIORITY_COLORS[req.priority]}44` : "rgba(255,255,255,0.1)"}`,
                           borderRadius: "10px",
                           cursor: "pointer",
                           display: "flex",
@@ -4931,15 +5101,36 @@ export default function Help() {
                           }}
                           alt=""
                         />
-                        <div>
-                          <div
-                            style={{
-                              fontSize: "13px",
-                              fontWeight: "600",
-                              color: "#F4ECDC",
-                            }}
-                          >
-                            {req.nickname || "Anonymous"}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <div
+                              style={{
+                                fontSize: "13px",
+                                fontWeight: "600",
+                                color: "#F4ECDC",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {req.nickname || "Anonymous"}
+                            </div>
+                            {req.priority && req.priority !== "Medium" && (
+                              <span
+                                style={{
+                                  fontSize: "8px",
+                                  fontWeight: 700,
+                                  padding: "1px 5px",
+                                  borderRadius: "3px",
+                                  background: `${PRIORITY_COLORS[req.priority]}22`,
+                                  color: PRIORITY_COLORS[req.priority],
+                                  letterSpacing: "0.3px",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {req.priority.toUpperCase()}
+                              </span>
+                            )}
                           </div>
                           {(() => {
                             const et = EMERGENCY_TYPES.find(
@@ -5113,6 +5304,182 @@ export default function Help() {
                     setRequestStatus={setRequestStatus}
                     setShowCancelConfirm={setShowCancelConfirm}
                   />
+                  myRequests.slice(0, 10).map((req) => {
+                    const isActive = req.id === requestId;
+                    const statusColors = {
+                      Pending: {
+                        color: "#a2a586",
+                        bg: "rgba(162,165,134,0.15)",
+                      },
+                      Enroute: {
+                        color: "#7357FF",
+                        bg: "rgba(115,87,255,0.15)",
+                      },
+                      Resolved: {
+                        color: "#3F8487",
+                        bg: "rgba(63,132,135,0.15)",
+                      },
+                      Cancelled: {
+                        color: "rgba(242,236,220,0.3)",
+                        bg: "rgba(255,255,255,0.04)",
+                      },
+                    };
+                    const sc =
+                      statusColors[req.status] || statusColors.Cancelled;
+                    const et = EMERGENCY_TYPES.find(
+                      (e) => e.id === req.emergency_type,
+                    );
+                    const timeAgo = req.created_at
+                      ? (() => {
+                          const d = Math.floor(
+                            (Date.now() / 1000 - req.created_at) / 60,
+                          );
+                          return d < 1
+                            ? "just now"
+                            : d < 60
+                              ? `${d}m ago`
+                              : `${Math.floor(d / 60)}h ago`;
+                        })()
+                      : "";
+                    return (
+                      <div
+                        key={req.id}
+                        onClick={() => {
+                          if (
+                            req.status === "Pending" ||
+                            req.status === "Enroute"
+                          ) {
+                            setRequestId(req.id);
+                            setRequestStatus(req.status);
+                          }
+                        }}
+                        style={{
+                          padding: "10px 12px",
+                          marginBottom: "8px",
+                          borderRadius: "10px",
+                          cursor: "pointer",
+                          background: isActive
+                            ? "rgba(63,132,135,0.12)"
+                            : "rgba(255,255,255,0.04)",
+                          border: isActive
+                            ? "1px solid rgba(63,132,135,0.3)"
+                            : "1px solid rgba(255,255,255,0.06)",
+                          transition: "background 0.15s",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isActive)
+                            e.currentTarget.style.background =
+                              "rgba(255,255,255,0.07)";
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isActive)
+                            e.currentTarget.style.background =
+                              "rgba(255,255,255,0.04)";
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: "8px",
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: "12px",
+                                  fontWeight: "600",
+                                  color: "#F4ECDC",
+                                }}
+                              >
+                                #{req.id}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: "9px",
+                                  fontWeight: "700",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  background: sc.bg,
+                                  color: sc.color,
+                                  letterSpacing: "0.5px",
+                                }}
+                              >
+                                {req.status?.toUpperCase()}
+                              </span>
+                              {req.priority && req.priority !== "Medium" && (
+                                <span
+                                  style={{
+                                    fontSize: "8px",
+                                    fontWeight: 700,
+                                    padding: "2px 5px",
+                                    borderRadius: "3px",
+                                    background: `${PRIORITY_COLORS[req.priority]}22`,
+                                    color: PRIORITY_COLORS[req.priority],
+                                    letterSpacing: "0.3px",
+                                  }}
+                                >
+                                  {req.priority.toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: "10px",
+                                color: "rgba(242,236,220,0.35)",
+                                marginTop: "3px",
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              {et
+                                ? `${et.icon} ${et.label}`
+                                : req.emergency_type || "Unknown"}
+                              {timeAgo && (
+                                <span
+                                  style={{
+                                    marginLeft: "6px",
+                                    color: "rgba(242,236,220,0.2)",
+                                  }}
+                                >
+                                  · {timeAgo}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {isActive && req.status === "Pending" && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowCancelConfirm(req.id);
+                              }}
+                              style={{
+                                padding: "5px 9px",
+                                borderRadius: "6px",
+                                flexShrink: 0,
+                                background: "rgba(255,122,107,0.12)",
+                                border: "1px solid rgba(255,122,107,0.25)",
+                                color: "#FF7A6B",
+                                fontSize: "10px",
+                                fontWeight: "700",
+                                cursor: "pointer",
+                                lineHeight: 1,
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </>
@@ -5242,37 +5609,106 @@ export default function Help() {
             ))}
 
           {!isGetMode &&
-            openRequestsArray.map((req) => (
-              <EmergencyMarker
-                key={req.id}
-                lat={req.lat}
-                lng={req.lng}
-                emergencyType={req.emergency_type}
-                onClick={() => {
-                  setSelectedRequest(req);
-                  setPopupMarker(`req-${req.id}`);
-                }}
-              >
-                {popupMarker === `req-${req.id}` && (
-                  <Popup
-                    latitude={req.lat}
-                    longitude={req.lng}
-                    onClose={() => setPopupMarker(null)}
-                    closeButton={false}
+            clusters.map((feature) => {
+              const isCluster = feature.properties?.cluster === true;
+              if (isCluster) {
+                const count = feature.properties.point_count;
+                const [clng, clat] = feature.geometry.coordinates;
+                return (
+                  <Marker
+                    key={`cluster-${feature.properties.cluster_id}`}
+                    latitude={clat}
+                    longitude={clng}
+                    onClick={() =>
+                      handleClusterClick(
+                        feature.properties.cluster_id,
+                        clng,
+                        clat,
+                      )
+                    }
                   >
-                    <strong style={{ color: "#FF7A6B" }}>
-                      {req.nickname || "Anonymous"}
-                    </strong>
-                    <br />
-                    <span style={{ fontSize: "11px", color: "#a2a586" }}>
-                      {EMERGENCY_TYPES.find((e) => e.id === req.emergency_type)
-                        ?.label || "Needs help"}{" "}
-                      · Click sidebar to respond
-                    </span>
-                  </Popup>
-                )}
-              </EmergencyMarker>
-            ))}
+                    <div
+                      className="hp-marker"
+                      style={{
+                        position: "relative",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: "50%",
+                          background: "rgba(115,87,255,0.85)",
+                          border: "3px solid rgba(255,255,255,0.9)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "#fff",
+                          fontSize: "14px",
+                          fontWeight: 800,
+                          boxShadow: "0 2px 12px rgba(115,87,255,0.5)",
+                        }}
+                      >
+                        {count}
+                      </div>
+                    </div>
+                  </Marker>
+                );
+              }
+
+              const req = feature.properties;
+              if (!req || !Number.isFinite(req.lat) || !Number.isFinite(req.lng))
+                return null;
+              return (
+                <EmergencyMarker
+                  key={req.id}
+                  lat={req.lat}
+                  lng={req.lng}
+                  emergencyType={req.emergency_type}
+                  onClick={() => {
+                    setSelectedRequest(req);
+                    setPopupMarker(`req-${req.id}`);
+                  }}
+                >
+                  {popupMarker === `req-${req.id}` && (
+                    <Popup
+                      latitude={req.lat}
+                      longitude={req.lng}
+                      onClose={() => setPopupMarker(null)}
+                      closeButton={false}
+                    >
+                      <strong style={{ color: PRIORITY_COLORS[req.priority] || "#FF7A6B" }}>
+                        {req.nickname || "Anonymous"}
+                      </strong>
+                      <br />
+                      <span style={{ fontSize: "11px", color: "#a2a586" }}>
+                        {EMERGENCY_TYPES.find((e) => e.id === req.emergency_type)
+                          ?.label || "Needs help"}{" "}
+                        · Click sidebar to respond
+                      </span>
+                      {req.priority && req.priority !== "Medium" && (
+                        <>
+                          <br />
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              color: PRIORITY_COLORS[req.priority] || "#a2a586",
+                            }}
+                          >
+                            {req.priority} priority
+                          </span>
+                        </>
+                      )}
+                    </Popup>
+                  )}
+                </EmergencyMarker>
+              );
+            })}
 
           {showTracking && isGetMode && responders[0] && (
             <TrackingScreen
@@ -5669,6 +6105,84 @@ export default function Help() {
               </div>
 
               <div style={{ padding: "14px 20px 6px" }}>
+                {/* Issue #156 — Responder availability toggle */}
+                {!isGetMode && (
+                  <div
+                    style={{
+                      marginBottom: "14px",
+                      padding: "10px 12px",
+                      borderRadius: "10px",
+                      background: responderActive
+                        ? "rgba(63,132,135,0.12)"
+                        : "rgba(255,255,255,0.04)",
+                      border: `1px solid ${responderActive ? "rgba(63,132,135,0.3)" : "rgba(255,255,255,0.08)"}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: responderActive ? "#3F8487" : "rgba(242,236,220,0.5)",
+                          }}
+                        >
+                          Responder Status
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "9.5px",
+                            color: "rgba(242,236,220,0.3)",
+                            marginTop: "2px",
+                          }}
+                        >
+                          {responderActive ? "Active — visible to requesters" : "Offline — hidden from requesters"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={responderActive}
+                        aria-label="Toggle responder availability"
+                        onClick={() => setResponderActive((prev) => !prev)}
+                        disabled={responderStatusLoading}
+                        style={{
+                          position: "relative",
+                          width: "44px",
+                          height: "24px",
+                          borderRadius: "12px",
+                          border: "none",
+                          background: responderActive ? "#3F8487" : "rgba(255,255,255,0.15)",
+                          cursor: "pointer",
+                          transition: "background 0.2s",
+                          flexShrink: 0,
+                          opacity: responderStatusLoading ? 0.6 : 1,
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "2px",
+                            left: responderActive ? "22px" : "2px",
+                            width: "20px",
+                            height: "20px",
+                            borderRadius: "50%",
+                            background: "#fff",
+                            transition: "left 0.2s",
+                            boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
+                          }}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ marginBottom: "14px" }}>
                   <div
                     style={{
@@ -5962,6 +6476,62 @@ export default function Help() {
         />
 
         {!isGetMode && <MapLegend />}
+
+        {/* Issue #154 — Geofencing alerts */}
+        {isGetMode && geofenceAlerts.length > 0 && (
+          <div
+            style={{
+              position: "absolute",
+              top: "60px",
+              left: "12px",
+              zIndex: 100,
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+              maxWidth: "320px",
+            }}
+          >
+            {geofenceAlerts.map((alert) => {
+              const et = EMERGENCY_TYPES.find((e) => e.id === alert.emergency_type);
+              return (
+                <div
+                  key={alert.id}
+                  style={{
+                    background: "rgba(229,62,62,0.95)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: "12px",
+                    padding: "12px 14px",
+                    boxShadow: "0 4px 20px rgba(229,62,62,0.4)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                    <span style={{ fontSize: "16px" }}>⚠️</span>
+                    <span style={{ fontSize: "11px", fontWeight: 800, color: "#fff", letterSpacing: "0.5px" }}>
+                      NEARBY EMERGENCY
+                    </span>
+                    <button
+                      onClick={() => dismissGeofenceAlert(alert.id)}
+                      style={{
+                        marginLeft: "auto",
+                        background: "none",
+                        border: "none",
+                        color: "rgba(255,255,255,0.6)",
+                        fontSize: "16px",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <p style={{ margin: 0, fontSize: "12px", color: "rgba(255,255,255,0.9)", lineHeight: 1.4 }}>
+                    {et ? `${et.icon} ${et.label}` : "Emergency"} — {alert.distance}m away
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {!location && (
           <div

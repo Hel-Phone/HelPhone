@@ -38,6 +38,27 @@ app.get('/health', (_req, res) => {
 // ZK prover routes mounted at /zk
 app.use('/zk', zkRouter)
 
+// ── Responder availability (Issue #156) ───────────────────────────────────────
+// In-memory store; production would use a database.
+const responderStatusStore = new Map<string, { active: boolean; updatedAt: number }>()
+
+app.get('/api/responder-status/:address', (req, res) => {
+  const { address } = req.params
+  const entry = responderStatusStore.get(address)
+  res.json({ address, active: entry?.active ?? true, updatedAt: entry?.updatedAt ?? null })
+})
+
+app.post('/api/responder-status/:address', (req, res) => {
+  const { address } = req.params
+  const { active } = req.body
+  if (typeof active !== 'boolean') {
+    res.status(400).json({ error: 'active must be a boolean' })
+    return
+  }
+  responderStatusStore.set(address, { active, updatedAt: Date.now() })
+  res.json({ address, active, updatedAt: Date.now() })
+})
+
 // ── Error handling (must come last) ──────────────────────────────────────────
 app.use(notFoundHandler)
 app.use(globalErrorHandler)
