@@ -75,6 +75,7 @@
     "@noir-lang/noir_js": "^1.0.0-beta.9",
     "@stellar/stellar-sdk": "^16.0.0",
     "@supabase/supabase-js": "^2.108.2",
+    "@types/supercluster": "~7.1.3",
     "buffer": "^6.0.3",
     "cors": "^2.8.5",
     "express": "^4.21.0",
@@ -86,6 +87,7 @@
     "react-dom": "^19.2.7",
     "react-i18next": "^15.5.3",
     "react-map-gl": "^8.1.1",
-    "react-router-dom": "^7.18.0"
+    "react-router-dom": "^7.18.0",
+    "supercluster": "~9.0.0"
   }
 }
