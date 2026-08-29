@@ -329,8 +329,15 @@ function scv(val, opts) {
   return nativeToScVal(val, opts);
 }
 
+const PRIORITY_LEVELS = ["Low", "Medium", "High", "Critical"];
+
 function mapRequest(raw) {
   const STATUS = ["Pending", "Enroute", "Resolved", "Cancelled"];
+  const rawPriority = typeof raw.priority === 'number'
+    ? PRIORITY_LEVELS[raw.priority]
+    : typeof raw.priority === 'string'
+      ? raw.priority
+      : 'Medium';
   return {
     id: raw.id ? safeToNumber(raw.id) : raw.id,
     requester: raw.requester,
@@ -342,6 +349,7 @@ function mapRequest(raw) {
     status:
       STATUS[raw.status] ??
       (Array.isArray(raw.status) ? raw.status[0] : raw.status),
+    priority: PRIORITY_LEVELS.includes(rawPriority) ? rawPriority : 'Medium',
     created_at: safeToNumber(raw.created_at),
     resolved_at: raw.resolved_at ? safeToNumber(raw.resolved_at) : null,
   };
@@ -819,11 +827,13 @@ export async function createRequest(
   nickname,
   contact,
   wallet,
+  priority = 'Medium',
 ) {
   const signerAddress = await resolveWalletAddress(wallet, requester);
   if (!signerAddress) throw new Error("Wallet address is not available yet");
   await ensureAccountFunded(signerAddress);
   const account = await server.getAccount(signerAddress);
+  const priorityIndex = PRIORITY_LEVELS.indexOf(priority);
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
     networkPassphrase: NETWORK,
@@ -839,6 +849,7 @@ export async function createRequest(
           scv(emergencyType, { type: "string" }),
           scv(nickname, { type: "string" }),
           scv(contact, { type: "string" }),
+          scv(priorityIndex >= 0 ? priorityIndex : 1, { type: "u32" }),
         ],
       }),
     )
