@@ -128,11 +128,18 @@ That record is also mirrored into localStorage for the popup UI.
 
 ```text
 src/
-  App.jsx
+  App.tsx
   App.css
-  main.jsx
+  main.tsx
   lib/
   pages/
+  services/
+    api.ts                    # Core API service with interceptors
+    preferences.ts           # User preferences service
+    responderStatus.ts       # Responder status service  
+    feedback.ts             # Feedback submission service
+    zkProver.ts             # ZK prover and RPC service
+    index.ts                # Centralized exports
 contract/
   contracts/helphone-contract/
 contracts/
@@ -163,3 +170,88 @@ cd contracts/noir_verifier && cargo test
 - The repo is already under git.
 - The ZK bundle is intentionally large and loaded on demand.
 - `Stellar Expert` is the final verification popup shown after successful on-chain actions.
+## Services Layer Architecture
+
+HelPhone now features a centralized services layer for handling all HTTP/RPC calls, providing standardized error handling and response interceptors.
+
+### Overview
+
+The services layer abstracts all external API calls into dedicated service classes, making the codebase more maintainable and providing consistent error handling across the application.
+
+### Available Services
+
+1. **Core API Service (`src/services/api.ts`)**
+   - Centralized HTTP client with timeout and retry logic
+   - Request/response interceptors for standardized error handling
+   - Support for custom timeout, retries, and retry conditions
+
+2. **Preferences Service (`src/services/preferences.ts`)**
+   - Handles user preferences API calls
+   - Syncs preferences between server and localStorage
+   - Provides merge functionality for server/local preferences
+
+3. **Responder Status Service (`src/services/responderStatus.ts`)**
+   - Manages responder availability status
+   - Provides toggle functionality for status updates
+   - Handles API calls for responder status synchronization
+
+4. **Feedback Service (`src/services/feedback.ts`)**
+   - Handles feedback submission with validation
+   - Supports ratings and comments
+   - Provides validation helpers for feedback data
+
+5. **ZK Prover Service (`src/services/zkProver.ts`)**
+   - Centralizes ZK proof generation API calls
+   - Handles blockchain RPC interactions
+   - Provides health check functionality for prover server
+
+### Using Services
+
+Import services from the centralized index:
+
+```typescript
+import {
+  api,
+  preferencesService,
+  responderStatusService,
+  feedbackService,
+  zkProverService,
+} from '../services';
+```
+
+### Example Usage
+
+```typescript
+// Get user preferences
+const preferences = await preferencesService.getPreferences(walletAddress);
+
+// Update responder status
+const status = await responderStatusService.updateStatus(walletAddress, true);
+
+// Submit feedback
+const result = await feedbackService.submitFeedback({
+  rating: 5,
+  comment: 'Great help!',
+  requestId: '123',
+});
+
+// Check ZK prover health
+const isHealthy = await zkProverService.healthCheck();
+```
+
+### Error Handling
+
+All services use the centralized error handling provided by the core API service:
+
+- Network errors are automatically retried (configurable)
+- Timeouts are enforced with configurable durations
+- HTTP errors are normalized into consistent error objects
+- Error interceptors allow for global error logging or processing
+
+### Benefits
+
+1. **Consistency**: All API calls follow the same pattern with standardized error handling
+2. **Maintainability**: API logic is centralized, making updates easier
+3. **Testability**: Services can be easily mocked for testing
+4. **Reusability**: Common patterns like retries and timeouts are implemented once
+5. **Observability**: Interceptors provide hooks for logging and monitoring
