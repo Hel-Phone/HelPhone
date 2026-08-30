@@ -120,7 +120,7 @@ function CharMarker({
         className="hp-marker"
         tabIndex={0}
         role="button"
-        aria-label={`Responder marker for ${charName}`}
+        aria-label={`Marker for ${charName}${accentColor === "#FF7A6B" ? " (requester)" : " (responder)"}`}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -969,6 +969,7 @@ export function EmergencyMarker({
   lat,
   lng,
   emergencyType,
+  isActive,
   onClick,
   children,
 }) {
@@ -977,10 +978,10 @@ export function EmergencyMarker({
   return (
     <Marker latitude={lat} longitude={lng} onClick={onClick}>
       <div
-        className="hp-marker"
+        className={`hp-marker${isActive ? " hp-marker-active" : ""}`}
         tabIndex={0}
         role="button"
-        aria-label={`Emergency: ${emergencyType}`}
+        aria-label={`Emergency marker: ${emergencyType || "emergency"}`}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -5564,13 +5565,15 @@ export default function Help() {
                   onClose={() => setPopupMarker(null)}
                   closeButton={false}
                 >
-                  <strong style={{ color: "#FF7A6B" }}>You</strong>
-                  {profile.nickname && (
-                    <>
-                      <br />
-                      {profile.nickname}
-                    </>
-                  )}
+                  <div role="dialog" aria-label="Your location marker details">
+                    <strong style={{ color: "#FF7A6B" }}>You</strong>
+                    {profile.nickname && (
+                      <>
+                        <br />
+                        {profile.nickname}
+                      </>
+                    )}
+                  </div>
                 </Popup>
               )}
             </CharMarker>
@@ -5595,13 +5598,15 @@ export default function Help() {
                   onClose={() => setPopupMarker(null)}
                   closeButton={false}
                 >
-                  <strong style={{ color: "#7357FF" }}>You (responder)</strong>
-                  {profile.nickname && (
-                    <>
-                      <br />
-                      {profile.nickname}
-                    </>
-                  )}
+                  <div role="dialog" aria-label="Your responder marker details">
+                    <strong style={{ color: "#7357FF" }}>You (responder)</strong>
+                    {profile.nickname && (
+                      <>
+                        <br />
+                        {profile.nickname}
+                      </>
+                    )}
+                  </div>
                 </Popup>
               )}
             </CharMarker>
@@ -5629,19 +5634,21 @@ export default function Help() {
                       onClose={() => setPopupMarker(null)}
                       closeButton={false}
                     >
-                      <strong style={{ color: "#7357FF" }}>Responder</strong>
-                      <br />
-                      <span style={{ fontSize: "11px", color: "#a2a586" }}>
-                        {r.responder
-                          ? r.responder.slice(0, 8) + "…"
-                          : "Responder"}
-                      </span>
-                      {r.eta_seconds && (
-                        <>
-                          <br />
-                          ETA: {Math.round(r.eta_seconds / 60)} min
-                        </>
-                      )}
+                      <div role="dialog" aria-label={`Responder ${r.responder ? r.responder.slice(0, 8) : ""} details`}>
+                        <strong style={{ color: "#7357FF" }}>Responder</strong>
+                        <br />
+                        <span style={{ fontSize: "11px", color: "#a2a586" }}>
+                          {r.responder
+                            ? r.responder.slice(0, 8) + "…"
+                            : "Responder"}
+                        </span>
+                        {r.eta_seconds && (
+                          <>
+                            <br />
+                            ETA: {Math.round(r.eta_seconds / 60)} min
+                          </>
+                        )}
+                      </div>
                     </Popup>
                   )}
                 </CharMarker>
@@ -5710,6 +5717,7 @@ export default function Help() {
                   lat={req.lat}
                   lng={req.lng}
                   emergencyType={req.emergency_type}
+                  isActive={req.status === "Pending"}
                   onClick={() => {
                     setSelectedRequest(req);
                     setPopupMarker(`req-${req.id}`);
@@ -5722,29 +5730,31 @@ export default function Help() {
                       onClose={() => setPopupMarker(null)}
                       closeButton={false}
                     >
-                      <strong style={{ color: PRIORITY_COLORS[req.priority] || "#FF7A6B" }}>
-                        {req.nickname || "Anonymous"}
-                      </strong>
-                      <br />
-                      <span style={{ fontSize: "11px", color: "#a2a586" }}>
-                        {EMERGENCY_TYPES.find((e) => e.id === req.emergency_type)
-                          ?.label || "Needs help"}{" "}
-                        · Click sidebar to respond
-                      </span>
-                      {req.priority && req.priority !== "Medium" && (
-                        <>
-                          <br />
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              fontWeight: 700,
-                              color: PRIORITY_COLORS[req.priority] || "#a2a586",
-                            }}
-                          >
-                            {req.priority} priority
-                          </span>
-                        </>
-                      )}
+                      <div role="dialog" aria-label={`Emergency request from ${req.nickname || "anonymous"}: ${EMERGENCY_TYPES.find((e) => e.id === req.emergency_type)?.label || "needs help"}`}>
+                        <strong style={{ color: PRIORITY_COLORS[req.priority] || "#FF7A6B" }}>
+                          {req.nickname || "Anonymous"}
+                        </strong>
+                        <br />
+                        <span style={{ fontSize: "11px", color: "#a2a586" }}>
+                          {EMERGENCY_TYPES.find((e) => e.id === req.emergency_type)
+                            ?.label || "Needs help"}{" "}
+                          · Click sidebar to respond
+                        </span>
+                        {req.priority && req.priority !== "Medium" && (
+                          <>
+                            <br />
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                fontWeight: 700,
+                                color: PRIORITY_COLORS[req.priority] || "#a2a586",
+                              }}
+                            >
+                              {req.priority} priority
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </Popup>
                   )}
                 </EmergencyMarker>
