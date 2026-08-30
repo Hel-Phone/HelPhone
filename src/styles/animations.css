@@ -76,6 +76,29 @@
   will-change: transform, opacity;
 }
 
+/* ── Active marker pulse animation (#164) ──────────────────────────────────── */
+@keyframes hp-marker-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 122, 107, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(255, 122, 107, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 122, 107, 0);
+  }
+}
+
+.hp-marker-active {
+  animation: hp-marker-pulse 2s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-marker-active {
+    animation: none;
+  }
+}
+
 /* RevealDiv transition helper */
 .hp-reveal {
   transition:
