@@ -39,6 +39,11 @@ import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 import Modal from "../components/ui/Modal";
 import MainLayout from "../components/layout/MainLayout";
+import {
+  preferencesService,
+  responderStatusService,
+  feedbackService,
+} from "../services";
 import "./Help.css";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
@@ -2745,15 +2750,12 @@ export default function Help() {
   // (#137) Sync preferences to the backend when the wallet is connected.
   // On wallet connect: load server prefs and merge over localStorage.
   // On profile change: push latest prefs to the server.
-  const SERVER_BASE =
-    import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
   useEffect(() => {
     if (!activeWalletAddress) return;
-    fetch(`${SERVER_BASE}/api/preferences/${activeWalletAddress}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.preferences && Object.keys(data.preferences).length > 0) {
-          setProfile((prev) => ({ ...prev, ...data.preferences }));
+    preferencesService.getPreferences(activeWalletAddress)
+      .then((preferences) => {
+        if (preferences && Object.keys(preferences).length > 0) {
+          setProfile((prev) => ({ ...prev, ...preferences }));
         }
       })
       .catch(() => {});
@@ -2766,11 +2768,8 @@ export default function Help() {
       contact: profile.contact,
       gender: profile.gender,
     };
-    fetch(`${SERVER_BASE}/api/preferences/${activeWalletAddress}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(prefs),
-    }).catch(() => {});
+    preferencesService.updatePreferences(activeWalletAddress, prefs)
+      .catch(() => {});
   }, [activeWalletAddress, profile.nickname, profile.contact, profile.gender]);
 
   useEffect(() => {
@@ -3564,8 +3563,7 @@ export default function Help() {
   // Issue #156 — responder status sync
   useEffect(() => {
     if (!activeWalletAddress) return;
-    fetch(`${SERVER_BASE}/api/responder-status/${activeWalletAddress}`)
-      .then((r) => (r.ok ? r.json() : null))
+    responderStatusService.getStatus(activeWalletAddress)
       .then((data) => {
         if (data && typeof data.active === "boolean") {
           setResponderActive(data.active);
@@ -3577,11 +3575,7 @@ export default function Help() {
   useEffect(() => {
     if (!activeWalletAddress) return;
     setResponderStatusLoading(true);
-    fetch(`${SERVER_BASE}/api/responder-status/${activeWalletAddress}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ active: responderActive }),
-    })
+    responderStatusService.updateStatus(activeWalletAddress, responderActive)
       .catch(() => {})
       .finally(() => setResponderStatusLoading(false));
   }, [activeWalletAddress, responderActive]);
@@ -6458,18 +6452,12 @@ export default function Help() {
           open={showFeedback}
           onClose={() => setShowFeedback(false)}
           onSubmit={async ({ rating, comment }) => {
-            const SERVER_BASE =
-              import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
             try {
-              await fetch(`${SERVER_BASE}/api/feedback`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  requestId: feedbackRequestId,
-                  responderAddress: feedbackResponderAddress,
-                  rating,
-                  comment,
-                }),
+              await feedbackService.submitFeedback({
+                rating,
+                comment,
+                requestId: feedbackRequestId,
+                responderAddress: feedbackResponderAddress,
               });
             } catch {}
           }}
