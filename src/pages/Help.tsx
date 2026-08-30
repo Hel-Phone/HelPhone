@@ -882,11 +882,16 @@ export function FeedbackModal({ open, onClose, onSubmit }) {
                 </button>
               ))}
             </div>
+            <label htmlFor="hp-feedback-comment" className="hp-sr-only">
+              Additional feedback comment
+            </label>
             <textarea
+              id="hp-feedback-comment"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               maxLength={500}
               placeholder="Optional comment…"
+              aria-label="Additional feedback comment"
               rows={3}
               style={{
                 width: "100%",
@@ -4271,7 +4276,11 @@ export default function Help() {
                         position: "relative",
                       }}
                     >
+                      <label htmlFor="hp-search-location" className="hp-sr-only">
+                        Search city or country
+                      </label>
                       <input
+                        id="hp-search-location"
                         style={S.input}
                         placeholder="Or search city, country…"
                         value={searchQuery}
@@ -4510,7 +4519,11 @@ export default function Help() {
                       marginTop: "4px",
                     }}
                   >
+                    <label htmlFor="hp-nickname" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.8px", textTransform: "uppercase", color: "rgba(242,236,220,0.72)" }}>
+                      Nickname or name
+                    </label>
                     <input
+                      id="hp-nickname"
                       style={S.input}
                       placeholder="Nickname or name"
                       maxLength={30}
@@ -4519,7 +4532,11 @@ export default function Help() {
                         setProfile((p) => ({ ...p, nickname: e.target.value }))
                       }
                     />
+                    <label htmlFor="hp-contact" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.8px", textTransform: "uppercase", color: "rgba(242,236,220,0.72)" }}>
+                      Contact (phone or Telegram)
+                    </label>
                     <input
+                      id="hp-contact"
                       style={{
                         ...S.input,
                         borderColor: contactError && profile.contact ? "rgba(255,122,107,0.5)" : S.input.border,
@@ -4533,16 +4550,18 @@ export default function Help() {
                         const result = validateContact(val);
                         setContactError(result.valid ? "" : result.error);
                       }}
+                      aria-describedby={contactError && profile.contact ? "hp-contact-error" : undefined}
+                      aria-invalid={Boolean(contactError && profile.contact)}
                     />
                     {contactError && profile.contact && (
-                      <div style={{ fontSize: "10px", color: "#FF7A6B", marginTop: "4px", lineHeight: 1.4 }}>
+                      <div id="hp-contact-error" role="alert" style={{ fontSize: "10px", color: "#FF7A6B", marginTop: "4px", lineHeight: 1.4 }}>
                         {contactError}
                       </div>
                     )}
                     <div
                       style={{
                         fontSize: "9.5px",
-                        color: "rgba(242,236,220,0.18)",
+                        color: "rgba(242,236,220,0.65)",
                         lineHeight: 1.4,
                       }}
                     >
@@ -6238,7 +6257,11 @@ export default function Help() {
                       </div>
                     )}
                   </div>
+                  <label htmlFor="hp-profile-nickname" style={{ display: "block", fontSize: "10px", fontWeight: 600, letterSpacing: "0.8px", textTransform: "uppercase", color: "rgba(242,236,220,0.72)", marginBottom: "5px" }}>
+                    On-chain alias
+                  </label>
                   <input
+                    id="hp-profile-nickname"
                     style={{
                       width: "100%",
                       padding: "8px 10px",
@@ -6260,7 +6283,7 @@ export default function Help() {
                   <div
                     style={{
                       fontSize: "9.5px",
-                      color: "rgba(242,236,220,0.18)",
+                      color: "rgba(242,236,220,0.65)",
                       marginTop: "4px",
                       lineHeight: 1.4,
                     }}
@@ -6280,10 +6303,11 @@ export default function Help() {
                     }}
                   >
                     <div
+                      id="hp-profile-contact-label"
                       style={{
                         fontSize: "11px",
                         fontWeight: 600,
-                        color: "rgba(242,236,220,0.5)",
+                        color: "rgba(242,236,220,0.72)",
                       }}
                     >
                       Contact
@@ -6326,16 +6350,20 @@ export default function Help() {
                       const result = validateContact(val);
                       setContactError(result.valid ? "" : result.error);
                     }}
+                    id="hp-profile-contact"
+                    aria-labelledby="hp-profile-contact-label"
+                    aria-describedby={contactError && profile.contact ? "hp-profile-contact-error" : undefined}
+                    aria-invalid={Boolean(contactError && profile.contact)}
                   />
                   {contactError && profile.contact && (
-                    <div style={{ fontSize: "10px", color: "#FF7A6B", marginTop: "4px", lineHeight: 1.4 }}>
+                    <div id="hp-profile-contact-error" role="alert" style={{ fontSize: "10px", color: "#FF7A6B", marginTop: "4px", lineHeight: 1.4 }}>
                       {contactError}
                     </div>
                   )}
                   <div
                     style={{
                       fontSize: "9.5px",
-                      color: "rgba(242,236,220,0.18)",
+                      color: "rgba(242,236,220,0.65)",
                       marginTop: "4px",
                       lineHeight: 1.4,
                     }}
