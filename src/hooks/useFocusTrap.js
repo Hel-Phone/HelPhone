@@ -76,6 +76,12 @@ export function useFocusTrap(active, containerRef) {
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
+      // Restore focus to triggering element (WCAG: focus return)
+      if (previousFocusRef.current instanceof HTMLElement) {
+        try {
+          previousFocusRef.current.focus();
+        } catch {}
+      }
     };
   }, [active, containerRef]);
 }

@@ -19,6 +19,7 @@ import { useWalletState } from "../hooks/useWalletState";
 import { useClusterer } from "../hooks/useClusterer";
 import { useGeofencing } from "../hooks/useGeofencing";
 import { useFocusTrap } from "../hooks/useFocusTrap";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import {
   getRequest,
   getActiveRequests,
@@ -479,6 +480,7 @@ function sanitizeTxHash(txHash) {
 function ArrivalThanksModal({ open, onClose, requestLabel, txHash }) {
   const dialogRef = useRef(null);
   useFocusTrap(open, dialogRef);
+  useEscapeKey(open, onClose);
   if (!open) return null;
 
   const handleLastAction = (e) => {
@@ -2424,6 +2426,7 @@ const ALL_CHARS = [
 function AvatarSelectionModal({ open, onClose, selected, onSelect }) {
   const dialogRef = useRef(null);
   useFocusTrap(open, dialogRef);
+  useEscapeKey(open, onClose);
   if (!open) return null;
 
   return (
@@ -2723,6 +2726,10 @@ export default function Help() {
   useFocusTrap(showDisconnectConfirm, disconnectDialogRef);
   useFocusTrap(showResolveConfirm, resolveDialogRef);
   useFocusTrap(showEmergencyModal, emergencyDialogRef);
+  useEscapeKey(showCancelConfirm !== null, () => setShowCancelConfirm(null));
+  useEscapeKey(showDisconnectConfirm, () => setShowDisconnectConfirm(false));
+  useEscapeKey(showResolveConfirm, () => setShowResolveConfirm(false));
+  useEscapeKey(showEmergencyModal, () => setShowEmergencyModal(false));
   const handleOfferBusy = useRef(false);
   const handleOfferMounted = useRef(true);
   const handleOfferSeq = useRef(0);
