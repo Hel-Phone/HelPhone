@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 import "./Modal.css";
 
 /**
@@ -28,6 +29,9 @@ export default function Modal({
   style,
   ...props
 }) {
+  const dialogRef = useRef(null);
+  useFocusTrap(open, dialogRef);
+
   useEffect(() => {
     if (!open) return;
     function onKey(e) {
@@ -58,6 +62,8 @@ export default function Modal({
       style={overlayStyle}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className={`hp-modal ${variantClass} ${sizeClass} ${className}`}
         onClick={(e) => e.stopPropagation()}
         style={style}

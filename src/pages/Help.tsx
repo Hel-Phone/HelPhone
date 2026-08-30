@@ -18,6 +18,7 @@ import { useRequestMapState } from "../hooks/useRequestMapState";
 import { useWalletState } from "../hooks/useWalletState";
 import { useClusterer } from "../hooks/useClusterer";
 import { useGeofencing } from "../hooks/useGeofencing";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 import {
   getRequest,
   getActiveRequests,
@@ -476,6 +477,8 @@ function sanitizeTxHash(txHash) {
 }
 
 function ArrivalThanksModal({ open, onClose, requestLabel, txHash }) {
+  const dialogRef = useRef(null);
+  useFocusTrap(open, dialogRef);
   if (!open) return null;
 
   const handleLastAction = (e) => {
@@ -511,6 +514,9 @@ function ArrivalThanksModal({ open, onClose, requestLabel, txHash }) {
       }}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
+        role="document"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
@@ -521,6 +527,7 @@ function ArrivalThanksModal({ open, onClose, requestLabel, txHash }) {
           boxShadow: "0 24px 70px rgba(0,0,0,0.58)",
           padding: "24px 22px 20px",
           textAlign: "center",
+          outline: "none",
         }}
       >
         <div
@@ -738,6 +745,7 @@ export function FeedbackModal({ open, onClose, onSubmit }) {
   const [comment, setComment] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const dialogRef = useRef(null);
+  useFocusTrap(open, dialogRef);
 
   useEffect(() => {
     if (open) {
@@ -751,7 +759,7 @@ export function FeedbackModal({ open, onClose, onSubmit }) {
   useEffect(() => {
     if (!open) return undefined;
     const prev = document.activeElement;
-    dialogRef.current?.focus();
+    // initial focus is handled by useFocusTrap; keep prev for restore
     function handleKey(e) {
       if (e.key === "Escape") onClose();
     }
@@ -1097,6 +1105,7 @@ export function HelpOnboardingModal({ open, onClose, onConnectWallet }) {
   const [step, setStep] = useState(0);
   const dialogRef = useRef(null);
   const lastFocusedRef = useRef(null);
+  useFocusTrap(open, dialogRef);
 
   useEffect(() => {
     if (open) setStep(0);
@@ -1109,7 +1118,6 @@ export function HelpOnboardingModal({ open, onClose, onConnectWallet }) {
   useEffect(() => {
     if (!open) return undefined;
     lastFocusedRef.current = document.activeElement;
-    dialogRef.current?.focus();
 
     function handleKeyDown(e) {
       if (e.key === "Escape") {
@@ -2414,6 +2422,8 @@ const ALL_CHARS = [
 ];
 
 function AvatarSelectionModal({ open, onClose, selected, onSelect }) {
+  const dialogRef = useRef(null);
+  useFocusTrap(open, dialogRef);
   if (!open) return null;
 
   return (
@@ -2434,6 +2444,8 @@ function AvatarSelectionModal({ open, onClose, selected, onSelect }) {
       }}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
@@ -2445,6 +2457,7 @@ function AvatarSelectionModal({ open, onClose, selected, onSelect }) {
           boxShadow: "0 24px 70px rgba(0,0,0,0.58)",
           padding: "20px",
           overflow: "auto",
+          outline: "none",
         }}
       >
         <h3
@@ -2702,6 +2715,14 @@ export default function Help() {
   const styleSelectorRef = useRef(null);
   const profileRef = useRef(null);
   const sidebarRef = useRef(null);
+  const cancelDialogRef = useRef(null);
+  const disconnectDialogRef = useRef(null);
+  const resolveDialogRef = useRef(null);
+  const emergencyDialogRef = useRef(null);
+  useFocusTrap(showCancelConfirm !== null, cancelDialogRef);
+  useFocusTrap(showDisconnectConfirm, disconnectDialogRef);
+  useFocusTrap(showResolveConfirm, resolveDialogRef);
+  useFocusTrap(showEmergencyModal, emergencyDialogRef);
   const handleOfferBusy = useRef(false);
   const handleOfferMounted = useRef(true);
   const handleOfferSeq = useRef(0);
@@ -6601,6 +6622,9 @@ export default function Help() {
 
       {showCancelConfirm !== null && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-dialog-title"
           onClick={() => setShowCancelConfirm(null)}
           style={{
             position: "fixed",
@@ -6614,6 +6638,9 @@ export default function Help() {
           }}
         >
           <div
+            ref={cancelDialogRef}
+            tabIndex={-1}
+            role="document"
             onClick={(e) => e.stopPropagation()}
             style={{
               background: "#1c3535",
@@ -6623,10 +6650,12 @@ export default function Help() {
               maxWidth: "360px",
               textAlign: "center",
               boxShadow: "0 24px 64px rgba(0,0,0,0.55)",
+              outline: "none",
             }}
           >
             <div style={{ fontSize: "32px", marginBottom: "12px" }}>⚠️</div>
             <h3
+              id="cancel-dialog-title"
               style={{
                 margin: "0 0 6px",
                 fontSize: "18px",
@@ -6640,7 +6669,7 @@ export default function Help() {
               style={{
                 margin: "0 0 20px",
                 fontSize: "13px",
-                color: "rgba(242,236,220,0.5)",
+                color: "rgba(242,236,220,0.72)",
                 lineHeight: 1.5,
               }}
             >
@@ -6687,6 +6716,9 @@ export default function Help() {
 
       {showDisconnectConfirm && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="disconnect-dialog-title"
           onClick={() => setShowDisconnectConfirm(false)}
           style={{
             position: "fixed",
@@ -6700,6 +6732,9 @@ export default function Help() {
           }}
         >
           <div
+            ref={disconnectDialogRef}
+            tabIndex={-1}
+            role="document"
             onClick={(e) => e.stopPropagation()}
             style={{
               background: "#1c3535",
@@ -6709,10 +6744,12 @@ export default function Help() {
               maxWidth: "360px",
               textAlign: "center",
               boxShadow: "0 24px 64px rgba(0,0,0,0.55)",
+              outline: "none",
             }}
           >
             <div style={{ fontSize: "32px", marginBottom: "12px" }}>⚠️</div>
             <h3
+              id="disconnect-dialog-title"
               style={{
                 margin: "0 0 6px",
                 fontSize: "18px",
@@ -6778,6 +6815,9 @@ export default function Help() {
 
       {showResolveConfirm && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="resolve-dialog-title"
           onClick={() => setShowResolveConfirm(false)}
           style={{
             position: "fixed",
@@ -6791,6 +6831,9 @@ export default function Help() {
           }}
         >
           <div
+            ref={resolveDialogRef}
+            tabIndex={-1}
+            role="document"
             onClick={(e) => e.stopPropagation()}
             style={{
               background: "#1c3535",
@@ -6800,10 +6843,12 @@ export default function Help() {
               maxWidth: "360px",
               textAlign: "center",
               boxShadow: "0 24px 64px rgba(0,0,0,0.55)",
+              outline: "none",
             }}
           >
             <div style={{ fontSize: "32px", marginBottom: "12px" }}>⚠️</div>
             <h3
+              id="resolve-dialog-title"
               style={{
                 margin: "0 0 6px",
                 fontSize: "18px",
@@ -6817,7 +6862,7 @@ export default function Help() {
               style={{
                 margin: "0 0 20px",
                 fontSize: "13px",
-                color: "rgba(242,236,220,0.5)",
+                color: "rgba(242,236,220,0.72)",
                 lineHeight: 1.5,
               }}
             >
@@ -6878,6 +6923,9 @@ export default function Help() {
 
       {showEmergencyModal && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="emergency-dialog-title"
           onClick={() => setShowEmergencyModal(false)}
           style={{
             position: "fixed",
@@ -6891,6 +6939,9 @@ export default function Help() {
           }}
         >
           <div
+            ref={emergencyDialogRef}
+            tabIndex={-1}
+            role="document"
             onClick={(e) => e.stopPropagation()}
             style={{
               background: "#1c3535",
@@ -6901,6 +6952,7 @@ export default function Help() {
               maxHeight: "85vh",
               overflowY: "auto",
               boxShadow: "0 24px 64px rgba(0,0,0,0.55)",
+              outline: "none",
             }}
           >
             <div
@@ -6913,6 +6965,7 @@ export default function Help() {
             >
               <div>
                 <h2
+                  id="emergency-dialog-title"
                   style={{
                     margin: 0,
                     fontSize: "22px",
@@ -6927,7 +6980,7 @@ export default function Help() {
                   style={{
                     margin: "6px 0 0",
                     fontSize: "13px",
-                    color: "rgba(242,236,220,0.4)",
+                    color: "rgba(242,236,220,0.72)",
                     lineHeight: 1.4,
                   }}
                 >
