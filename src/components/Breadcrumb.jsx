@@ -58,7 +58,7 @@ export default function Breadcrumb() {
 
         return (
           <span key={routeTo} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <span style={{ color: "rgba(242, 236, 220, 0.25)" }}>/</span>
+            <span style={{ color: "rgba(242, 236, 220, 0.72)" }}>/</span>
             {isLast ? (
               <span style={{ color: "rgba(242, 236, 220, 0.9)", fontWeight: 600 }}>
                 {label}

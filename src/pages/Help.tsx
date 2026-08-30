@@ -18,6 +18,8 @@ import { useRequestMapState } from "../hooks/useRequestMapState";
 import { useWalletState } from "../hooks/useWalletState";
 import { useClusterer } from "../hooks/useClusterer";
 import { useGeofencing } from "../hooks/useGeofencing";
+import { useFocusTrap } from "../hooks/useFocusTrap";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import {
   getRequest,
   getActiveRequests,
@@ -476,6 +478,9 @@ function sanitizeTxHash(txHash) {
 }
 
 function ArrivalThanksModal({ open, onClose, requestLabel, txHash }) {
+  const dialogRef = useRef(null);
+  useFocusTrap(open, dialogRef);
+  useEscapeKey(open, onClose);
   if (!open) return null;
 
   const handleLastAction = (e) => {
@@ -511,6 +516,9 @@ function ArrivalThanksModal({ open, onClose, requestLabel, txHash }) {
       }}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
+        role="document"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
@@ -521,6 +529,7 @@ function ArrivalThanksModal({ open, onClose, requestLabel, txHash }) {
           boxShadow: "0 24px 70px rgba(0,0,0,0.58)",
           padding: "24px 22px 20px",
           textAlign: "center",
+          outline: "none",
         }}
       >
         <div
@@ -717,7 +726,7 @@ function Step({ n, title, subtitle, done, active, children }) {
             <div
               style={{
                 fontSize: "11px",
-                color: "rgba(242,236,220,0.35)",
+                color: "rgba(242,236,220,0.72)",
                 marginTop: "1px",
               }}
             >
@@ -738,6 +747,7 @@ export function FeedbackModal({ open, onClose, onSubmit }) {
   const [comment, setComment] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const dialogRef = useRef(null);
+  useFocusTrap(open, dialogRef);
 
   useEffect(() => {
     if (open) {
@@ -751,7 +761,7 @@ export function FeedbackModal({ open, onClose, onSubmit }) {
   useEffect(() => {
     if (!open) return undefined;
     const prev = document.activeElement;
-    dialogRef.current?.focus();
+    // initial focus is handled by useFocusTrap; keep prev for restore
     function handleKey(e) {
       if (e.key === "Escape") onClose();
     }
@@ -872,11 +882,16 @@ export function FeedbackModal({ open, onClose, onSubmit }) {
                 </button>
               ))}
             </div>
+            <label htmlFor="hp-feedback-comment" className="hp-sr-only">
+              Additional feedback comment
+            </label>
             <textarea
+              id="hp-feedback-comment"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               maxLength={500}
               placeholder="Optional comment…"
+              aria-label="Additional feedback comment"
               rows={3}
               style={{
                 width: "100%",
@@ -1097,6 +1112,7 @@ export function HelpOnboardingModal({ open, onClose, onConnectWallet }) {
   const [step, setStep] = useState(0);
   const dialogRef = useRef(null);
   const lastFocusedRef = useRef(null);
+  useFocusTrap(open, dialogRef);
 
   useEffect(() => {
     if (open) setStep(0);
@@ -1109,7 +1125,6 @@ export function HelpOnboardingModal({ open, onClose, onConnectWallet }) {
   useEffect(() => {
     if (!open) return undefined;
     lastFocusedRef.current = document.activeElement;
-    dialogRef.current?.focus();
 
     function handleKeyDown(e) {
       if (e.key === "Escape") {
@@ -1511,7 +1526,7 @@ function TrackingScreen({
                 style={{
                   fontSize: "9px",
                   letterSpacing: "1px",
-                  color: "rgba(242,236,220,0.32)",
+                  color: "rgba(242,236,220,0.70)",
                   marginBottom: "4px",
                 }}
               >
@@ -1543,7 +1558,7 @@ function TrackingScreen({
                 style={{
                   fontSize: "9px",
                   letterSpacing: "1px",
-                  color: "rgba(242,236,220,0.32)",
+                  color: "rgba(242,236,220,0.70)",
                   marginBottom: "4px",
                 }}
               >
@@ -1565,7 +1580,7 @@ function TrackingScreen({
                 style={{
                   fontSize: "9px",
                   letterSpacing: "1px",
-                  color: "rgba(242,236,220,0.32)",
+                  color: "rgba(242,236,220,0.70)",
                   marginBottom: "4px",
                 }}
               >
@@ -1587,7 +1602,7 @@ function TrackingScreen({
                 style={{
                   fontSize: "9px",
                   letterSpacing: "1px",
-                  color: "rgba(242,236,220,0.32)",
+                  color: "rgba(242,236,220,0.70)",
                   marginBottom: "4px",
                 }}
               >
@@ -1766,7 +1781,7 @@ function FilteredRequestList({
 
   if (filtered.length === 0) {
     return (
-      <p style={{ fontSize: "12px", color: "rgba(242,236,220,0.3)" }}>
+      <p style={{ fontSize: "12px", color: "rgba(242,236,220,0.70)" }}>
         No requests match this filter.
       </p>
     );
@@ -1780,7 +1795,7 @@ function FilteredRequestList({
           Pending: { color: "#a2a586", bg: "rgba(162,165,134,0.15)" },
           Enroute: { color: "#7357FF", bg: "rgba(115,87,255,0.15)" },
           Resolved: { color: "#3F8487", bg: "rgba(63,132,135,0.15)" },
-          Cancelled: { color: "rgba(242,236,220,0.3)", bg: "rgba(255,255,255,0.04)" },
+          Cancelled: { color: "rgba(242,236,220,0.70)", bg: "rgba(255,255,255,0.04)" },
         };
         const sc = statusColors[req.status] || statusColors.Cancelled;
         const et = EMERGENCY_TYPES.find((e) => e.id === req.emergency_type);
@@ -1829,10 +1844,10 @@ function FilteredRequestList({
                     {req.status?.toUpperCase()}
                   </span>
                 </div>
-                <div style={{ fontSize: "10px", color: "rgba(242,236,220,0.35)", marginTop: "3px", lineHeight: 1.4 }}>
+                <div style={{ fontSize: "10px", color: "rgba(242,236,220,0.72)", marginTop: "3px", lineHeight: 1.4 }}>
                   {et ? `${et.icon} ${et.label}` : req.emergency_type || "Unknown"}
                   {timeAgo && (
-                    <span style={{ marginLeft: "6px", color: "rgba(242,236,220,0.2)" }}>· {timeAgo}</span>
+                    <span style={{ marginLeft: "6px", color: "rgba(242,236,220,0.65)" }}>· {timeAgo}</span>
                   )}
                 </div>
               </div>
@@ -2414,6 +2429,9 @@ const ALL_CHARS = [
 ];
 
 function AvatarSelectionModal({ open, onClose, selected, onSelect }) {
+  const dialogRef = useRef(null);
+  useFocusTrap(open, dialogRef);
+  useEscapeKey(open, onClose);
   if (!open) return null;
 
   return (
@@ -2434,6 +2452,8 @@ function AvatarSelectionModal({ open, onClose, selected, onSelect }) {
       }}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
@@ -2445,6 +2465,7 @@ function AvatarSelectionModal({ open, onClose, selected, onSelect }) {
           boxShadow: "0 24px 70px rgba(0,0,0,0.58)",
           padding: "20px",
           overflow: "auto",
+          outline: "none",
         }}
       >
         <h3
@@ -2702,6 +2723,18 @@ export default function Help() {
   const styleSelectorRef = useRef(null);
   const profileRef = useRef(null);
   const sidebarRef = useRef(null);
+  const cancelDialogRef = useRef(null);
+  const disconnectDialogRef = useRef(null);
+  const resolveDialogRef = useRef(null);
+  const emergencyDialogRef = useRef(null);
+  useFocusTrap(showCancelConfirm !== null, cancelDialogRef);
+  useFocusTrap(showDisconnectConfirm, disconnectDialogRef);
+  useFocusTrap(showResolveConfirm, resolveDialogRef);
+  useFocusTrap(showEmergencyModal, emergencyDialogRef);
+  useEscapeKey(showCancelConfirm !== null, () => setShowCancelConfirm(null));
+  useEscapeKey(showDisconnectConfirm, () => setShowDisconnectConfirm(false));
+  useEscapeKey(showResolveConfirm, () => setShowResolveConfirm(false));
+  useEscapeKey(showEmergencyModal, () => setShowEmergencyModal(false));
   const handleOfferBusy = useRef(false);
   const handleOfferMounted = useRef(true);
   const handleOfferSeq = useRef(0);
@@ -3695,7 +3728,7 @@ export default function Help() {
               to="/"
               style={{
                 fontSize: "12px",
-                color: "rgba(242,236,220,0.35)",
+                color: "rgba(242,236,220,0.72)",
                 textDecoration: "none",
                 minHeight: "44px",
                 display: "flex",
@@ -3807,7 +3840,7 @@ export default function Help() {
                     zkStatus === "error"
                       ? "#FF7A6B"
                       : zkStatus === "idle"
-                        ? "rgba(242,236,220,0.28)"
+                        ? "rgba(242,236,220,0.68)"
                         : "rgba(179,166,255,0.2)",
                   position: "relative",
                   overflow: "hidden",
@@ -3906,7 +3939,7 @@ export default function Help() {
                     style={{
                       fontSize: "8px",
                       letterSpacing: "0.9px",
-                      color: "rgba(242,236,220,0.28)",
+                      color: "rgba(242,236,220,0.68)",
                       marginBottom: "3px",
                     }}
                   >
@@ -3936,7 +3969,7 @@ export default function Help() {
                     style={{
                       fontSize: "8px",
                       letterSpacing: "0.9px",
-                      color: "rgba(242,236,220,0.28)",
+                      color: "rgba(242,236,220,0.68)",
                       marginBottom: "3px",
                     }}
                   >
@@ -3991,7 +4024,7 @@ export default function Help() {
                     key={`${line}-${i}`}
                     style={{
                       fontSize: "9.5px",
-                      color: "rgba(242,236,220,0.34)",
+                      color: "rgba(242,236,220,0.70)",
                       lineHeight: 1.35,
                     }}
                   >
@@ -4224,7 +4257,7 @@ export default function Help() {
                             marginLeft: "auto",
                             background: "none",
                             border: "none",
-                            color: "rgba(242,236,220,0.35)",
+                            color: "rgba(242,236,220,0.72)",
                             fontSize: "11px",
                             cursor: "pointer",
                             padding: 0,
@@ -4243,7 +4276,11 @@ export default function Help() {
                         position: "relative",
                       }}
                     >
+                      <label htmlFor="hp-search-location" className="hp-sr-only">
+                        Search city or country
+                      </label>
                       <input
+                        id="hp-search-location"
                         style={S.input}
                         placeholder="Or search city, country…"
                         value={searchQuery}
@@ -4304,7 +4341,7 @@ export default function Help() {
                                 style={{
                                   padding: "10px 12px",
                                   fontSize: "11px",
-                                  color: "rgba(242,236,220,0.35)",
+                                  color: "rgba(242,236,220,0.72)",
                                 }}
                               >
                                 Searching references...
@@ -4345,7 +4382,7 @@ export default function Help() {
                                 <div
                                   style={{
                                     fontSize: "10px",
-                                    color: "rgba(242,236,220,0.34)",
+                                    color: "rgba(242,236,220,0.70)",
                                     marginTop: "2px",
                                   }}
                                 >
@@ -4362,7 +4399,7 @@ export default function Help() {
                       <p
                         style={{
                           fontSize: "11px",
-                          color: "rgba(242,236,220,0.3)",
+                          color: "rgba(242,236,220,0.70)",
                           margin: "6px 0 0",
                         }}
                       >
@@ -4446,7 +4483,7 @@ export default function Help() {
                           style={{
                             background: "none",
                             border: "none",
-                            color: "rgba(242,236,220,0.35)",
+                            color: "rgba(242,236,220,0.72)",
                             fontSize: "12px",
                             cursor: "pointer",
                             display: "flex",
@@ -4482,7 +4519,11 @@ export default function Help() {
                       marginTop: "4px",
                     }}
                   >
+                    <label htmlFor="hp-nickname" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.8px", textTransform: "uppercase", color: "rgba(242,236,220,0.72)" }}>
+                      Nickname or name
+                    </label>
                     <input
+                      id="hp-nickname"
                       style={S.input}
                       placeholder="Nickname or name"
                       maxLength={30}
@@ -4491,7 +4532,11 @@ export default function Help() {
                         setProfile((p) => ({ ...p, nickname: e.target.value }))
                       }
                     />
+                    <label htmlFor="hp-contact" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.8px", textTransform: "uppercase", color: "rgba(242,236,220,0.72)" }}>
+                      Contact (phone or Telegram)
+                    </label>
                     <input
+                      id="hp-contact"
                       style={{
                         ...S.input,
                         borderColor: contactError && profile.contact ? "rgba(255,122,107,0.5)" : S.input.border,
@@ -4505,16 +4550,18 @@ export default function Help() {
                         const result = validateContact(val);
                         setContactError(result.valid ? "" : result.error);
                       }}
+                      aria-describedby={contactError && profile.contact ? "hp-contact-error" : undefined}
+                      aria-invalid={Boolean(contactError && profile.contact)}
                     />
                     {contactError && profile.contact && (
-                      <div style={{ fontSize: "10px", color: "#FF7A6B", marginTop: "4px", lineHeight: 1.4 }}>
+                      <div id="hp-contact-error" role="alert" style={{ fontSize: "10px", color: "#FF7A6B", marginTop: "4px", lineHeight: 1.4 }}>
                         {contactError}
                       </div>
                     )}
                     <div
                       style={{
                         fontSize: "9.5px",
-                        color: "rgba(242,236,220,0.18)",
+                        color: "rgba(242,236,220,0.65)",
                         lineHeight: 1.4,
                       }}
                     >
@@ -4649,7 +4696,7 @@ export default function Help() {
                     <p
                       style={{
                         fontSize: "11px",
-                        color: "rgba(242,236,220,0.35)",
+                        color: "rgba(242,236,220,0.72)",
                         margin: "0 0 10px",
                         lineHeight: 1.5,
                       }}
@@ -4670,7 +4717,7 @@ export default function Help() {
                         color:
                           step1Done && step2Done && isWalletConnected
                             ? "#fff"
-                            : "rgba(242,236,220,0.25)",
+                            : "rgba(242,236,220,0.72)",
                         border: "none",
                         borderRadius: "10px",
                         fontSize: "15px",
@@ -4904,7 +4951,7 @@ export default function Help() {
                         marginLeft: "auto",
                         background: "none",
                         border: "none",
-                        color: "rgba(242,236,220,0.35)",
+                        color: "rgba(242,236,220,0.72)",
                         fontSize: "18px",
                         cursor: "pointer",
                       }}
@@ -4925,7 +4972,7 @@ export default function Help() {
                           : "rgba(255,255,255,0.08)",
                         color: isWalletConnected
                           ? "#fff"
-                          : "rgba(242,236,220,0.25)",
+                          : "rgba(242,236,220,0.72)",
                         border: "none",
                         borderRadius: "10px",
                         fontSize: "15px",
@@ -4962,7 +5009,7 @@ export default function Help() {
                       alignItems: "center",
                       gap: "6px",
                       marginTop: "8px",
-                      color: "rgba(242,236,220,0.34)",
+                      color: "rgba(242,236,220,0.70)",
                       fontSize: "11px",
                       lineHeight: 1.45,
                     }}
@@ -5060,7 +5107,7 @@ export default function Help() {
                     <p
                       style={{
                         fontSize: "12px",
-                        color: "rgba(242,236,220,0.3)",
+                        color: "rgba(242,236,220,0.70)",
                         lineHeight: 1.5,
                       }}
                     >
@@ -5134,7 +5181,7 @@ export default function Help() {
                               <div
                                 style={{
                                   fontSize: "10px",
-                                  color: "rgba(242,236,220,0.3)",
+                                  color: "rgba(242,236,220,0.70)",
                                   marginTop: "1px",
                                 }}
                               >
@@ -5176,7 +5223,7 @@ export default function Help() {
                 >
                   MY REQUESTS{" "}
                   {myRequests.length > 0 && (
-                    <span style={{ color: "rgba(242,236,220,0.3)" }}>
+                    <span style={{ color: "rgba(242,236,220,0.70)" }}>
                       ({myRequests.length})
                     </span>
                   )}
@@ -5208,7 +5255,7 @@ export default function Help() {
                         borderRadius: "6px",
                         border: "none",
                         background: historyFilter === key ? "rgba(63,132,135,0.25)" : "transparent",
-                        color: historyFilter === key ? "#3F8487" : "rgba(242,236,220,0.35)",
+                        color: historyFilter === key ? "#3F8487" : "rgba(242,236,220,0.72)",
                         fontSize: "10px",
                         fontWeight: 600,
                         cursor: "pointer",
@@ -5285,7 +5332,7 @@ export default function Help() {
                   </div>
                 ) : myRequests.length === 0 ? (
                   <p
-                    style={{ fontSize: "12px", color: "rgba(242,236,220,0.3)" }}
+                    style={{ fontSize: "12px", color: "rgba(242,236,220,0.70)" }}
                   >
                     You haven&apos;t requested help yet.
                   </p>
@@ -5314,7 +5361,7 @@ export default function Help() {
                         bg: "rgba(63,132,135,0.15)",
                       },
                       Cancelled: {
-                        color: "rgba(242,236,220,0.3)",
+                        color: "rgba(242,236,220,0.70)",
                         bg: "rgba(255,255,255,0.04)",
                       },
                     };
@@ -5428,7 +5475,7 @@ export default function Help() {
                             <div
                               style={{
                                 fontSize: "10px",
-                                color: "rgba(242,236,220,0.35)",
+                                color: "rgba(242,236,220,0.72)",
                                 marginTop: "3px",
                                 lineHeight: 1.4,
                               }}
@@ -5440,7 +5487,7 @@ export default function Help() {
                                 <span
                                   style={{
                                     marginLeft: "6px",
-                                    color: "rgba(242,236,220,0.2)",
+                                    color: "rgba(242,236,220,0.65)",
                                   }}
                                 >
                                   · {timeAgo}
@@ -5842,7 +5889,7 @@ export default function Help() {
                   <div
                     style={{
                       fontSize: "11px",
-                      color: "rgba(242,236,220,0.35)",
+                      color: "rgba(242,236,220,0.72)",
                       lineHeight: 1.4,
                     }}
                   >
@@ -6031,7 +6078,7 @@ export default function Help() {
                     <div
                       style={{
                         fontSize: "11px",
-                        color: "rgba(242,236,220,0.35)",
+                        color: "rgba(242,236,220,0.72)",
                         marginTop: "2px",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -6053,7 +6100,7 @@ export default function Help() {
                         style={{
                           fontSize: "10px",
                           letterSpacing: "1.4px",
-                          color: "rgba(242,236,220,0.32)",
+                          color: "rgba(242,236,220,0.70)",
                           marginBottom: "6px",
                         }}
                       >
@@ -6086,7 +6133,7 @@ export default function Help() {
                       background: "rgba(255,255,255,0.06)",
                       border: "1px solid rgba(255,255,255,0.08)",
                       borderRadius: "8px",
-                      color: "rgba(242,236,220,0.35)",
+                      color: "rgba(242,236,220,0.72)",
                       fontSize: "13px",
                       cursor: "pointer",
                       padding: "6px 8px",
@@ -6132,7 +6179,7 @@ export default function Help() {
                         <div
                           style={{
                             fontSize: "9.5px",
-                            color: "rgba(242,236,220,0.3)",
+                            color: "rgba(242,236,220,0.70)",
                             marginTop: "2px",
                           }}
                         >
@@ -6210,7 +6257,11 @@ export default function Help() {
                       </div>
                     )}
                   </div>
+                  <label htmlFor="hp-profile-nickname" style={{ display: "block", fontSize: "10px", fontWeight: 600, letterSpacing: "0.8px", textTransform: "uppercase", color: "rgba(242,236,220,0.72)", marginBottom: "5px" }}>
+                    On-chain alias
+                  </label>
                   <input
+                    id="hp-profile-nickname"
                     style={{
                       width: "100%",
                       padding: "8px 10px",
@@ -6232,7 +6283,7 @@ export default function Help() {
                   <div
                     style={{
                       fontSize: "9.5px",
-                      color: "rgba(242,236,220,0.18)",
+                      color: "rgba(242,236,220,0.65)",
                       marginTop: "4px",
                       lineHeight: 1.4,
                     }}
@@ -6252,10 +6303,11 @@ export default function Help() {
                     }}
                   >
                     <div
+                      id="hp-profile-contact-label"
                       style={{
                         fontSize: "11px",
                         fontWeight: 600,
-                        color: "rgba(242,236,220,0.5)",
+                        color: "rgba(242,236,220,0.72)",
                       }}
                     >
                       Contact
@@ -6298,16 +6350,20 @@ export default function Help() {
                       const result = validateContact(val);
                       setContactError(result.valid ? "" : result.error);
                     }}
+                    id="hp-profile-contact"
+                    aria-labelledby="hp-profile-contact-label"
+                    aria-describedby={contactError && profile.contact ? "hp-profile-contact-error" : undefined}
+                    aria-invalid={Boolean(contactError && profile.contact)}
                   />
                   {contactError && profile.contact && (
-                    <div style={{ fontSize: "10px", color: "#FF7A6B", marginTop: "4px", lineHeight: 1.4 }}>
+                    <div id="hp-profile-contact-error" role="alert" style={{ fontSize: "10px", color: "#FF7A6B", marginTop: "4px", lineHeight: 1.4 }}>
                       {contactError}
                     </div>
                   )}
                   <div
                     style={{
                       fontSize: "9.5px",
-                      color: "rgba(242,236,220,0.18)",
+                      color: "rgba(242,236,220,0.65)",
                       marginTop: "4px",
                       lineHeight: 1.4,
                     }}
@@ -6601,6 +6657,9 @@ export default function Help() {
 
       {showCancelConfirm !== null && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-dialog-title"
           onClick={() => setShowCancelConfirm(null)}
           style={{
             position: "fixed",
@@ -6614,6 +6673,9 @@ export default function Help() {
           }}
         >
           <div
+            ref={cancelDialogRef}
+            tabIndex={-1}
+            role="document"
             onClick={(e) => e.stopPropagation()}
             style={{
               background: "#1c3535",
@@ -6623,10 +6685,12 @@ export default function Help() {
               maxWidth: "360px",
               textAlign: "center",
               boxShadow: "0 24px 64px rgba(0,0,0,0.55)",
+              outline: "none",
             }}
           >
             <div style={{ fontSize: "32px", marginBottom: "12px" }}>⚠️</div>
             <h3
+              id="cancel-dialog-title"
               style={{
                 margin: "0 0 6px",
                 fontSize: "18px",
@@ -6640,7 +6704,7 @@ export default function Help() {
               style={{
                 margin: "0 0 20px",
                 fontSize: "13px",
-                color: "rgba(242,236,220,0.5)",
+                color: "rgba(242,236,220,0.72)",
                 lineHeight: 1.5,
               }}
             >
@@ -6687,6 +6751,9 @@ export default function Help() {
 
       {showDisconnectConfirm && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="disconnect-dialog-title"
           onClick={() => setShowDisconnectConfirm(false)}
           style={{
             position: "fixed",
@@ -6700,6 +6767,9 @@ export default function Help() {
           }}
         >
           <div
+            ref={disconnectDialogRef}
+            tabIndex={-1}
+            role="document"
             onClick={(e) => e.stopPropagation()}
             style={{
               background: "#1c3535",
@@ -6709,10 +6779,12 @@ export default function Help() {
               maxWidth: "360px",
               textAlign: "center",
               boxShadow: "0 24px 64px rgba(0,0,0,0.55)",
+              outline: "none",
             }}
           >
             <div style={{ fontSize: "32px", marginBottom: "12px" }}>⚠️</div>
             <h3
+              id="disconnect-dialog-title"
               style={{
                 margin: "0 0 6px",
                 fontSize: "18px",
@@ -6778,6 +6850,9 @@ export default function Help() {
 
       {showResolveConfirm && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="resolve-dialog-title"
           onClick={() => setShowResolveConfirm(false)}
           style={{
             position: "fixed",
@@ -6791,6 +6866,9 @@ export default function Help() {
           }}
         >
           <div
+            ref={resolveDialogRef}
+            tabIndex={-1}
+            role="document"
             onClick={(e) => e.stopPropagation()}
             style={{
               background: "#1c3535",
@@ -6800,10 +6878,12 @@ export default function Help() {
               maxWidth: "360px",
               textAlign: "center",
               boxShadow: "0 24px 64px rgba(0,0,0,0.55)",
+              outline: "none",
             }}
           >
             <div style={{ fontSize: "32px", marginBottom: "12px" }}>⚠️</div>
             <h3
+              id="resolve-dialog-title"
               style={{
                 margin: "0 0 6px",
                 fontSize: "18px",
@@ -6817,7 +6897,7 @@ export default function Help() {
               style={{
                 margin: "0 0 20px",
                 fontSize: "13px",
-                color: "rgba(242,236,220,0.5)",
+                color: "rgba(242,236,220,0.72)",
                 lineHeight: 1.5,
               }}
             >
@@ -6878,6 +6958,9 @@ export default function Help() {
 
       {showEmergencyModal && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="emergency-dialog-title"
           onClick={() => setShowEmergencyModal(false)}
           style={{
             position: "fixed",
@@ -6891,6 +6974,9 @@ export default function Help() {
           }}
         >
           <div
+            ref={emergencyDialogRef}
+            tabIndex={-1}
+            role="document"
             onClick={(e) => e.stopPropagation()}
             style={{
               background: "#1c3535",
@@ -6901,6 +6987,7 @@ export default function Help() {
               maxHeight: "85vh",
               overflowY: "auto",
               boxShadow: "0 24px 64px rgba(0,0,0,0.55)",
+              outline: "none",
             }}
           >
             <div
@@ -6913,6 +7000,7 @@ export default function Help() {
             >
               <div>
                 <h2
+                  id="emergency-dialog-title"
                   style={{
                     margin: 0,
                     fontSize: "22px",
@@ -6927,7 +7015,7 @@ export default function Help() {
                   style={{
                     margin: "6px 0 0",
                     fontSize: "13px",
-                    color: "rgba(242,236,220,0.4)",
+                    color: "rgba(242,236,220,0.72)",
                     lineHeight: 1.4,
                   }}
                 >
@@ -7019,7 +7107,7 @@ export default function Help() {
                       <div
                         style={{
                           fontSize: "12px",
-                          color: "rgba(242,236,220,0.35)",
+                          color: "rgba(242,236,220,0.72)",
                           lineHeight: 1.3,
                         }}
                       >

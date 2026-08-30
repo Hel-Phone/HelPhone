@@ -43,7 +43,7 @@
 }
 
 .hp-input::placeholder {
-  color: rgba(242, 236, 220, 0.35);
+  color: rgba(242, 236, 220, 0.72);
 }
 
 .hp-input:focus {
@@ -81,7 +81,7 @@
 
 .hp-input-hint {
   font-size: 11px;
-  color: rgba(242, 236, 220, 0.38);
+  color: rgba(242, 236, 220, 0.72);
 }
 
 .hp-input-hint--light {
