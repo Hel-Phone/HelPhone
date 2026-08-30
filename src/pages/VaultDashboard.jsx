@@ -136,7 +136,7 @@ function CampaignCard({
             style={{
               fontSize: "9px",
               letterSpacing: "1px",
-              color: "rgba(242,236,220,0.35)",
+              color: "rgba(242,236,220,0.72)",
               marginBottom: "4px",
             }}
           >
@@ -158,7 +158,7 @@ function CampaignCard({
             style={{
               fontSize: "9px",
               letterSpacing: "1px",
-              color: "rgba(242,236,220,0.35)",
+              color: "rgba(242,236,220,0.72)",
               marginBottom: "4px",
             }}
           >
@@ -180,7 +180,7 @@ function CampaignCard({
             style={{
               fontSize: "9px",
               letterSpacing: "1px",
-              color: "rgba(242,236,220,0.35)",
+              color: "rgba(242,236,220,0.72)",
               marginBottom: "4px",
             }}
           >
@@ -537,7 +537,7 @@ export default function VaultDashboard() {
                 style={{
                   fontSize: "9px",
                   letterSpacing: "1px",
-                  color: "rgba(242,236,220,0.35)",
+                  color: "rgba(242,236,220,0.72)",
                   marginBottom: "4px",
                 }}
               >
@@ -567,7 +567,7 @@ export default function VaultDashboard() {
                 style={{
                   fontSize: "9px",
                   letterSpacing: "1px",
-                  color: "rgba(242,236,220,0.35)",
+                  color: "rgba(242,236,220,0.72)",
                   marginBottom: "4px",
                 }}
               >

@@ -726,7 +726,7 @@ function Step({ n, title, subtitle, done, active, children }) {
             <div
               style={{
                 fontSize: "11px",
-                color: "rgba(242,236,220,0.35)",
+                color: "rgba(242,236,220,0.72)",
                 marginTop: "1px",
               }}
             >
@@ -1526,7 +1526,7 @@ function TrackingScreen({
                 style={{
                   fontSize: "9px",
                   letterSpacing: "1px",
-                  color: "rgba(242,236,220,0.32)",
+                  color: "rgba(242,236,220,0.70)",
                   marginBottom: "4px",
                 }}
               >
@@ -1558,7 +1558,7 @@ function TrackingScreen({
                 style={{
                   fontSize: "9px",
                   letterSpacing: "1px",
-                  color: "rgba(242,236,220,0.32)",
+                  color: "rgba(242,236,220,0.70)",
                   marginBottom: "4px",
                 }}
               >
@@ -1580,7 +1580,7 @@ function TrackingScreen({
                 style={{
                   fontSize: "9px",
                   letterSpacing: "1px",
-                  color: "rgba(242,236,220,0.32)",
+                  color: "rgba(242,236,220,0.70)",
                   marginBottom: "4px",
                 }}
               >
@@ -1602,7 +1602,7 @@ function TrackingScreen({
                 style={{
                   fontSize: "9px",
                   letterSpacing: "1px",
-                  color: "rgba(242,236,220,0.32)",
+                  color: "rgba(242,236,220,0.70)",
                   marginBottom: "4px",
                 }}
               >
@@ -1781,7 +1781,7 @@ function FilteredRequestList({
 
   if (filtered.length === 0) {
     return (
-      <p style={{ fontSize: "12px", color: "rgba(242,236,220,0.3)" }}>
+      <p style={{ fontSize: "12px", color: "rgba(242,236,220,0.70)" }}>
         No requests match this filter.
       </p>
     );
@@ -1795,7 +1795,7 @@ function FilteredRequestList({
           Pending: { color: "#a2a586", bg: "rgba(162,165,134,0.15)" },
           Enroute: { color: "#7357FF", bg: "rgba(115,87,255,0.15)" },
           Resolved: { color: "#3F8487", bg: "rgba(63,132,135,0.15)" },
-          Cancelled: { color: "rgba(242,236,220,0.3)", bg: "rgba(255,255,255,0.04)" },
+          Cancelled: { color: "rgba(242,236,220,0.70)", bg: "rgba(255,255,255,0.04)" },
         };
         const sc = statusColors[req.status] || statusColors.Cancelled;
         const et = EMERGENCY_TYPES.find((e) => e.id === req.emergency_type);
@@ -1844,10 +1844,10 @@ function FilteredRequestList({
                     {req.status?.toUpperCase()}
                   </span>
                 </div>
-                <div style={{ fontSize: "10px", color: "rgba(242,236,220,0.35)", marginTop: "3px", lineHeight: 1.4 }}>
+                <div style={{ fontSize: "10px", color: "rgba(242,236,220,0.72)", marginTop: "3px", lineHeight: 1.4 }}>
                   {et ? `${et.icon} ${et.label}` : req.emergency_type || "Unknown"}
                   {timeAgo && (
-                    <span style={{ marginLeft: "6px", color: "rgba(242,236,220,0.2)" }}>· {timeAgo}</span>
+                    <span style={{ marginLeft: "6px", color: "rgba(242,236,220,0.65)" }}>· {timeAgo}</span>
                   )}
                 </div>
               </div>
@@ -3728,7 +3728,7 @@ export default function Help() {
               to="/"
               style={{
                 fontSize: "12px",
-                color: "rgba(242,236,220,0.35)",
+                color: "rgba(242,236,220,0.72)",
                 textDecoration: "none",
                 minHeight: "44px",
                 display: "flex",
@@ -3840,7 +3840,7 @@ export default function Help() {
                     zkStatus === "error"
                       ? "#FF7A6B"
                       : zkStatus === "idle"
-                        ? "rgba(242,236,220,0.28)"
+                        ? "rgba(242,236,220,0.68)"
                         : "rgba(179,166,255,0.2)",
                   position: "relative",
                   overflow: "hidden",
@@ -3939,7 +3939,7 @@ export default function Help() {
                     style={{
                       fontSize: "8px",
                       letterSpacing: "0.9px",
-                      color: "rgba(242,236,220,0.28)",
+                      color: "rgba(242,236,220,0.68)",
                       marginBottom: "3px",
                     }}
                   >
@@ -3969,7 +3969,7 @@ export default function Help() {
                     style={{
                       fontSize: "8px",
                       letterSpacing: "0.9px",
-                      color: "rgba(242,236,220,0.28)",
+                      color: "rgba(242,236,220,0.68)",
                       marginBottom: "3px",
                     }}
                   >
@@ -4024,7 +4024,7 @@ export default function Help() {
                     key={`${line}-${i}`}
                     style={{
                       fontSize: "9.5px",
-                      color: "rgba(242,236,220,0.34)",
+                      color: "rgba(242,236,220,0.70)",
                       lineHeight: 1.35,
                     }}
                   >
@@ -4257,7 +4257,7 @@ export default function Help() {
                             marginLeft: "auto",
                             background: "none",
                             border: "none",
-                            color: "rgba(242,236,220,0.35)",
+                            color: "rgba(242,236,220,0.72)",
                             fontSize: "11px",
                             cursor: "pointer",
                             padding: 0,
@@ -4341,7 +4341,7 @@ export default function Help() {
                                 style={{
                                   padding: "10px 12px",
                                   fontSize: "11px",
-                                  color: "rgba(242,236,220,0.35)",
+                                  color: "rgba(242,236,220,0.72)",
                                 }}
                               >
                                 Searching references...
@@ -4382,7 +4382,7 @@ export default function Help() {
                                 <div
                                   style={{
                                     fontSize: "10px",
-                                    color: "rgba(242,236,220,0.34)",
+                                    color: "rgba(242,236,220,0.70)",
                                     marginTop: "2px",
                                   }}
                                 >
@@ -4399,7 +4399,7 @@ export default function Help() {
                       <p
                         style={{
                           fontSize: "11px",
-                          color: "rgba(242,236,220,0.3)",
+                          color: "rgba(242,236,220,0.70)",
                           margin: "6px 0 0",
                         }}
                       >
@@ -4483,7 +4483,7 @@ export default function Help() {
                           style={{
                             background: "none",
                             border: "none",
-                            color: "rgba(242,236,220,0.35)",
+                            color: "rgba(242,236,220,0.72)",
                             fontSize: "12px",
                             cursor: "pointer",
                             display: "flex",
@@ -4696,7 +4696,7 @@ export default function Help() {
                     <p
                       style={{
                         fontSize: "11px",
-                        color: "rgba(242,236,220,0.35)",
+                        color: "rgba(242,236,220,0.72)",
                         margin: "0 0 10px",
                         lineHeight: 1.5,
                       }}
@@ -4717,7 +4717,7 @@ export default function Help() {
                         color:
                           step1Done && step2Done && isWalletConnected
                             ? "#fff"
-                            : "rgba(242,236,220,0.25)",
+                            : "rgba(242,236,220,0.72)",
                         border: "none",
                         borderRadius: "10px",
                         fontSize: "15px",
@@ -4951,7 +4951,7 @@ export default function Help() {
                         marginLeft: "auto",
                         background: "none",
                         border: "none",
-                        color: "rgba(242,236,220,0.35)",
+                        color: "rgba(242,236,220,0.72)",
                         fontSize: "18px",
                         cursor: "pointer",
                       }}
@@ -4972,7 +4972,7 @@ export default function Help() {
                           : "rgba(255,255,255,0.08)",
                         color: isWalletConnected
                           ? "#fff"
-                          : "rgba(242,236,220,0.25)",
+                          : "rgba(242,236,220,0.72)",
                         border: "none",
                         borderRadius: "10px",
                         fontSize: "15px",
@@ -5009,7 +5009,7 @@ export default function Help() {
                       alignItems: "center",
                       gap: "6px",
                       marginTop: "8px",
-                      color: "rgba(242,236,220,0.34)",
+                      color: "rgba(242,236,220,0.70)",
                       fontSize: "11px",
                       lineHeight: 1.45,
                     }}
@@ -5107,7 +5107,7 @@ export default function Help() {
                     <p
                       style={{
                         fontSize: "12px",
-                        color: "rgba(242,236,220,0.3)",
+                        color: "rgba(242,236,220,0.70)",
                         lineHeight: 1.5,
                       }}
                     >
@@ -5181,7 +5181,7 @@ export default function Help() {
                               <div
                                 style={{
                                   fontSize: "10px",
-                                  color: "rgba(242,236,220,0.3)",
+                                  color: "rgba(242,236,220,0.70)",
                                   marginTop: "1px",
                                 }}
                               >
@@ -5223,7 +5223,7 @@ export default function Help() {
                 >
                   MY REQUESTS{" "}
                   {myRequests.length > 0 && (
-                    <span style={{ color: "rgba(242,236,220,0.3)" }}>
+                    <span style={{ color: "rgba(242,236,220,0.70)" }}>
                       ({myRequests.length})
                     </span>
                   )}
@@ -5255,7 +5255,7 @@ export default function Help() {
                         borderRadius: "6px",
                         border: "none",
                         background: historyFilter === key ? "rgba(63,132,135,0.25)" : "transparent",
-                        color: historyFilter === key ? "#3F8487" : "rgba(242,236,220,0.35)",
+                        color: historyFilter === key ? "#3F8487" : "rgba(242,236,220,0.72)",
                         fontSize: "10px",
                         fontWeight: 600,
                         cursor: "pointer",
@@ -5332,7 +5332,7 @@ export default function Help() {
                   </div>
                 ) : myRequests.length === 0 ? (
                   <p
-                    style={{ fontSize: "12px", color: "rgba(242,236,220,0.3)" }}
+                    style={{ fontSize: "12px", color: "rgba(242,236,220,0.70)" }}
                   >
                     You haven&apos;t requested help yet.
                   </p>
@@ -5361,7 +5361,7 @@ export default function Help() {
                         bg: "rgba(63,132,135,0.15)",
                       },
                       Cancelled: {
-                        color: "rgba(242,236,220,0.3)",
+                        color: "rgba(242,236,220,0.70)",
                         bg: "rgba(255,255,255,0.04)",
                       },
                     };
@@ -5475,7 +5475,7 @@ export default function Help() {
                             <div
                               style={{
                                 fontSize: "10px",
-                                color: "rgba(242,236,220,0.35)",
+                                color: "rgba(242,236,220,0.72)",
                                 marginTop: "3px",
                                 lineHeight: 1.4,
                               }}
@@ -5487,7 +5487,7 @@ export default function Help() {
                                 <span
                                   style={{
                                     marginLeft: "6px",
-                                    color: "rgba(242,236,220,0.2)",
+                                    color: "rgba(242,236,220,0.65)",
                                   }}
                                 >
                                   · {timeAgo}
@@ -5889,7 +5889,7 @@ export default function Help() {
                   <div
                     style={{
                       fontSize: "11px",
-                      color: "rgba(242,236,220,0.35)",
+                      color: "rgba(242,236,220,0.72)",
                       lineHeight: 1.4,
                     }}
                   >
@@ -6078,7 +6078,7 @@ export default function Help() {
                     <div
                       style={{
                         fontSize: "11px",
-                        color: "rgba(242,236,220,0.35)",
+                        color: "rgba(242,236,220,0.72)",
                         marginTop: "2px",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -6100,7 +6100,7 @@ export default function Help() {
                         style={{
                           fontSize: "10px",
                           letterSpacing: "1.4px",
-                          color: "rgba(242,236,220,0.32)",
+                          color: "rgba(242,236,220,0.70)",
                           marginBottom: "6px",
                         }}
                       >
@@ -6133,7 +6133,7 @@ export default function Help() {
                       background: "rgba(255,255,255,0.06)",
                       border: "1px solid rgba(255,255,255,0.08)",
                       borderRadius: "8px",
-                      color: "rgba(242,236,220,0.35)",
+                      color: "rgba(242,236,220,0.72)",
                       fontSize: "13px",
                       cursor: "pointer",
                       padding: "6px 8px",
@@ -6179,7 +6179,7 @@ export default function Help() {
                         <div
                           style={{
                             fontSize: "9.5px",
-                            color: "rgba(242,236,220,0.3)",
+                            color: "rgba(242,236,220,0.70)",
                             marginTop: "2px",
                           }}
                         >
@@ -7107,7 +7107,7 @@ export default function Help() {
                       <div
                         style={{
                           fontSize: "12px",
-                          color: "rgba(242,236,220,0.35)",
+                          color: "rgba(242,236,220,0.72)",
                           lineHeight: 1.3,
                         }}
                       >

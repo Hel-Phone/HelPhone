@@ -345,7 +345,7 @@ export default function Admin() {
           )}
           <p
             style={{
-              color: "rgba(242,236,220,0.35)",
+              color: "rgba(242,236,220,0.72)",
               fontSize: "12px",
               maxWidth: "380px",
               lineHeight: 1.6,
@@ -507,7 +507,7 @@ export default function Admin() {
                   style={{
                     fontSize: "9px",
                     letterSpacing: "1px",
-                    color: "rgba(242,236,220,0.35)",
+                    color: "rgba(242,236,220,0.72)",
                     marginBottom: "6px",
                   }}
                 >
@@ -538,7 +538,7 @@ export default function Admin() {
                   style={{
                     fontSize: "9px",
                     letterSpacing: "1px",
-                    color: "rgba(242,236,220,0.35)",
+                    color: "rgba(242,236,220,0.72)",
                     marginBottom: "6px",
                   }}
                 >
