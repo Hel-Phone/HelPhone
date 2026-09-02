@@ -60,7 +60,7 @@ exports[`Component Snapshots > Help Page > should match snapshot 1`] = `
             <a
               data-discover="true"
               href="/"
-              style="font-size: 12px; color: rgba(242, 236, 220, 0.35); text-decoration: none; min-height: 44px; display: flex; align-items: center;"
+              style="font-size: 12px; color: rgba(242, 236, 220, 0.72); text-decoration: none; min-height: 44px; display: flex; align-items: center;"
             >
               ← Back
             </a>
@@ -98,7 +98,7 @@ exports[`Component Snapshots > Help Page > should match snapshot 1`] = `
               style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"
             >
               <div
-                style="width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; background: rgba(242, 236, 220, 0.28); position: relative; overflow: hidden;"
+                style="width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; background: rgba(242, 236, 220, 0.68); position: relative; overflow: hidden;"
               >
                 <div
                   style="position: absolute; top: 0px; left: 0px; right: 0px; bottom: 0px; border-radius: 50%; border-width: 2px; border-style: solid; border-color: rgb(179, 166, 255) transparent transparent; border-image: none; animation: none;"
@@ -153,7 +153,7 @@ exports[`Component Snapshots > Help Page > should match snapshot 1`] = `
                   Your location
                 </div>
                 <div
-                  style="font-size: 11px; color: rgba(242, 236, 220, 0.35); margin-top: 1px;"
+                  style="font-size: 11px; color: rgba(242, 236, 220, 0.72); margin-top: 1px;"
                 >
                   Not set
                 </div>
@@ -175,12 +175,19 @@ exports[`Component Snapshots > Help Page > should match snapshot 1`] = `
               <form
                 style="display: flex; gap: 6px; position: relative;"
               >
+                <label
+                  class="hp-sr-only"
+                  for="hp-search-location"
+                >
+                  Search city or country
+                </label>
                 <input
                   aria-autocomplete="list"
                   aria-controls="hp-search-suggestions"
                   aria-expanded="false"
                   aria-haspopup="listbox"
                   autocomplete="off"
+                  id="hp-search-location"
                   placeholder="Or search city, country…"
                   role="combobox"
                   style="width: 100%; padding: 9px 11px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; color: rgba(242, 236, 220, 0.9); font-size: 13px; outline: none; box-sizing: border-box;"
@@ -194,7 +201,7 @@ exports[`Component Snapshots > Help Page > should match snapshot 1`] = `
                 </button>
               </form>
               <p
-                style="font-size: 11px; color: rgba(242, 236, 220, 0.3); margin: 6px 0px 0px;"
+                style="font-size: 11px; color: rgba(242, 236, 220, 0.7); margin: 6px 0px 0px;"
               >
                 You can also click the map to drop a pin.
               </p>
@@ -218,7 +225,7 @@ exports[`Component Snapshots > Help Page > should match snapshot 1`] = `
                   What happened?
                 </div>
                 <div
-                  style="font-size: 11px; color: rgba(242, 236, 220, 0.35); margin-top: 1px;"
+                  style="font-size: 11px; color: rgba(242, 236, 220, 0.72); margin-top: 1px;"
                 >
                   Select one
                 </div>
@@ -259,7 +266,7 @@ exports[`Component Snapshots > Help Page > should match snapshot 1`] = `
                   Your info
                 </div>
                 <div
-                  style="font-size: 11px; color: rgba(242, 236, 220, 0.35); margin-top: 1px;"
+                  style="font-size: 11px; color: rgba(242, 236, 220, 0.72); margin-top: 1px;"
                 >
                    · 
                 </div>
@@ -271,20 +278,35 @@ exports[`Component Snapshots > Help Page > should match snapshot 1`] = `
               <div
                 style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;"
               >
+                <label
+                  for="hp-nickname"
+                  style="font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: rgba(242, 236, 220, 0.72);"
+                >
+                  Nickname or name
+                </label>
                 <input
+                  id="hp-nickname"
                   maxlength="30"
                   placeholder="Nickname or name"
                   style="width: 100%; padding: 9px 11px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; color: rgba(242, 236, 220, 0.9); font-size: 13px; outline: none; box-sizing: border-box;"
                   value=""
                 />
+                <label
+                  for="hp-contact"
+                  style="font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: rgba(242, 236, 220, 0.72);"
+                >
+                  Contact (phone or Telegram)
+                </label>
                 <input
+                  aria-invalid="false"
+                  id="hp-contact"
                   maxlength="40"
                   placeholder="@telegram or +54 11 5555-5555"
                   style="width: 100%; padding: 9px 11px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; color: rgba(242, 236, 220, 0.9); font-size: 13px; outline: none; box-sizing: border-box;"
                   value=""
                 />
                 <div
-                  style="font-size: 9.5px; color: rgba(242, 236, 220, 0.18); line-height: 1.4;"
+                  style="font-size: 9.5px; color: rgba(242, 236, 220, 0.65); line-height: 1.4;"
                 >
                   Phone (+country code) or @telegram handle. Stored on-chain.
                 </div>
@@ -330,6 +352,43 @@ exports[`Component Snapshots > Help Page > should match snapshot 1`] = `
                     />
                   </label>
                 </div>
+                <div
+                  style="margin-top: 8px;"
+                >
+                  <div
+                    style="font-size: 10px; font-weight: 600; color: rgba(242, 236, 220, 0.45); margin-bottom: 6px;"
+                  >
+                    Priority level
+                  </div>
+                  <div
+                    style="display: flex; gap: 6px;"
+                  >
+                    <button
+                      style="flex: 1 1 0%; padding: 7px 4px; border-radius: 6px; border: 1.5px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.04); color: rgba(242, 236, 220, 0.4); font-size: 10px; font-weight: 500; cursor: pointer; transition: all 0.15s;"
+                      type="button"
+                    >
+                      Low
+                    </button>
+                    <button
+                      style="flex: 1 1 0%; padding: 7px 4px; border-radius: 6px; border: 1.5px solid rgb(162, 165, 134); background: rgba(162, 165, 134, 0.133); color: rgb(162, 165, 134); font-size: 10px; font-weight: 700; cursor: pointer; transition: all 0.15s;"
+                      type="button"
+                    >
+                      Medium
+                    </button>
+                    <button
+                      style="flex: 1 1 0%; padding: 7px 4px; border-radius: 6px; border: 1.5px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.04); color: rgba(242, 236, 220, 0.4); font-size: 10px; font-weight: 500; cursor: pointer; transition: all 0.15s;"
+                      type="button"
+                    >
+                      High
+                    </button>
+                    <button
+                      style="flex: 1 1 0%; padding: 7px 4px; border-radius: 6px; border: 1.5px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.04); color: rgba(242, 236, 220, 0.4); font-size: 10px; font-weight: 500; cursor: pointer; transition: all 0.15s;"
+                      type="button"
+                    >
+                      Critical
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -351,7 +410,7 @@ exports[`Component Snapshots > Help Page > should match snapshot 1`] = `
                   Send request
                 </div>
                 <div
-                  style="font-size: 11px; color: rgba(242, 236, 220, 0.35); margin-top: 1px;"
+                  style="font-size: 11px; color: rgba(242, 236, 220, 0.72); margin-top: 1px;"
                 >
                   Complete the steps above
                 </div>
@@ -361,13 +420,13 @@ exports[`Component Snapshots > Help Page > should match snapshot 1`] = `
               style="margin-left: 36px;"
             >
               <p
-                style="font-size: 11px; color: rgba(242, 236, 220, 0.35); margin: 0px 0px 10px; line-height: 1.5;"
+                style="font-size: 11px; color: rgba(242, 236, 220, 0.72); margin: 0px 0px 10px; line-height: 1.5;"
               >
                 Your pin appears on the map. People nearby will see your request and reach out.
               </p>
               <button
                 disabled=""
-                style="width: 100%; padding: 13px; background: rgba(255, 255, 255, 0.08); color: rgba(242, 236, 220, 0.25); border: medium; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: default; opacity: 1; transition: all 0.2s;"
+                style="width: 100%; padding: 13px; background: rgba(255, 255, 255, 0.08); color: rgba(242, 236, 220, 0.72); border: medium; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: default; opacity: 1; transition: all 0.2s;"
               >
                 Connect wallet first
               </button>

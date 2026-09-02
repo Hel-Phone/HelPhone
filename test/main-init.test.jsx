@@ -1,30 +1,57 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { act } from "react";
 import React from "react";
 
 // ---------------------------------------------------------------------------
-// src/main.jsx is the app entry point: it initializes the Stellar wallet
-// kit, then mounts <App/> (plus /help and /ranking routes) into #root via
-// ReactDOM.createRoot. main.jsx runs this as top-level module code, so the
-// only way to observe it is to mock every dependency it touches and import
-// the module fresh in each test.
+// src/main.tsx is the app entry point: it mounts the app tree into #root via
+// ReactDOM.createRoot once the i18n bundles have loaded. StellarWalletsKit is
+// no longer initialised as a module-level side effect here — WalletProvider
+// (src/contexts/WalletContext.tsx) owns that, inside its mount effect.
+//
+// main.tsx runs as top-level module code, so the only way to observe it is to
+// mock the modules it touches and import it fresh in each test. createRoot is
+// wrapped rather than replaced: the calls are recorded *and* the tree really
+// mounts, so the provider's effect (and therefore the kit init) actually runs.
 // ---------------------------------------------------------------------------
 
+// Tell React this is an act()-aware environment so effects flush inside act().
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
 const renderMock = vi.fn();
-const createRootMock = vi.fn(() => ({ render: renderMock }));
+const createRootMock = vi.fn();
 const initMock = vi.fn();
 
-vi.mock("react-dom/client", () => ({
-  default: { createRoot: createRootMock },
-  createRoot: createRootMock,
-}));
+vi.mock("react-dom/client", async (importOriginal) => {
+  const actual = await importOriginal();
+  createRootMock.mockImplementation((container, options) => {
+    const root = actual.createRoot(container, options);
+    renderMock.mockImplementation((element) => root.render(element));
+    return { ...root, render: renderMock };
+  });
+  return {
+    default: { createRoot: createRootMock },
+    createRoot: createRootMock,
+  };
+});
 
 vi.mock("@creit-tech/stellar-wallets-kit/sdk", () => ({
-  StellarWalletsKit: { init: initMock },
+  StellarWalletsKit: {
+    init: initMock,
+    getAddress: vi.fn(async () => ({ address: "" })),
+    // on() returns its own unsubscribe function.
+    on: vi.fn(() => vi.fn()),
+    authModal: vi.fn(async () => ({ address: "" })),
+    disconnect: vi.fn(async () => {}),
+  },
 }));
 
 vi.mock("@creit-tech/stellar-wallets-kit/types", () => ({
   Networks: { TESTNET: "TESTNET" },
   SwkAppDarkTheme: {},
+  KitEventType: {
+    STATE_UPDATED: "state-updated",
+    DISCONNECT: "disconnect",
+  },
 }));
 
 vi.mock("@creit-tech/stellar-wallets-kit/modules/utils", () => ({
@@ -34,14 +61,26 @@ vi.mock("@creit-tech/stellar-wallets-kit/modules/utils", () => ({
   ]),
 }));
 
-vi.mock("../src/App.jsx", () => ({ default: () => null }));
-vi.mock("../src/pages/Help.jsx", () => ({ default: () => null }));
-vi.mock("../src/pages/Ranking.jsx", () => ({ default: () => null }));
+vi.mock("../src/App.tsx", () => ({ default: () => null }));
+vi.mock("../src/pages/Help.tsx", () => ({ default: () => null }));
+vi.mock("../src/pages/Ranking.tsx", () => ({ default: () => null }));
 vi.mock("../src/App.css", () => ({}));
+vi.mock("../src/styles/theme.css", () => ({}));
+vi.mock("../src/i18n", () => ({ i18nReady: Promise.resolve() }));
+vi.mock("../src/components/ErrorBoundary.tsx", () => ({
+  default: ({ children }) => children,
+}));
 
 async function loadMain() {
   vi.resetModules();
-  return import("../src/main.jsx");
+  let mod;
+  // main.tsx renders from `i18nReady.then(...)`, so the mount happens in a
+  // microtask after the import resolves — flush both inside act() so React
+  // effects (including WalletProvider's kit init) have run on return.
+  await act(async () => {
+    mod = await import("../src/main.tsx");
+  });
+  return mod;
 }
 
 describe("App initialization (main.jsx)", () => {
@@ -70,21 +109,24 @@ describe("App initialization (main.jsx)", () => {
     await loadMain();
     expect(renderMock).toHaveBeenCalledTimes(1);
     const rendered = renderMock.mock.calls[0][0];
-    // The rendered tree is <StrictMode><BrowserRouter><Routes>...</Routes></BrowserRouter></StrictMode> —
-    // assert the top of the tree is StrictMode wrapping a single child (BrowserRouter),
-    // confirming main.jsx wired the router/providers rather than rendering a bare element.
+    // The rendered tree is <StrictMode><ErrorBoundary><WalletProvider><BrowserRouter>… —
+    // assert the top of the tree is StrictMode wrapping a single child,
+    // confirming main.tsx wired the router/providers rather than rendering a bare element.
     expect(rendered.type).toBe(React.StrictMode);
     expect(rendered.props.children).toBeTruthy();
   });
 
-  it("calls global initializers (StellarWalletsKit.init) before mounting", async () => {
+  it("calls global initializers (StellarWalletsKit.init) exactly once on mount", async () => {
     await loadMain();
-    expect(initMock).toHaveBeenCalledTimes(1);
     expect(createRootMock).toHaveBeenCalled();
-    // init() must run before render() so the kit is ready before the app tree mounts.
-    const initOrder = initMock.mock.invocationCallOrder[0];
+    // The kit is initialised by WalletProvider's mount effect, which sits above
+    // the router — so it is ready before any route content can use the wallet.
+    // StrictMode double-invokes render but not the effect body's init guard, so
+    // a single init call is the contract.
+    expect(initMock).toHaveBeenCalledTimes(1);
     const renderOrder = renderMock.mock.invocationCallOrder[0];
-    expect(initOrder).toBeLessThan(renderOrder);
+    const initOrder = initMock.mock.invocationCallOrder[0];
+    expect(initOrder).toBeGreaterThan(renderOrder);
   });
 
   it("configures StellarWalletsKit with network and theme (global styles/config applied)", async () => {

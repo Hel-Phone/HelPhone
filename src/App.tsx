@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import LanguageSwitcher from './components/LanguageSwitcher'
@@ -10,6 +10,7 @@ import MainLayout from './components/layout/MainLayout'
 export default function App() {
   const { t } = useTranslation('common')
   const videoRef = useRef<HTMLVideoElement>(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // Video forward/reverse loop
   useEffect(() => {
@@ -102,7 +103,7 @@ export default function App() {
           <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '21px', letterSpacing: '0.2px', color: '#F4ECDC', fontStyle: 'italic' }}>Hel</span>
           <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '21px', letterSpacing: '0.2px', color: '#a2a586' }}>Phone</span>
         </a>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div className="hp-nav-links-desktop" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <LanguageSwitcher />
           {[
             { href: '#how', label: t('nav.howItWorks') },
@@ -135,7 +136,86 @@ export default function App() {
             {t('nav.requestHelp')}
           </Link>
         </div>
+        <button
+          className="hp-hamburger"
+          type="button"
+          aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={mobileMenuOpen}
+          onClick={() => setMobileMenuOpen((o) => !o)}
+          style={{
+            color: '#F4ECDC',
+            fontSize: '22px',
+            lineHeight: 1,
+          }}
+        >
+          {mobileMenuOpen ? '✕' : '☰'}
+        </button>
       </nav>
+
+      {/* Mobile menu overlay */}
+      <div
+        className={`hp-nav-mobile-overlay${mobileMenuOpen ? ' hp-nav-mobile-overlay--open' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Mobile navigation menu"
+      >
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={() => setMobileMenuOpen(false)}
+          style={{
+            position: 'absolute',
+            top: '24px',
+            right: '24px',
+            background: 'none',
+            border: 'none',
+            color: '#F4ECDC',
+            fontSize: '28px',
+            cursor: 'pointer',
+            minWidth: '44px',
+            minHeight: '44px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          ✕
+        </button>
+        {[
+          { href: '#how', label: t('nav.howItWorks') },
+          { href: '#trust', label: t('nav.trustSafety') },
+          { href: '#coverage', label: t('nav.coverage') },
+          { to: '/ranking', label: t('nav.ranking'), internal: true },
+        ].map((link) =>
+          link.internal ? (
+            <Link
+              key={link.label}
+              to={link.to!}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              {link.label}
+            </Link>
+          ) : (
+            <a
+              key={link.label}
+              href={link.href}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              {link.label}
+            </a>
+          ),
+        )}
+        <Link
+          to="/help"
+          className="hp-nav-cta"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          {t('nav.requestHelp')}
+        </Link>
+        <div onClick={() => setMobileMenuOpen(false)}>
+          <LanguageSwitcher />
+        </div>
+      </div>
 
       {/* HERO */}
       <header id="top" style={{ position: 'relative', minHeight: '100vh', display: 'flex', alignItems: 'flex-end', overflow: 'hidden', background: '#1c2c24' }}>

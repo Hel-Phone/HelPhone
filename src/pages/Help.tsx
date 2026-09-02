@@ -120,7 +120,7 @@ function CharMarker({
         className="hp-marker"
         tabIndex={0}
         role="button"
-        aria-label={`Responder marker for ${charName}`}
+        aria-label={`Marker for ${charName}${accentColor === "#FF7A6B" ? " (requester)" : " (responder)"}`}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -969,6 +969,7 @@ export function EmergencyMarker({
   lat,
   lng,
   emergencyType,
+  isActive,
   onClick,
   children,
 }) {
@@ -977,10 +978,10 @@ export function EmergencyMarker({
   return (
     <Marker latitude={lat} longitude={lng} onClick={onClick}>
       <div
-        className="hp-marker"
+        className={`hp-marker${isActive ? " hp-marker-active" : ""}`}
         tabIndex={0}
         role="button"
-        aria-label={`Emergency: ${emergencyType}`}
+        aria-label={`Emergency marker: ${emergencyType || "emergency"}`}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -4634,6 +4635,7 @@ export default function Help() {
                           </button>
                         </div>
                       )}
+                    </div>
                     {/* Issue #155 — Priority level selector */}
                     <div style={{ marginTop: "8px" }}>
                       <div
@@ -5345,182 +5347,6 @@ export default function Help() {
                     setRequestStatus={setRequestStatus}
                     setShowCancelConfirm={setShowCancelConfirm}
                   />
-                  myRequests.slice(0, 10).map((req) => {
-                    const isActive = req.id === requestId;
-                    const statusColors = {
-                      Pending: {
-                        color: "#a2a586",
-                        bg: "rgba(162,165,134,0.15)",
-                      },
-                      Enroute: {
-                        color: "#7357FF",
-                        bg: "rgba(115,87,255,0.15)",
-                      },
-                      Resolved: {
-                        color: "#3F8487",
-                        bg: "rgba(63,132,135,0.15)",
-                      },
-                      Cancelled: {
-                        color: "rgba(242,236,220,0.70)",
-                        bg: "rgba(255,255,255,0.04)",
-                      },
-                    };
-                    const sc =
-                      statusColors[req.status] || statusColors.Cancelled;
-                    const et = EMERGENCY_TYPES.find(
-                      (e) => e.id === req.emergency_type,
-                    );
-                    const timeAgo = req.created_at
-                      ? (() => {
-                          const d = Math.floor(
-                            (Date.now() / 1000 - req.created_at) / 60,
-                          );
-                          return d < 1
-                            ? "just now"
-                            : d < 60
-                              ? `${d}m ago`
-                              : `${Math.floor(d / 60)}h ago`;
-                        })()
-                      : "";
-                    return (
-                      <div
-                        key={req.id}
-                        onClick={() => {
-                          if (
-                            req.status === "Pending" ||
-                            req.status === "Enroute"
-                          ) {
-                            setRequestId(req.id);
-                            setRequestStatus(req.status);
-                          }
-                        }}
-                        style={{
-                          padding: "10px 12px",
-                          marginBottom: "8px",
-                          borderRadius: "10px",
-                          cursor: "pointer",
-                          background: isActive
-                            ? "rgba(63,132,135,0.12)"
-                            : "rgba(255,255,255,0.04)",
-                          border: isActive
-                            ? "1px solid rgba(63,132,135,0.3)"
-                            : "1px solid rgba(255,255,255,0.06)",
-                          transition: "background 0.15s",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isActive)
-                            e.currentTarget.style.background =
-                              "rgba(255,255,255,0.07)";
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isActive)
-                            e.currentTarget.style.background =
-                              "rgba(255,255,255,0.04)";
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "flex-start",
-                            gap: "8px",
-                          }}
-                        >
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "6px",
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontSize: "12px",
-                                  fontWeight: "600",
-                                  color: "#F4ECDC",
-                                }}
-                              >
-                                #{req.id}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: "9px",
-                                  fontWeight: "700",
-                                  padding: "2px 6px",
-                                  borderRadius: "4px",
-                                  background: sc.bg,
-                                  color: sc.color,
-                                  letterSpacing: "0.5px",
-                                }}
-                              >
-                                {req.status?.toUpperCase()}
-                              </span>
-                              {req.priority && req.priority !== "Medium" && (
-                                <span
-                                  style={{
-                                    fontSize: "8px",
-                                    fontWeight: 700,
-                                    padding: "2px 5px",
-                                    borderRadius: "3px",
-                                    background: `${PRIORITY_COLORS[req.priority]}22`,
-                                    color: PRIORITY_COLORS[req.priority],
-                                    letterSpacing: "0.3px",
-                                  }}
-                                >
-                                  {req.priority.toUpperCase()}
-                                </span>
-                              )}
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "10px",
-                                color: "rgba(242,236,220,0.72)",
-                                marginTop: "3px",
-                                lineHeight: 1.4,
-                              }}
-                            >
-                              {et
-                                ? `${et.icon} ${et.label}`
-                                : req.emergency_type || "Unknown"}
-                              {timeAgo && (
-                                <span
-                                  style={{
-                                    marginLeft: "6px",
-                                    color: "rgba(242,236,220,0.65)",
-                                  }}
-                                >
-                                  · {timeAgo}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          {isActive && req.status === "Pending" && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setShowCancelConfirm(req.id);
-                              }}
-                              style={{
-                                padding: "5px 9px",
-                                borderRadius: "6px",
-                                flexShrink: 0,
-                                background: "rgba(255,122,107,0.12)",
-                                border: "1px solid rgba(255,122,107,0.25)",
-                                color: "#FF7A6B",
-                                fontSize: "10px",
-                                fontWeight: "700",
-                                cursor: "pointer",
-                                lineHeight: 1,
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
                 )}
               </div>
             </>
@@ -5564,13 +5390,15 @@ export default function Help() {
                   onClose={() => setPopupMarker(null)}
                   closeButton={false}
                 >
-                  <strong style={{ color: "#FF7A6B" }}>You</strong>
-                  {profile.nickname && (
-                    <>
-                      <br />
-                      {profile.nickname}
-                    </>
-                  )}
+                  <div role="dialog" aria-label="Your location marker details">
+                    <strong style={{ color: "#FF7A6B" }}>You</strong>
+                    {profile.nickname && (
+                      <>
+                        <br />
+                        {profile.nickname}
+                      </>
+                    )}
+                  </div>
                 </Popup>
               )}
             </CharMarker>
@@ -5595,13 +5423,15 @@ export default function Help() {
                   onClose={() => setPopupMarker(null)}
                   closeButton={false}
                 >
-                  <strong style={{ color: "#7357FF" }}>You (responder)</strong>
-                  {profile.nickname && (
-                    <>
-                      <br />
-                      {profile.nickname}
-                    </>
-                  )}
+                  <div role="dialog" aria-label="Your responder marker details">
+                    <strong style={{ color: "#7357FF" }}>You (responder)</strong>
+                    {profile.nickname && (
+                      <>
+                        <br />
+                        {profile.nickname}
+                      </>
+                    )}
+                  </div>
                 </Popup>
               )}
             </CharMarker>
@@ -5629,19 +5459,21 @@ export default function Help() {
                       onClose={() => setPopupMarker(null)}
                       closeButton={false}
                     >
-                      <strong style={{ color: "#7357FF" }}>Responder</strong>
-                      <br />
-                      <span style={{ fontSize: "11px", color: "#a2a586" }}>
-                        {r.responder
-                          ? r.responder.slice(0, 8) + "…"
-                          : "Responder"}
-                      </span>
-                      {r.eta_seconds && (
-                        <>
-                          <br />
-                          ETA: {Math.round(r.eta_seconds / 60)} min
-                        </>
-                      )}
+                      <div role="dialog" aria-label={`Responder ${r.responder ? r.responder.slice(0, 8) : ""} details`}>
+                        <strong style={{ color: "#7357FF" }}>Responder</strong>
+                        <br />
+                        <span style={{ fontSize: "11px", color: "#a2a586" }}>
+                          {r.responder
+                            ? r.responder.slice(0, 8) + "…"
+                            : "Responder"}
+                        </span>
+                        {r.eta_seconds && (
+                          <>
+                            <br />
+                            ETA: {Math.round(r.eta_seconds / 60)} min
+                          </>
+                        )}
+                      </div>
                     </Popup>
                   )}
                 </CharMarker>
@@ -5710,6 +5542,7 @@ export default function Help() {
                   lat={req.lat}
                   lng={req.lng}
                   emergencyType={req.emergency_type}
+                  isActive={req.status === "Pending"}
                   onClick={() => {
                     setSelectedRequest(req);
                     setPopupMarker(`req-${req.id}`);
@@ -5722,29 +5555,31 @@ export default function Help() {
                       onClose={() => setPopupMarker(null)}
                       closeButton={false}
                     >
-                      <strong style={{ color: PRIORITY_COLORS[req.priority] || "#FF7A6B" }}>
-                        {req.nickname || "Anonymous"}
-                      </strong>
-                      <br />
-                      <span style={{ fontSize: "11px", color: "#a2a586" }}>
-                        {EMERGENCY_TYPES.find((e) => e.id === req.emergency_type)
-                          ?.label || "Needs help"}{" "}
-                        · Click sidebar to respond
-                      </span>
-                      {req.priority && req.priority !== "Medium" && (
-                        <>
-                          <br />
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              fontWeight: 700,
-                              color: PRIORITY_COLORS[req.priority] || "#a2a586",
-                            }}
-                          >
-                            {req.priority} priority
-                          </span>
-                        </>
-                      )}
+                      <div role="dialog" aria-label={`Emergency request from ${req.nickname || "anonymous"}: ${EMERGENCY_TYPES.find((e) => e.id === req.emergency_type)?.label || "needs help"}`}>
+                        <strong style={{ color: PRIORITY_COLORS[req.priority] || "#FF7A6B" }}>
+                          {req.nickname || "Anonymous"}
+                        </strong>
+                        <br />
+                        <span style={{ fontSize: "11px", color: "#a2a586" }}>
+                          {EMERGENCY_TYPES.find((e) => e.id === req.emergency_type)
+                            ?.label || "Needs help"}{" "}
+                          · Click sidebar to respond
+                        </span>
+                        {req.priority && req.priority !== "Medium" && (
+                          <>
+                            <br />
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                fontWeight: 700,
+                                color: PRIORITY_COLORS[req.priority] || "#a2a586",
+                              }}
+                            >
+                              {req.priority} priority
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </Popup>
                   )}
                 </EmergencyMarker>

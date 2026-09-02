@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { WalletProvider } from "./contexts/WalletContext";
 import { i18nReady } from "./i18n";
+import ErrorBoundary from "./components/ErrorBoundary";
 import App from "./App";
 import "./App.css";
 import "./styles/theme.css";
@@ -36,23 +37,25 @@ function RouteFallback() {
 function render() {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
-      {/*
-        WalletProvider wraps the entire app so that any page can access
-        wallet state via useWallet() without prop-drilling.
-        StellarWalletsKit.init() is called inside WalletProvider's useEffect,
-        replacing the previous global side-effect at module load time.
-      */}
-      <WalletProvider>
-        <BrowserRouter>
-          <Suspense fallback={<RouteFallback />}>
-            <Routes>
-              <Route path="/" element={<App />} />
-              <Route path="/help" element={<Help />} />
-              <Route path="/ranking" element={<Ranking />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-      </WalletProvider>
+      <ErrorBoundary>
+        {/*
+          WalletProvider wraps the entire app so that any page can access
+          wallet state via useWallet() without prop-drilling.
+          StellarWalletsKit.init() is called inside WalletProvider's useEffect,
+          replacing the previous global side-effect at module load time.
+        */}
+        <WalletProvider>
+          <BrowserRouter>
+            <Suspense fallback={<RouteFallback />}>
+              <Routes>
+                <Route path="/" element={<App />} />
+                <Route path="/help" element={<Help />} />
+                <Route path="/ranking" element={<Ranking />} />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+        </WalletProvider>
+      </ErrorBoundary>
     </React.StrictMode>,
   );
 }

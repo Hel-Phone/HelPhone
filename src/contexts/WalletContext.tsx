@@ -38,7 +38,14 @@ function buildWalletModules() {
 // Performed once per application lifetime inside the provider's useEffect so
 // it is no longer a global side-effect in main.tsx.
 
+let kitInitialised = false
+
 function initKit(): void {
+  // React StrictMode mounts, unmounts and remounts the provider in dev, and a
+  // remount must not re-run the kit's global setup — guard so this really is
+  // once per application lifetime.
+  if (kitInitialised) return
+  kitInitialised = true
   StellarWalletsKit.init({
     modules: buildWalletModules(),
     network: Networks.TESTNET,
