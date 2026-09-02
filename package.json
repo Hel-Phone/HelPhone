@@ -53,6 +53,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.2",
     "@vitest/coverage-v8": "^4.1.10",
+    "compression": "~1.8.1",
     "eslint": "^9.0.0",
     "globals": "^17.11.0",
     "husky": "^9.0.0",
