@@ -15,6 +15,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e:throttling": "playwright test --project=throttling",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "export:state": "bash scripts/export-contract-state.sh",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@types/cors": "^2.8.17",
@@ -37,6 +39,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.2",
     "eslint": "^9.0.0",
+    "fake-indexeddb": "^6.2.5",
     "husky": "^9.0.0",
     "jsdom": "^29.1.1",
     "lint-staged": "^15.0.0",

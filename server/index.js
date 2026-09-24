@@ -11,6 +11,7 @@ import { normalizeBase64 } from "./base64Utils.js";
 import { compression as brotliCompression } from "./middleware/compression.js";
 import { logger, poolMonitorMiddleware } from "./middleware/logger.js";
 import { createCorsMiddleware } from "./middleware/cors.js";
+import { applyKeepAliveTuning, keepAliveMiddleware } from "./middleware/keepAlive.js";
 import { getPool } from "./db/connection.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -106,6 +107,8 @@ app.use(
   }),
 );
 // Observability: structured logger + pool monitoring
+// Reuse TCP sockets across sequential requests (see middleware/keepAlive.js)
+app.use(keepAliveMiddleware());
 app.use(logger({ slowThresholdMs: 1000 }));
 app.use(poolMonitorMiddleware);
 
@@ -461,10 +464,12 @@ app.get("/api/feedback/:requestId", (req, res) => {
 });
 
 export function startServer() {
-  return app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`ZK Prover worker ${process.pid} on http://localhost:${PORT}`);
     ensureProver().catch((err) => console.error("[prover] Init failed:", err));
   });
+  applyKeepAliveTuning(server);
+  return server;
 }
 
 function startCluster() {
