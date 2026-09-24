@@ -17,6 +17,11 @@ services:
         value: "CC325F37QW7N2F5M3QGHL4A4O7J2K9L0M1N2O3P4Q5R6S7T8U9V0"
       - key: ALLOWED_ORIGINS
         value: "https://helphone.com,https://staging.helphone.com,http://localhost:3000"
+      # Keep-alive: must stay above Render's 60s balancer idle timeout (server/middleware/keepAlive.ts)
+      - key: KEEP_ALIVE_TIMEOUT_MS
+        value: "65000"
+      - key: HEADERS_TIMEOUT_MS
+        value: "66000"
 
   - type: cron
     name: soroban-daily-state-exporter

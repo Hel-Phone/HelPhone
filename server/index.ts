@@ -5,10 +5,14 @@ import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { SorobanStateExporter, loadLatestSnapshot } from './indexer/exporter.js'
 import { authMiddleware } from './middleware/auth.js'
+import { applyKeepAliveTuning, keepAliveMiddleware } from './middleware/keepAlive.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
 const PORT = process.env.PORT || 3001
+
+// Reuse TCP sockets across sequential requests (see middleware/keepAlive.ts)
+app.use(keepAliveMiddleware())
 
 app.use(
   cors({
@@ -75,10 +79,11 @@ function scheduleStateBackup() {
 }
 
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`HelPhone Server running on http://localhost:${PORT}`)
     scheduleStateBackup()
   })
+  applyKeepAliveTuning(server)
 }
 
 export { app, stateExporter }
