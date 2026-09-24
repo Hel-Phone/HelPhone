@@ -1,5 +1,9 @@
 #![no_std]
 
+mod privacy;
+
+use privacy::{BoundingBox, PrivacyError, PrivacyParams, TrackedZone, MAX_TRACKED_ZONES};
+
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, symbol_short,
     token, Address, Bytes, BytesN, Env, InvokeError, IntoVal, Symbol, Val,
@@ -53,6 +57,12 @@ pub enum VaultError {
     // same "caller isn't admin" case.
     AdminNotSet = 11,
     PayloadTooLarge = 12,
+    // Differential-privacy zone checks (#529). All fire before any token moves.
+    InvalidPrivacyParams = 13,
+    BoxMalformed = 14,
+    BoxNotOnGrid = 15,
+    BoxTooSmall = 16,
+    ZoneOverlapTooSmall = 17,
 }
 
 #[contractevent(topics = ["claimed"], data_format = "map")]
@@ -78,6 +88,91 @@ fn key_payout()    -> Symbol { symbol_short!("payout") }
 fn key_nullifier_prefix() -> Symbol { symbol_short!("nf") }
 fn key_campaign_prefix()  -> Symbol { symbol_short!("camp") }
 fn key_zone_prefix()      -> Symbol { symbol_short!("zone") }
+fn key_privacy()          -> Symbol { symbol_short!("privacy") }
+fn key_tracked_zones()    -> Symbol { symbol_short!("pzones") }
+
+/// Keep tracked zones alive: bump when under ~30 days, to ~90 (5 s ledgers).
+const PZONES_TTL_THRESHOLD: u32 = 17_280 * 30;
+const PZONES_TTL_EXTEND_TO: u32 = 17_280 * 90;
+
+fn privacy_error(e: PrivacyError) -> VaultError {
+    match e {
+        PrivacyError::InvalidParams => VaultError::InvalidPrivacyParams,
+        PrivacyError::Malformed => VaultError::BoxMalformed,
+        PrivacyError::NotOnGrid => VaultError::BoxNotOnGrid,
+        PrivacyError::TooSmall => VaultError::BoxTooSmall,
+        PrivacyError::OverlapTooSmall => VaultError::ZoneOverlapTooSmall,
+    }
+}
+
+fn privacy_params(env: &Env) -> PrivacyParams {
+    env.storage()
+        .instance()
+        .get(&key_privacy())
+        .unwrap_or(PrivacyParams::defaults())
+}
+
+fn tracked_zones(env: &Env) -> SorobanVec<TrackedZone> {
+    env.storage()
+        .persistent()
+        .get(&key_tracked_zones())
+        .unwrap_or(SorobanVec::new(env))
+}
+
+/// Validate a zone's box (Laplace bound + grid) and its overlap with every
+/// other tracked zone. Read-only. A no-op while privacy checks are disabled.
+fn check_zone_privacy(
+    env: &Env,
+    campaign_id: &BytesN<32>,
+    public_inputs_prefix: &Bytes,
+) -> Result<Option<BoundingBox>, VaultError> {
+    let params = privacy_params(env);
+    if !params.enabled {
+        return Ok(None);
+    }
+    if public_inputs_prefix.len() < 128 {
+        return Err(VaultError::InvalidPublicInputs);
+    }
+    let mut buf = [0u8; 128];
+    public_inputs_prefix.slice(0..128).copy_into_slice(&mut buf);
+    let bbox = privacy::parse_box(&buf).ok_or(VaultError::BoxMalformed)?;
+    privacy::validate_box(&params, &bbox).map_err(privacy_error)?;
+    for zone in tracked_zones(env).iter() {
+        // Re-funding a campaign is not an overlap with itself.
+        if zone.campaign_id != *campaign_id {
+            privacy::check_overlap(&params, &bbox, &zone.bbox).map_err(privacy_error)?;
+        }
+    }
+    Ok(Some(bbox))
+}
+
+/// Remember `bbox` for `campaign_id` so later zones are checked against it.
+/// Once `MAX_TRACKED_ZONES` are held, the oldest is forgotten.
+fn track_zone(env: &Env, campaign_id: &BytesN<32>, bbox: BoundingBox) {
+    let mut zones = tracked_zones(env);
+    let mut existing = None;
+    for (i, z) in zones.iter().enumerate() {
+        if z.campaign_id == *campaign_id {
+            existing = Some(i as u32);
+            break;
+        }
+    }
+    let entry = TrackedZone { campaign_id: campaign_id.clone(), bbox };
+    match existing {
+        Some(i) => zones.set(i, entry),
+        None => {
+            if zones.len() >= MAX_TRACKED_ZONES {
+                zones.remove(0);
+            }
+            zones.push_back(entry);
+        }
+    }
+    let key = key_tracked_zones();
+    env.storage().persistent().set(&key, &zones);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, PZONES_TTL_THRESHOLD, PZONES_TTL_EXTEND_TO);
+}
 
 fn payout_amount(env: &Env) -> i128 {
     env.storage()
@@ -237,6 +332,54 @@ impl AegisVault {
         payout_amount(&env)
     }
 
+    /// Configure the differential-privacy zone checks (#529). Admin only.
+    /// While `params.enabled` is false (the default) zones are not checked.
+    /// Changing parameters never affects zones that are already funded.
+    pub fn set_privacy_params(
+        env: Env,
+        admin: Address,
+        params: PrivacyParams,
+    ) -> Result<(), VaultError> {
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&key_admin())
+            .ok_or(VaultError::NotAuthorized)?;
+        if admin != stored_admin {
+            return Err(VaultError::NotAuthorized);
+        }
+        admin.require_auth();
+        params.validate().map_err(privacy_error)?;
+        env.storage().instance().set(&key_privacy(), &params);
+        Ok(())
+    }
+
+    /// Current privacy parameters (defaults, disabled, until an admin sets them).
+    pub fn privacy_params(env: Env) -> PrivacyParams {
+        privacy_params(&env)
+    }
+
+    /// Smallest allowed zone side, in stored-coordinate units: the Laplace
+    /// tail bound `sensitivity / epsilon * tail_mult`, rounded up to the grid.
+    /// 0 if the stored parameters are invalid.
+    pub fn min_box_dimension(env: Env) -> u64 {
+        privacy::min_dimension(&privacy_params(&env)).unwrap_or(0)
+    }
+
+    /// Dry-run the zone checks for a 160-byte `public_inputs_prefix` without
+    /// funding or registering anything, so a client can preflight a zone.
+    pub fn validate_zone(env: Env, public_inputs_prefix: Bytes) -> Result<(), VaultError> {
+        if public_inputs_prefix.len() as usize != CAMPAIGN_INPUTS_LEN {
+            return Err(VaultError::InvalidPublicInputs);
+        }
+        let mut buf = [0u8; CAMPAIGN_INPUTS_LEN];
+        public_inputs_prefix.copy_into_slice(&mut buf);
+        let mut id = [0u8; 32];
+        id.copy_from_slice(&buf[128..160]);
+        check_zone_privacy(&env, &BytesN::from_array(&env, &id), &public_inputs_prefix)?;
+        Ok(())
+    }
+
     /// Fund a campaign zone. Transfers `amount` USDC from funder to this contract.
     /// `public_inputs_prefix` is 160 bytes:
     /// box_x_min | box_x_max | box_y_min | box_y_max | campaign_id.
@@ -258,6 +401,9 @@ impl AegisVault {
         campaign_id_bytes.copy_from_slice(&buf[128..160]);
         let campaign_id = BytesN::from_array(&env, &campaign_id_bytes);
 
+        // Differential-privacy checks run before any token moves (#529).
+        let tracked = check_zone_privacy(&env, &campaign_id, &public_inputs_prefix)?;
+
         let token_addr: Address = env
             .storage().instance().get(&key_token())
             .ok_or(VaultError::TokenNotSet)?;
@@ -276,6 +422,9 @@ impl AegisVault {
         env.storage().instance().set(&camp_key, &new_balance);
         let zone_key = (key_zone_prefix(), campaign_id.clone());
         env.storage().instance().set(&zone_key, &public_inputs_prefix);
+        if let Some(bbox) = tracked {
+            track_zone(&env, &campaign_id, bbox);
+        }
 
         FundedEvent {
             campaign_id: &campaign_id,
