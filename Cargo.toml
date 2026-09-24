@@ -1,1 +1,8 @@
-// Implementation added
+[workspace]
+resolver = "2"
+members = [
+  "contracts/aegis_vault",
+  "contracts/helphone_dao",
+  "contracts/maintainer_vault",
+]
+exclude = ["contract"]
