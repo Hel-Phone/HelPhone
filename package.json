@@ -57,6 +57,8 @@
     "buffer": "^6.0.3",
     "cors": "^2.8.5",
     "express": "^4.21.0",
+    "express-rate-limit": "^8.6.2",
+    "ioredis": "^5.4.1",
     "mapbox-gl": "^3.25.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
