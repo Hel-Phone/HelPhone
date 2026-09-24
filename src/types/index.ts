@@ -130,4 +130,27 @@ export interface OverlayRenderStats {
   fps: number
   frames: number
   windowMs: number
+
+// ── RPC health (network estimator, #539) ─────────────────────────────────────
+/** 'unknown' = no estimator registered yet. */
+export type NetworkQuality = 'good' | 'degraded' | 'offline' | 'unknown';
+
+export interface EndpointHealth {
+  /** Hostname only — endpoint URLs can embed API keys and are never exposed. */
+  label: string;
+  /** Smoothed (EWMA) round-trip time in ms, or null before the first probe. */
+  latencyMs: number | null;
+  lastLatencyMs: number | null;
+  healthy: boolean;
+  consecutiveFailures: number;
+  lastCheckedAt: number | null;
+  active: boolean;
+  primary: boolean;
+}
+
+export interface RpcHealthSnapshot {
+  activeLabel: string;
+  activeLatencyMs: number | null;
+  quality: NetworkQuality;
+  endpoints: EndpointHealth[];
 }
