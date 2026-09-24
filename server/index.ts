@@ -17,6 +17,8 @@ import {
 import { SorobanStateExporter, loadLatestSnapshot } from './indexer/exporter.js'
 import { authMiddleware } from './middleware/auth.js'
 import { createCspMiddleware, createHtmlHandler } from './middleware/csp.js'
+import { getStats, pingDatabase, query } from './db/connection.js'
+import { createGraphQLHandler } from './graphql/server.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -70,6 +72,15 @@ app.get('/health', (_req: Request, res: Response) => {
 app.get('/zk/health', (_req: Request, res: Response) => {
   res.json({ status: 'ready', ready: true })
 })
+
+// GraphQL aggregation layer (#528), alongside the REST routes below.
+app.use(
+  '/graphql',
+  createGraphQLHandler({
+    query: (sql, params) => query(sql, params) as Promise<{ rows: Record<string, unknown>[] }>,
+    health: { ping: pingDatabase, stats: getStats },
+  })
+)
 
 // Soroban State Export Endpoints
 app.post('/api/state/export', async (_req: Request, res: Response) => {
