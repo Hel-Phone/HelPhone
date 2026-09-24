@@ -29,3 +29,20 @@ Express does not serve HTTP/2 directly. HTTP/2 is negotiated by the TLS-terminat
 ### Verification
 
 `test/keep-alive.test.js` starts a real server, sends three sequential requests through a keep-alive agent, and asserts that exactly one TCP connection was opened. It runs in CI with the other subsystem tests. The ~90% handshake-overhead reduction in the original issue is what this reuse yields for sequential calls (one handshake per session instead of one per request). It is not measured by the suite.
+
+## OffscreenCanvas map overlay (`src/lib/offscreenCanvas.ts`, `src/workers/canvas-worker.js`)
+
+Animated markers on the community map (pulsing rings for pending, en-route, resolved and responder states) are drawn on a `<canvas>` layered over the SVG map. Where the browser supports it, control of that canvas is handed to a Web Worker with `canvas.transferControlToOffscreen()`, so the animation runs on its own thread and is not starved by React renders or map interaction.
+
+```
+CommunityMap.jsx ── createOverlayRenderer(canvas) ─┬─ worker mode:      transferControlToOffscreen() ─> canvas-worker.js (rAF loop)
+                                                   └─ main-thread mode: requestAnimationFrame loop, same drawOverlayFrame()
+```
+
+Both modes call the same `drawOverlayFrame()`, so the output is identical. Main-thread mode is used when `Worker`, `OffscreenCanvas` or `transferControlToOffscreen` is missing. If the worker fails after control was transferred, the canvas cannot be reused, so `CommunityMap` remounts a fresh canvas and forces main-thread mode.
+
+Usage: pass `overlays` (an array of `{ id, x, y, kind }` in map viewBox units, `1140 x 540`) and optionally `onRenderStats`. With no `overlays` prop, no canvas is rendered and behaviour is unchanged.
+
+### Frame rate
+
+The loop is driven by `requestAnimationFrame`, so it runs at the display refresh rate (60 Hz on most screens). The rate is measured, not assumed: `FpsMeter` reports `{ fps, frames, windowMs }` once per second through `onRenderStats`. A device that cannot hold 60 FPS shows a lower number instead of a false claim. The unit tests verify the scheduling, the drawing and the message protocol with a fake clock. They do not measure real frame rates, which need a browser and a profile of the actual overlay count.

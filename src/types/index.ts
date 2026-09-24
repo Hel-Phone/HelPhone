@@ -114,3 +114,20 @@ export interface KeyDerivationBenchmark {
   budgetMs: number
   withinBudget: boolean
 }
+
+// --- Map Overlay Rendering ---
+export type OverlayKind = 'pending' | 'enroute' | 'resolved' | 'responder'
+
+/** A marker drawn on the community map's canvas overlay, in map (viewBox) units. */
+export interface MapOverlay {
+  id: string
+  x: number
+  y: number
+  kind: OverlayKind
+}
+
+export interface OverlayRenderStats {
+  fps: number
+  frames: number
+  windowMs: number
+}
