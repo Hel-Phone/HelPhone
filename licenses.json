@@ -1,0 +1,5725 @@
+{
+  "generatedBy": "scripts/audit-deps.js (#540)",
+  "policy": {
+    "approved": "MIT, Apache-2.0, BSD-*, ISC (and equivalent permissives)",
+    "denied": "GPL, AGPL, SSPL, EUPL, OSL, CPAL, RPL unless in EXCEPTIONS"
+  },
+  "summary": {
+    "total": 815,
+    "approved": 766,
+    "review": 48,
+    "excepted": 1,
+    "denied": 0
+  },
+  "exceptions": {
+    "node_modules/@lobstrco/signer-extension-api": "GPL-3.0 via stellar-wallets-kit transitive; tracked for replacement",
+    "node_modules/rpc-websockets": "LGPL-3.0-only transitive; review on next major bump"
+  },
+  "packages": [
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@adobe/css-tools",
+      "version": "4.5.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@adraffy/ens-normalize",
+      "version": "1.11.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@albedo-link/intent",
+      "version": "0.12.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@asamuzakjp/css-color",
+      "version": "5.1.11",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@asamuzakjp/dom-selector",
+      "version": "7.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@asamuzakjp/generational-cache",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@asamuzakjp/nwsapi",
+      "version": "2.3.9",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@aztec/bb.js",
+      "version": "0.87.9",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@aztec/bb.js/node_modules/commander",
+      "version": "12.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@aztec/bb.js/node_modules/pino",
+      "version": "9.14.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@babel/runtime",
+      "version": "7.29.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@base-org/account",
+      "version": "2.4.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@base-org/account/node_modules/@noble/hashes",
+      "version": "1.4.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@bramus/specificity",
+      "version": "2.4.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@bufbuild/protobuf",
+      "version": "2.12.1",
+      "license": "(Apache-2.0 AND BSD-3-Clause)",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@coinbase/cdp-sdk",
+      "version": "1.51.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@coinbase/cdp-sdk/node_modules/axios",
+      "version": "1.16.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit",
+      "version": "2.4.0",
+      "license": "UNKNOWN",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@msgpack/msgpack",
+      "version": "3.1.2",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@noble/curves",
+      "version": "1.9.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@noble/hashes",
+      "version": "1.8.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@preact/signals",
+      "version": "2.9.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@reown/appkit",
+      "version": "1.8.19",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@reown/appkit-common",
+      "version": "1.8.19",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@reown/appkit-controllers",
+      "version": "1.8.19",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@reown/appkit-pay",
+      "version": "1.8.19",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@reown/appkit-polyfills",
+      "version": "1.8.19",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@reown/appkit-scaffold-ui",
+      "version": "1.8.19",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@reown/appkit-ui",
+      "version": "1.8.19",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@reown/appkit-utils",
+      "version": "1.8.19",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@reown/appkit-wallet",
+      "version": "1.8.19",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@stellar/freighter-api",
+      "version": "6.0.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@stellar/freighter-api/node_modules/semver",
+      "version": "7.7.1",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@twind/core",
+      "version": "1.1.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@twind/preset-autoprefix",
+      "version": "1.0.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@twind/preset-tailwind",
+      "version": "1.1.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@walletconnect/core",
+      "version": "2.23.0",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@walletconnect/core/node_modules/@walletconnect/logger",
+      "version": "3.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@walletconnect/core/node_modules/@walletconnect/types",
+      "version": "2.23.0",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@walletconnect/sign-client",
+      "version": "2.23.0",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@walletconnect/sign-client/node_modules/@walletconnect/logger",
+      "version": "3.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@walletconnect/sign-client/node_modules/@walletconnect/types",
+      "version": "2.23.0",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@walletconnect/types",
+      "version": "2.23.9",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@walletconnect/utils",
+      "version": "2.23.0",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@walletconnect/utils/node_modules/@walletconnect/logger",
+      "version": "3.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@walletconnect/utils/node_modules/@walletconnect/types",
+      "version": "2.23.0",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@walletconnect/utils/node_modules/abitype",
+      "version": "1.2.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@walletconnect/utils/node_modules/ox",
+      "version": "0.9.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/@walletconnect/utils/node_modules/ox/node_modules/@noble/curves",
+      "version": "1.9.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/es-toolkit",
+      "version": "1.39.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/preact",
+      "version": "10.29.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit-tech/stellar-wallets-kit/node_modules/zod",
+      "version": "3.22.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@creit.tech/xbull-wallet-connect",
+      "version": "0.4.0",
+      "license": "UNKNOWN",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@csstools/color-helpers",
+      "version": "6.1.0",
+      "license": "MIT-0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@csstools/css-calc",
+      "version": "3.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@csstools/css-color-parser",
+      "version": "4.1.10",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@csstools/css-parser-algorithms",
+      "version": "4.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@csstools/css-syntax-patches-for-csstree",
+      "version": "1.1.7",
+      "license": "MIT-0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@csstools/css-tokenizer",
+      "version": "4.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@exodus/bytes",
+      "version": "1.15.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@hot-wallet/sdk",
+      "version": "1.0.11",
+      "license": "UNKNOWN",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@jridgewell/sourcemap-codec",
+      "version": "1.5.5",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@jsr/std__encoding",
+      "version": "1.0.10",
+      "license": "UNKNOWN",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@ledgerhq/devices",
+      "version": "8.6.1",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@ledgerhq/errors",
+      "version": "6.36.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@ledgerhq/hw-app-str",
+      "version": "7.2.8",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@ledgerhq/hw-transport",
+      "version": "6.31.12",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@ledgerhq/hw-transport-webusb",
+      "version": "6.29.12",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@ledgerhq/logs",
+      "version": "6.17.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@lit-labs/ssr-dom-shim",
+      "version": "1.6.0",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@lit/react",
+      "version": "1.0.8",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@lit/reactive-element",
+      "version": "2.1.2",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@lobstrco/signer-extension-api",
+      "version": "2.0.0",
+      "license": "GPL-3.0",
+      "status": "excepted"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@mapbox/jsonlint-lines-primitives",
+      "version": "2.0.2",
+      "license": "UNKNOWN",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@mapbox/unitbezier",
+      "version": "0.0.1",
+      "license": "BSD-2-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@maplibre/maplibre-gl-style-spec",
+      "version": "19.3.3",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@msgpack/msgpack",
+      "version": "3.1.3",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@msgpackr-extract/msgpackr-extract-darwin-arm64",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@msgpackr-extract/msgpackr-extract-darwin-x64",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@msgpackr-extract/msgpackr-extract-linux-arm",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@msgpackr-extract/msgpackr-extract-linux-arm64",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@msgpackr-extract/msgpackr-extract-linux-x64",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@msgpackr-extract/msgpackr-extract-win32-x64",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@napi-rs/wasm-runtime",
+      "version": "1.1.5",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@near-js/crypto",
+      "version": "1.4.2",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@near-js/crypto/node_modules/@noble/curves",
+      "version": "1.8.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@near-js/crypto/node_modules/@noble/hashes",
+      "version": "1.7.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@near-js/crypto/node_modules/borsh",
+      "version": "1.0.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@near-js/types",
+      "version": "0.3.1",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@near-js/utils",
+      "version": "1.1.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@near-wallet-selector/core",
+      "version": "8.10.2",
+      "license": "UNKNOWN",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@near-wallet-selector/core/node_modules/borsh",
+      "version": "1.0.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@near-wallet-selector/core/node_modules/js-sha256",
+      "version": "0.9.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@near-wallet-selector/core/node_modules/rxjs",
+      "version": "7.8.1",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@noble/ciphers",
+      "version": "1.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@noble/curves",
+      "version": "1.8.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@noble/curves/node_modules/@noble/hashes",
+      "version": "1.7.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@noble/ed25519",
+      "version": "3.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@noble/hashes",
+      "version": "2.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@noir-lang/acvm_js",
+      "version": "1.0.0-beta.9",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@noir-lang/noir_js",
+      "version": "1.0.0-beta.9",
+      "license": "(MIT OR Apache-2.0)",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@noir-lang/noir_js/node_modules/@noir-lang/types",
+      "version": "1.0.0-beta.9",
+      "license": "(MIT OR Apache-2.0)",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@noir-lang/noirc_abi",
+      "version": "1.0.0-beta.9",
+      "license": "(MIT OR Apache-2.0)",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@noir-lang/noirc_abi/node_modules/@noir-lang/types",
+      "version": "1.0.0-beta.9",
+      "license": "(MIT OR Apache-2.0)",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@oxc-project/types",
+      "version": "0.133.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@phosphor-icons/webcomponents",
+      "version": "2.1.5",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@pinojs/redact",
+      "version": "0.4.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@preact/signals-core",
+      "version": "1.14.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-android-arm64",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-darwin-arm64",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-darwin-x64",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-freebsd-x64",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-linux-arm-gnueabihf",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-linux-arm64-gnu",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-linux-arm64-musl",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-linux-ppc64-gnu",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-linux-s390x-gnu",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-linux-x64-gnu",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-linux-x64-musl",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-openharmony-arm64",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-wasm32-wasi",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-wasm32-wasi/node_modules/@emnapi/core",
+      "version": "1.10.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-wasm32-wasi/node_modules/@emnapi/runtime",
+      "version": "1.10.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-wasm32-wasi/node_modules/@emnapi/wasi-threads",
+      "version": "1.2.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-win32-arm64-msvc",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/binding-win32-x64-msvc",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@rolldown/pluginutils",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@safe-global/safe-apps-provider",
+      "version": "0.18.6",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@safe-global/safe-apps-sdk",
+      "version": "9.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@safe-global/safe-gateway-typescript-sdk",
+      "version": "3.23.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@scure/base",
+      "version": "1.2.6",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@scure/bip32",
+      "version": "1.7.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@scure/bip32/node_modules/@noble/curves",
+      "version": "1.9.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@scure/bip32/node_modules/@noble/hashes",
+      "version": "1.8.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@scure/bip39",
+      "version": "1.6.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@scure/bip39/node_modules/@noble/hashes",
+      "version": "1.8.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana-program/system",
+      "version": "0.10.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana-program/token",
+      "version": "0.9.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/accounts",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/addresses",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/assertions",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/buffer-layout",
+      "version": "4.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/codecs",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/codecs-core",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/codecs-data-structures",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/codecs-numbers",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/codecs-strings",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/errors",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/errors/node_modules/commander",
+      "version": "14.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/fast-stable-stringify",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/functional",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/instruction-plans",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/instructions",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/keys",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/kit",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/nominal-types",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/offchain-messages",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/options",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/plugin-core",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/programs",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/promises",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/rpc",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/rpc-api",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/rpc-parsed-types",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/rpc-spec",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/rpc-spec-types",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/rpc-subscriptions",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/rpc-subscriptions-api",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/rpc-subscriptions-channel-websocket",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/rpc-subscriptions-spec",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/rpc-transformers",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/rpc-transport-http",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/rpc-types",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/signers",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/subscribable",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/sysvars",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/transaction-confirmation",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/transaction-messages",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/transactions",
+      "version": "5.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/wallet-adapter-base",
+      "version": "0.9.27",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/wallet-standard-features",
+      "version": "1.4.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/web3.js",
+      "version": "1.98.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/web3.js/node_modules/@noble/hashes",
+      "version": "1.8.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/web3.js/node_modules/@solana/codecs-core",
+      "version": "2.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/web3.js/node_modules/@solana/codecs-numbers",
+      "version": "2.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/web3.js/node_modules/@solana/errors",
+      "version": "2.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/web3.js/node_modules/base-x",
+      "version": "3.0.11",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/web3.js/node_modules/borsh",
+      "version": "0.7.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@solana/web3.js/node_modules/bs58",
+      "version": "4.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@standard-schema/spec",
+      "version": "1.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@stellar/js-xdr",
+      "version": "4.0.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@stellar/stellar-sdk",
+      "version": "16.0.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@supabase/auth-js",
+      "version": "2.108.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@supabase/functions-js",
+      "version": "2.108.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@supabase/phoenix",
+      "version": "0.4.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@supabase/postgrest-js",
+      "version": "2.108.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@supabase/realtime-js",
+      "version": "2.108.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@supabase/storage-js",
+      "version": "2.108.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@supabase/supabase-js",
+      "version": "2.108.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@swc/helpers",
+      "version": "0.5.23",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@testing-library/jest-dom",
+      "version": "7.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@testing-library/jest-dom/node_modules/dom-accessibility-api",
+      "version": "0.6.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@testing-library/react",
+      "version": "16.3.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-plugin-stellar",
+      "version": "10.0.0-alpha.1",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-plugin-stellar/node_modules/@trezor/utils",
+      "version": "10.0.0-alpha.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-plugin-stellar/node_modules/bignumber.js",
+      "version": "9.3.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-web",
+      "version": "10.0.0-alpha.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-web/node_modules/@sinclair/typebox",
+      "version": "0.34.49",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-web/node_modules/@trezor/connect-common",
+      "version": "10.0.0-alpha.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-web/node_modules/@trezor/device-utils",
+      "version": "10.0.0-alpha.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-web/node_modules/@trezor/protobuf",
+      "version": "10.0.0-alpha.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-web/node_modules/@trezor/protocol",
+      "version": "10.0.0-alpha.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-web/node_modules/@trezor/schema-utils",
+      "version": "10.0.0-alpha.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-web/node_modules/@trezor/type-utils",
+      "version": "10.0.0-alpha.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-web/node_modules/@trezor/utils",
+      "version": "10.0.0-alpha.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-web/node_modules/@trezor/websocket-client",
+      "version": "10.0.0-alpha.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@trezor/connect-web/node_modules/bignumber.js",
+      "version": "9.3.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@tybys/wasm-util",
+      "version": "0.10.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@types/chai",
+      "version": "5.2.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@types/connect",
+      "version": "3.4.38",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@types/deep-eql",
+      "version": "4.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@types/estree",
+      "version": "1.0.9",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@types/node",
+      "version": "26.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@types/node/node_modules/undici-types",
+      "version": "8.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@types/trusted-types",
+      "version": "2.0.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@types/uuid",
+      "version": "10.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@types/ws",
+      "version": "7.4.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@vis.gl/react-mapbox",
+      "version": "8.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@vis.gl/react-maplibre",
+      "version": "8.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@vitejs/plugin-react",
+      "version": "6.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@vitest/expect",
+      "version": "4.1.10",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@vitest/mocker",
+      "version": "4.1.10",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@vitest/pretty-format",
+      "version": "4.1.10",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@vitest/runner",
+      "version": "4.1.10",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@vitest/snapshot",
+      "version": "4.1.10",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@vitest/spy",
+      "version": "4.1.10",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@vitest/utils",
+      "version": "4.1.10",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@wallet-standard/base",
+      "version": "1.1.1",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@wallet-standard/features",
+      "version": "1.1.1",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@wallet-standard/wallet",
+      "version": "1.1.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/environment",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/environment/node_modules/tslib",
+      "version": "1.14.1",
+      "license": "0BSD",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/events",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/events/node_modules/tslib",
+      "version": "1.14.1",
+      "license": "0BSD",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/heartbeat",
+      "version": "1.2.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/jsonrpc-http-connection",
+      "version": "1.0.8",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/jsonrpc-provider",
+      "version": "1.0.14",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/jsonrpc-types",
+      "version": "1.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/jsonrpc-utils",
+      "version": "1.0.8",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/jsonrpc-utils/node_modules/tslib",
+      "version": "1.14.1",
+      "license": "0BSD",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/jsonrpc-ws-connection",
+      "version": "1.0.16",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/jsonrpc-ws-connection/node_modules/ws",
+      "version": "7.5.11",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/keyvaluestorage",
+      "version": "1.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/logger",
+      "version": "3.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/relay-api",
+      "version": "1.0.11",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/relay-auth",
+      "version": "1.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/relay-auth/node_modules/@noble/hashes",
+      "version": "1.7.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/safe-json",
+      "version": "1.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/safe-json/node_modules/tslib",
+      "version": "1.14.1",
+      "license": "0BSD",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/sign-client",
+      "version": "2.23.7",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/sign-client/node_modules/@noble/curves",
+      "version": "1.9.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/sign-client/node_modules/@noble/hashes",
+      "version": "1.8.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/sign-client/node_modules/@walletconnect/core",
+      "version": "2.23.7",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/sign-client/node_modules/@walletconnect/utils",
+      "version": "2.23.7",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/sign-client/node_modules/abitype",
+      "version": "1.2.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/sign-client/node_modules/ox",
+      "version": "0.9.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/sign-client/node_modules/ox/node_modules/@noble/curves",
+      "version": "1.9.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/time",
+      "version": "1.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/time/node_modules/tslib",
+      "version": "1.14.1",
+      "license": "0BSD",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/types",
+      "version": "2.23.7",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/universal-provider",
+      "version": "2.23.7",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/universal-provider/node_modules/@noble/curves",
+      "version": "1.9.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/universal-provider/node_modules/@noble/hashes",
+      "version": "1.8.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/universal-provider/node_modules/@walletconnect/utils",
+      "version": "2.23.7",
+      "license": "SEE LICENSE IN LICENSE.md",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/universal-provider/node_modules/abitype",
+      "version": "1.2.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/universal-provider/node_modules/ox",
+      "version": "0.9.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/universal-provider/node_modules/ox/node_modules/@noble/curves",
+      "version": "1.9.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/window-getters",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/window-getters/node_modules/tslib",
+      "version": "1.14.1",
+      "license": "0BSD",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/window-metadata",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/@walletconnect/window-metadata/node_modules/tslib",
+      "version": "1.14.1",
+      "license": "0BSD",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/abitype",
+      "version": "1.0.6",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/accepts",
+      "version": "1.3.8",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/agent-base",
+      "version": "6.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/agentkeepalive",
+      "version": "4.6.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/ansi-regex",
+      "version": "5.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/ansi-styles",
+      "version": "4.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/anymatch",
+      "version": "3.1.3",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/anymatch/node_modules/picomatch",
+      "version": "2.3.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/aria-query",
+      "version": "5.3.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/arr-union",
+      "version": "3.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/array-flatten",
+      "version": "1.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/assertion-error",
+      "version": "2.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/assign-symbols",
+      "version": "1.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/asynckit",
+      "version": "0.4.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/atomic-sleep",
+      "version": "1.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/axios",
+      "version": "1.16.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/axios-retry",
+      "version": "4.5.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/axios-retry/node_modules/is-retry-allowed",
+      "version": "2.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/base-x",
+      "version": "5.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/base32.js",
+      "version": "0.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/base64-js",
+      "version": "1.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/bidi-js",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/big.js",
+      "version": "6.2.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/bignumber.js",
+      "version": "11.1.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/bip32-path",
+      "version": "0.4.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/blakejs",
+      "version": "1.2.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/bn.js",
+      "version": "5.2.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/body-parser",
+      "version": "1.20.5",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/body-parser/node_modules/debug",
+      "version": "2.6.9",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/body-parser/node_modules/http-errors",
+      "version": "2.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/body-parser/node_modules/ms",
+      "version": "2.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/body-parser/node_modules/setprototypeof",
+      "version": "1.2.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/body-parser/node_modules/statuses",
+      "version": "2.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/body-parser/node_modules/toidentifier",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/borsh",
+      "version": "2.0.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/brorand",
+      "version": "1.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/bs58",
+      "version": "6.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/buffer",
+      "version": "6.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/bytes",
+      "version": "3.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/bytewise",
+      "version": "1.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/bytewise-core",
+      "version": "1.2.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/call-bind-apply-helpers",
+      "version": "1.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/call-bound",
+      "version": "1.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/camelcase",
+      "version": "5.3.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/chai",
+      "version": "6.2.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/chalk",
+      "version": "5.6.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/charenc",
+      "version": "0.0.2",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/chokidar",
+      "version": "5.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/cliui",
+      "version": "6.0.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/clsx",
+      "version": "1.2.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/color-convert",
+      "version": "2.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/color-name",
+      "version": "1.1.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/combined-stream",
+      "version": "1.0.8",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/comlink",
+      "version": "4.4.2",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/commander",
+      "version": "14.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/content-disposition",
+      "version": "0.5.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/content-type",
+      "version": "1.0.5",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/convert-source-map",
+      "version": "2.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/cookie",
+      "version": "1.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/cookie-es",
+      "version": "1.2.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/cookie-signature",
+      "version": "1.0.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/cors",
+      "version": "2.8.6",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/cross-fetch",
+      "version": "3.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/crossws",
+      "version": "0.3.5",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/crypt",
+      "version": "0.0.2",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/css-tree",
+      "version": "3.2.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/css.escape",
+      "version": "1.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/csstype",
+      "version": "3.2.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/data-urls",
+      "version": "7.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/data-urls/node_modules/tr46",
+      "version": "6.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/data-urls/node_modules/webidl-conversions",
+      "version": "8.0.1",
+      "license": "BSD-2-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/data-urls/node_modules/whatwg-url",
+      "version": "16.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/dayjs",
+      "version": "1.11.13",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/debug",
+      "version": "4.4.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/decamelize",
+      "version": "1.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/decimal.js",
+      "version": "10.6.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/defu",
+      "version": "6.1.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/delay",
+      "version": "5.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/delayed-stream",
+      "version": "1.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/depd",
+      "version": "2.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/dequal",
+      "version": "2.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/destr",
+      "version": "2.0.5",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/destroy",
+      "version": "1.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/detect-browser",
+      "version": "5.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/detect-libc",
+      "version": "2.1.2",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/dijkstrajs",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/dunder-proto",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/ee-first",
+      "version": "1.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/elliptic",
+      "version": "6.6.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/elliptic/node_modules/bn.js",
+      "version": "4.12.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/emoji-regex",
+      "version": "8.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/encode-utf8",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/encodeurl",
+      "version": "2.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/entities",
+      "version": "8.0.0",
+      "license": "BSD-2-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/es-define-property",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/es-errors",
+      "version": "1.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/es-module-lexer",
+      "version": "2.3.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/es-object-atoms",
+      "version": "1.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/es-set-tostringtag",
+      "version": "2.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/es-toolkit",
+      "version": "1.44.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/es6-promise",
+      "version": "4.2.8",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/es6-promisify",
+      "version": "5.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/escape-html",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/estree-walker",
+      "version": "3.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/etag",
+      "version": "1.8.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/eventemitter3",
+      "version": "5.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/events",
+      "version": "3.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/eventsource",
+      "version": "4.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/eventsource-parser",
+      "version": "3.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/expect-type",
+      "version": "1.4.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/express",
+      "version": "4.22.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/express/node_modules/cookie",
+      "version": "0.7.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/express/node_modules/debug",
+      "version": "2.6.9",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/express/node_modules/http-errors",
+      "version": "2.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/express/node_modules/ms",
+      "version": "2.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/express/node_modules/setprototypeof",
+      "version": "1.2.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/express/node_modules/statuses",
+      "version": "2.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/express/node_modules/toidentifier",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/extend-shallow",
+      "version": "2.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/eyes",
+      "version": "0.1.8",
+      "license": "UNKNOWN",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/fast-stable-stringify",
+      "version": "1.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/fdir",
+      "version": "6.5.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/feaxios",
+      "version": "0.0.23",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/finalhandler",
+      "version": "1.3.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/finalhandler/node_modules/debug",
+      "version": "2.6.9",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/finalhandler/node_modules/ms",
+      "version": "2.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/finalhandler/node_modules/statuses",
+      "version": "2.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/find-up",
+      "version": "4.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/follow-redirects",
+      "version": "1.16.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/form-data",
+      "version": "4.0.6",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/forwarded",
+      "version": "0.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/fresh",
+      "version": "0.5.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/fsevents",
+      "version": "2.3.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/function-bind",
+      "version": "1.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/get-caller-file",
+      "version": "2.0.5",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/get-intrinsic",
+      "version": "1.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/get-proto",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/get-value",
+      "version": "2.0.6",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/gopd",
+      "version": "1.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/h3",
+      "version": "1.15.11",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/has-symbols",
+      "version": "1.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/has-tostringtag",
+      "version": "1.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/hash.js",
+      "version": "1.1.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/hasown",
+      "version": "2.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/hmac-drbg",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/htm",
+      "version": "3.1.1",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/html-encoding-sniffer",
+      "version": "6.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/https-proxy-agent",
+      "version": "5.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/humanize-ms",
+      "version": "1.2.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/iceberg-js",
+      "version": "0.8.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/iconv-lite",
+      "version": "0.4.24",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/idb-keyval",
+      "version": "6.2.1",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/ieee754",
+      "version": "1.2.1",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/indent-string",
+      "version": "4.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/inherits",
+      "version": "2.0.4",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/ipaddr.js",
+      "version": "1.9.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/iron-webcrypto",
+      "version": "1.2.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/is-buffer",
+      "version": "1.1.6",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/is-extendable",
+      "version": "0.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/is-fullwidth-code-point",
+      "version": "3.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/is-plain-object",
+      "version": "2.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/is-potential-custom-element-name",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/is-retry-allowed",
+      "version": "3.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/isobject",
+      "version": "3.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/isomorphic-ws",
+      "version": "4.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/isows",
+      "version": "1.0.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/jayson",
+      "version": "4.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/jayson/node_modules/@types/node",
+      "version": "12.20.55",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/jayson/node_modules/commander",
+      "version": "2.20.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/jayson/node_modules/ws",
+      "version": "7.5.11",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/jose",
+      "version": "6.2.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/js-sha256",
+      "version": "0.11.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/jsdom",
+      "version": "29.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/jsdom/node_modules/tr46",
+      "version": "6.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/jsdom/node_modules/webidl-conversions",
+      "version": "8.0.1",
+      "license": "BSD-2-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/jsdom/node_modules/whatwg-url",
+      "version": "16.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/json-stringify-pretty-compact",
+      "version": "3.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/json-stringify-safe",
+      "version": "5.0.1",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/keyvaluestorage-interface",
+      "version": "1.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lightningcss",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lightningcss-android-arm64",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lightningcss-darwin-arm64",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lightningcss-darwin-x64",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lightningcss-freebsd-x64",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lightningcss-linux-arm-gnueabihf",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lightningcss-linux-arm64-gnu",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lightningcss-linux-arm64-musl",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lightningcss-linux-x64-gnu",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lightningcss-linux-x64-musl",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lightningcss-win32-arm64-msvc",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lightningcss-win32-x64-msvc",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lit",
+      "version": "3.3.0",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lit-element",
+      "version": "4.2.2",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lit-html",
+      "version": "3.3.3",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/locate-path",
+      "version": "5.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/lru-cache",
+      "version": "11.5.1",
+      "license": "BlueOak-1.0.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/magic-string",
+      "version": "0.30.21",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/mapbox-gl",
+      "version": "3.25.0",
+      "license": "SEE LICENSE IN LICENSE.txt",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/math-intrinsics",
+      "version": "1.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/md5",
+      "version": "2.3.0",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/mdn-data",
+      "version": "2.27.1",
+      "license": "CC0-1.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/media-typer",
+      "version": "0.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/merge-descriptors",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/methods",
+      "version": "1.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/mime",
+      "version": "1.6.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/mime-db",
+      "version": "1.52.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/mime-types",
+      "version": "2.1.35",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/min-indent",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/minimalistic-assert",
+      "version": "1.0.1",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/minimalistic-crypto-utils",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/minimist",
+      "version": "1.2.8",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/ms",
+      "version": "2.1.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/msgpackr",
+      "version": "1.12.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/msgpackr-extract",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/multiformats",
+      "version": "9.9.0",
+      "license": "(Apache-2.0 AND MIT)",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/mustache",
+      "version": "4.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/nanoid",
+      "version": "3.3.12",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/negotiator",
+      "version": "0.6.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/node-fetch",
+      "version": "2.7.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/node-fetch-native",
+      "version": "1.6.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/node-gyp-build",
+      "version": "4.8.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/node-gyp-build-optional-packages",
+      "version": "5.2.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/node-mock-http",
+      "version": "1.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/normalize-path",
+      "version": "3.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/object-assign",
+      "version": "4.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/object-inspect",
+      "version": "1.13.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/obug",
+      "version": "2.1.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/ofetch",
+      "version": "1.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/on-exit-leak-free",
+      "version": "2.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/on-finished",
+      "version": "2.4.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/ox",
+      "version": "0.6.9",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/ox/node_modules/@noble/hashes",
+      "version": "1.8.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/p-limit",
+      "version": "2.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/p-locate",
+      "version": "4.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/p-try",
+      "version": "2.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/pako",
+      "version": "2.1.0",
+      "license": "(MIT AND Zlib)",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/parse5",
+      "version": "8.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/parseurl",
+      "version": "1.3.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/path-exists",
+      "version": "4.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/path-to-regexp",
+      "version": "0.1.13",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/pathe",
+      "version": "2.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/picocolors",
+      "version": "1.1.1",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/picomatch",
+      "version": "4.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/pino",
+      "version": "10.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/pino-abstract-transport",
+      "version": "2.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/pino-std-serializers",
+      "version": "7.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/pngjs",
+      "version": "5.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/postcss",
+      "version": "8.5.15",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/preact",
+      "version": "10.24.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/process-warning",
+      "version": "5.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/proxy-addr",
+      "version": "2.0.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/proxy-compare",
+      "version": "3.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/proxy-from-env",
+      "version": "2.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/punycode",
+      "version": "2.3.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/qrcode",
+      "version": "1.5.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/qs",
+      "version": "6.15.3",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/quick-format-unescaped",
+      "version": "4.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/radix3",
+      "version": "1.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/randombytes",
+      "version": "2.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/range-parser",
+      "version": "1.2.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/raw-body",
+      "version": "2.5.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/raw-body/node_modules/http-errors",
+      "version": "2.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/raw-body/node_modules/setprototypeof",
+      "version": "1.2.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/raw-body/node_modules/statuses",
+      "version": "2.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/raw-body/node_modules/toidentifier",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/react",
+      "version": "19.2.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/react-dom",
+      "version": "19.2.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/react-map-gl",
+      "version": "8.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/react-router",
+      "version": "7.18.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/react-router-dom",
+      "version": "7.18.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/readdirp",
+      "version": "5.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/real-require",
+      "version": "0.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/redent",
+      "version": "3.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/require-directory",
+      "version": "2.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/require-from-string",
+      "version": "2.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/require-main-filename",
+      "version": "2.0.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/rolldown",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/rpc-websockets",
+      "version": "9.3.9",
+      "license": "LGPL-3.0-only",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/rpc-websockets/node_modules/@types/ws",
+      "version": "8.18.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/rpc-websockets/node_modules/uuid",
+      "version": "14.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/rw",
+      "version": "1.3.3",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/rxjs",
+      "version": "7.8.2",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/safe-buffer",
+      "version": "5.2.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/safe-stable-stringify",
+      "version": "2.5.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/safer-buffer",
+      "version": "2.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/saxes",
+      "version": "6.0.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/scheduler",
+      "version": "0.27.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/secp256k1",
+      "version": "5.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/secp256k1/node_modules/node-addon-api",
+      "version": "5.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/semver",
+      "version": "7.7.2",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/send",
+      "version": "0.19.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/send/node_modules/debug",
+      "version": "2.6.9",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/send/node_modules/debug/node_modules/ms",
+      "version": "2.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/send/node_modules/http-errors",
+      "version": "2.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/send/node_modules/setprototypeof",
+      "version": "1.2.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/send/node_modules/statuses",
+      "version": "2.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/send/node_modules/toidentifier",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/serve-static",
+      "version": "1.16.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/set-blocking",
+      "version": "2.0.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/set-cookie-parser",
+      "version": "2.7.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/set-value",
+      "version": "2.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/sha1",
+      "version": "1.1.1",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/side-channel",
+      "version": "1.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/side-channel-list",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/side-channel-map",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/side-channel-weakmap",
+      "version": "1.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/siginfo",
+      "version": "2.0.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/slow-redact",
+      "version": "0.3.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/smol-toml",
+      "version": "1.6.1",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/sonic-boom",
+      "version": "4.2.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/sort-asc",
+      "version": "0.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/sort-desc",
+      "version": "0.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/sort-object",
+      "version": "3.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/source-map-js",
+      "version": "1.2.1",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/split-string",
+      "version": "3.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/split-string/node_modules/extend-shallow",
+      "version": "3.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/split-string/node_modules/is-extendable",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/split2",
+      "version": "4.2.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/stackback",
+      "version": "0.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/std-env",
+      "version": "4.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/stream-chain",
+      "version": "2.2.5",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/stream-json",
+      "version": "1.9.1",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/string-width",
+      "version": "4.2.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/strip-ansi",
+      "version": "6.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/strip-indent",
+      "version": "3.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/style-vendorizer",
+      "version": "2.2.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/superstruct",
+      "version": "2.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/symbol-tree",
+      "version": "3.2.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/text-encoding-utf-8",
+      "version": "1.0.2",
+      "license": "UNKNOWN",
+      "status": "review"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/thread-stream",
+      "version": "3.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/tinybench",
+      "version": "2.9.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/tinyexec",
+      "version": "1.2.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/tinyglobby",
+      "version": "0.2.17",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/tinyrainbow",
+      "version": "3.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/tldts",
+      "version": "7.4.9",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/tldts-core",
+      "version": "7.4.9",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/tough-cookie",
+      "version": "6.0.2",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/tr46",
+      "version": "0.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/ts-mixer",
+      "version": "6.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/tslib",
+      "version": "2.8.1",
+      "license": "0BSD",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/tweetnacl",
+      "version": "1.0.3",
+      "license": "Unlicense",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/tweetnacl-util",
+      "version": "0.15.1",
+      "license": "Unlicense",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/type-is",
+      "version": "1.6.18",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/typewise",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/typewise-core",
+      "version": "1.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/ufo",
+      "version": "1.6.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/uint8array-extras",
+      "version": "1.5.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/uint8arrays",
+      "version": "3.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/uncrypto",
+      "version": "0.1.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/undici",
+      "version": "7.29.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/undici-types",
+      "version": "7.28.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/union-value",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/unpipe",
+      "version": "1.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/unstorage",
+      "version": "1.17.5",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/utf-8-validate",
+      "version": "6.0.6",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/utils-merge",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/uuid",
+      "version": "8.3.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/uuid4",
+      "version": "2.0.3",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/valtio",
+      "version": "2.1.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/vary",
+      "version": "1.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/viem",
+      "version": "2.53.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/viem/node_modules/@noble/curves",
+      "version": "1.9.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/viem/node_modules/@noble/hashes",
+      "version": "1.8.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/viem/node_modules/abitype",
+      "version": "1.2.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/viem/node_modules/ox",
+      "version": "0.14.29",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/viem/node_modules/ws",
+      "version": "8.20.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/vite",
+      "version": "8.0.16",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/vitest",
+      "version": "4.1.10",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/w3c-xmlserializer",
+      "version": "5.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/webidl-conversions",
+      "version": "3.0.1",
+      "license": "BSD-2-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/whatwg-mimetype",
+      "version": "5.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/whatwg-url",
+      "version": "5.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/which-module",
+      "version": "2.0.1",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/why-is-node-running",
+      "version": "2.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/wrap-ansi",
+      "version": "6.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/ws",
+      "version": "8.21.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/xml-name-validator",
+      "version": "5.0.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/xmlchars",
+      "version": "2.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/y18n",
+      "version": "4.0.3",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/yargs",
+      "version": "15.4.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/yargs-parser",
+      "version": "18.1.3",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/zod",
+      "version": "3.25.76",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "package-lock.json",
+      "path": "node_modules/zustand",
+      "version": "5.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@aztec/bb.js",
+      "version": "0.87.9",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@msgpackr-extract/msgpackr-extract-darwin-arm64",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@msgpackr-extract/msgpackr-extract-darwin-x64",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@msgpackr-extract/msgpackr-extract-linux-arm",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@msgpackr-extract/msgpackr-extract-linux-arm64",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@msgpackr-extract/msgpackr-extract-linux-x64",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@msgpackr-extract/msgpackr-extract-win32-x64",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@noble/ed25519",
+      "version": "3.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@noble/hashes",
+      "version": "2.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@noir-lang/acvm_js",
+      "version": "1.0.0-beta.26",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@noir-lang/noir_js",
+      "version": "1.0.0-beta.26",
+      "license": "(MIT OR Apache-2.0)",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@noir-lang/noir_js/node_modules/pako",
+      "version": "3.0.1",
+      "license": "(MIT AND Zlib)",
+      "status": "review"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@noir-lang/noirc_abi",
+      "version": "1.0.0-beta.26",
+      "license": "(MIT OR Apache-2.0)",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@noir-lang/types",
+      "version": "1.0.0-beta.26",
+      "license": "(MIT OR Apache-2.0)",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@paralleldrive/cuid2",
+      "version": "2.3.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@paralleldrive/cuid2/node_modules/@noble/hashes",
+      "version": "1.8.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@pinojs/redact",
+      "version": "0.4.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@stellar/js-xdr",
+      "version": "4.0.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@stellar/stellar-sdk",
+      "version": "16.2.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/@stellar/stellar-sdk/node_modules/commander",
+      "version": "14.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/accepts",
+      "version": "1.3.8",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/agent-base",
+      "version": "6.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/agent-base/node_modules/debug",
+      "version": "4.4.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/agent-base/node_modules/ms",
+      "version": "2.1.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/array-flatten",
+      "version": "1.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/asap",
+      "version": "2.0.6",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/asynckit",
+      "version": "0.4.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/atomic-sleep",
+      "version": "1.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/axios",
+      "version": "1.18.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/base32.js",
+      "version": "0.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/base64-js",
+      "version": "1.5.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/bignumber.js",
+      "version": "11.1.5",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/body-parser",
+      "version": "1.20.6",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/buffer",
+      "version": "6.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/bytes",
+      "version": "3.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/call-bind-apply-helpers",
+      "version": "1.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/call-bound",
+      "version": "1.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/combined-stream",
+      "version": "1.0.8",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/comlink",
+      "version": "4.4.2",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/commander",
+      "version": "12.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/component-emitter",
+      "version": "1.3.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/content-disposition",
+      "version": "0.5.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/content-type",
+      "version": "1.0.5",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/cookie",
+      "version": "0.7.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/cookie-signature",
+      "version": "1.0.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/cookiejar",
+      "version": "2.1.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/cors",
+      "version": "2.8.6",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/debug",
+      "version": "2.6.9",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/delayed-stream",
+      "version": "1.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/depd",
+      "version": "2.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/destroy",
+      "version": "1.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/detect-libc",
+      "version": "2.1.2",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/dezalgo",
+      "version": "1.0.4",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/dunder-proto",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/ee-first",
+      "version": "1.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/encodeurl",
+      "version": "2.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/es-define-property",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/es-errors",
+      "version": "1.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/es-object-atoms",
+      "version": "1.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/es-set-tostringtag",
+      "version": "2.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/escape-html",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/etag",
+      "version": "1.8.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/eventsource",
+      "version": "4.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/eventsource-parser",
+      "version": "3.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/express",
+      "version": "4.22.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/fast-safe-stringify",
+      "version": "2.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/feaxios",
+      "version": "0.0.23",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/finalhandler",
+      "version": "1.3.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/follow-redirects",
+      "version": "1.16.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/form-data",
+      "version": "4.0.6",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/formidable",
+      "version": "3.5.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/forwarded",
+      "version": "0.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/fresh",
+      "version": "0.5.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/function-bind",
+      "version": "1.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/get-intrinsic",
+      "version": "1.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/get-proto",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/gopd",
+      "version": "1.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/has-symbols",
+      "version": "1.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/has-tostringtag",
+      "version": "1.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/hasown",
+      "version": "2.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/http-errors",
+      "version": "2.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/https-proxy-agent",
+      "version": "5.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/https-proxy-agent/node_modules/debug",
+      "version": "4.4.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/https-proxy-agent/node_modules/ms",
+      "version": "2.1.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/iconv-lite",
+      "version": "0.4.24",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/idb-keyval",
+      "version": "6.3.0",
+      "license": "Apache-2.0",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/ieee754",
+      "version": "1.2.1",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/inherits",
+      "version": "2.0.4",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/ipaddr.js",
+      "version": "1.9.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/is-retry-allowed",
+      "version": "3.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/math-intrinsics",
+      "version": "1.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/media-typer",
+      "version": "0.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/merge-descriptors",
+      "version": "1.0.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/methods",
+      "version": "1.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/mime",
+      "version": "1.6.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/mime-db",
+      "version": "1.52.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/mime-types",
+      "version": "2.1.35",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/ms",
+      "version": "2.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/msgpackr",
+      "version": "1.12.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/msgpackr-extract",
+      "version": "3.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/negotiator",
+      "version": "0.6.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/node-gyp-build-optional-packages",
+      "version": "5.2.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/object-assign",
+      "version": "4.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/object-inspect",
+      "version": "1.13.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/on-exit-leak-free",
+      "version": "2.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/on-finished",
+      "version": "2.4.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/once",
+      "version": "1.4.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/pako",
+      "version": "2.2.0",
+      "license": "(MIT AND Zlib)",
+      "status": "review"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/parseurl",
+      "version": "1.3.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/path-to-regexp",
+      "version": "0.1.13",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/pino",
+      "version": "9.14.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/pino-abstract-transport",
+      "version": "2.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/pino-std-serializers",
+      "version": "7.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/process-warning",
+      "version": "5.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/proxy-addr",
+      "version": "2.0.7",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/proxy-from-env",
+      "version": "2.1.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/qs",
+      "version": "6.15.3",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/quick-format-unescaped",
+      "version": "4.0.4",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/range-parser",
+      "version": "1.2.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/raw-body",
+      "version": "2.5.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/real-require",
+      "version": "0.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/safe-buffer",
+      "version": "5.2.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/safe-stable-stringify",
+      "version": "2.5.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/safer-buffer",
+      "version": "2.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/send",
+      "version": "0.19.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/send/node_modules/ms",
+      "version": "2.1.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/serve-static",
+      "version": "1.16.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/setprototypeof",
+      "version": "1.2.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/side-channel",
+      "version": "1.1.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/side-channel-list",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/side-channel-map",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/side-channel-weakmap",
+      "version": "1.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/smol-toml",
+      "version": "1.8.0",
+      "license": "BSD-3-Clause",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/sonic-boom",
+      "version": "4.2.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/split2",
+      "version": "4.2.0",
+      "license": "ISC",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/statuses",
+      "version": "2.0.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/superagent",
+      "version": "10.3.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/superagent/node_modules/debug",
+      "version": "4.4.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/superagent/node_modules/mime",
+      "version": "2.6.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/superagent/node_modules/ms",
+      "version": "2.1.3",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/supertest",
+      "version": "7.2.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/supertest/node_modules/cookie-signature",
+      "version": "1.2.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/thread-stream",
+      "version": "3.2.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/toidentifier",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/tslib",
+      "version": "2.8.1",
+      "license": "0BSD",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/type-is",
+      "version": "1.6.18",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/uint8array-extras",
+      "version": "1.5.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/unpipe",
+      "version": "1.0.0",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/utils-merge",
+      "version": "1.0.1",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/vary",
+      "version": "1.1.2",
+      "license": "MIT",
+      "status": "approved"
+    },
+    {
+      "lock": "server/package-lock.json",
+      "path": "node_modules/wrappy",
+      "version": "1.0.2",
+      "license": "ISC",
+      "status": "approved"
+    }
+  ]
+}
