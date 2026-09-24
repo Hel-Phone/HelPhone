@@ -1,149 +1,46 @@
 /**
- * server/env.ts — Centralized environment validation for HelPhone prover
+ * Server-side environment variable validation using Zod.
  *
- * Validates CORS origin patterns (regex based) and exposes helpers for
- * middleware. Keeps server/index.ts lean and makes env errors fail fast
- * instead of silently serving an open CORS policy.
+ * Validates all required server environment variables at startup.
+ * Fails loudly if required variables are missing or invalid.
  */
+import { z } from 'zod';
 
-export const CORS_MAX_AGE = 86400 // 24 hours – preflight cache
+const serverEnvSchema = z.object({
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  PORT: z.coerce.number().int().positive().default(3001),
+  DATABASE_URL: z.string().url(),
+  STELLAR_SECRET_KEY: z.string().min(56),
+  STELLAR_NETWORK: z.enum(['testnet', 'mainnet']).default('testnet'),
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SERVICE_KEY: z.string().min(1).optional(),
+  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+});
 
-const DEFAULT_ALLOWED_ORIGINS = [
-  'https://helphone.com',
-  'https://staging.helphone.com',
-]
+export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
 /**
- * Escape a plain origin string into an anchored regex.
- * e.g. https://helphone.com -> /^https:\/\/helphone\.com$/
+ * Mask a secret value for safe logging.
+ * Shows first 4 and last 4 characters, masks the rest.
  */
-export function escapeOriginPattern(pattern: string): string {
-  return pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+export function maskSecret(value: string): string {
+  if (value.length <= 8) return '****';
+  return `${value.slice(0, 4)}${'*'.repeat(value.length - 8)}${value.slice(-4)}`;
 }
 
-/**
- * Compile a single ALLOWED_ORIGINS entry into a RegExp.
- *
- * Entries are treated as:
- *  - raw regex if they contain `.*`, `\` or start with `^` (explicit regex)
- *  - otherwise exact origin (escaped) plus optional wildcard handling:
- *    `https://*.helphone.com` -> `^https:\/\/.*\.helphone\.com$`
- */
-export function compileOriginPattern(raw: string): RegExp | null {
-  const trimmed = raw.trim()
-  if (!trimmed) return null
+function validateServerEnv(): ServerEnv {
+  const result = serverEnvSchema.safeParse(process.env);
 
-  // Explicit regex: contains \., .*, or anchored ^
-  const isExplicitRegex = /\\|\.\*|^\^|\$$/.test(trimmed) || trimmed.startsWith('^')
-
-  let source: string
-  if (isExplicitRegex) {
-    source = trimmed
-    // Ensure anchored; allow user to omit ^$
-    if (!source.startsWith('^')) source = '^' + source
-    if (!source.endsWith('$')) source = source + '$'
-  } else if (trimmed.includes('*')) {
-    // Wildcard form: https://*.helphone.com
-    const escaped = trimmed.split('*').map(escapeOriginPattern).join('.*')
-    source = `^${escaped}$`
-  } else {
-    // Exact origin
-    source = `^${escapeOriginPattern(trimmed)}$`
-  }
-
-  try {
-    return new RegExp(source)
-  } catch {
-    // Invalid regex – fall back to exact escaped
-    try {
-      return new RegExp(`^${escapeOriginPattern(trimmed)}$`)
-    } catch {
-      return null
+  if (!result.success) {
+    const errors = result.error.flatten().fieldErrors;
+    console.error('❌ Invalid server environment variables:');
+    for (const [key, msgs] of Object.entries(errors)) {
+      console.error(`  ${key}: ${msgs?.join(', ')}`);
     }
+    throw new Error('Server environment validation failed');
   }
+
+  return result.data;
 }
 
-export function parseAllowedOrigins(raw?: string): string[] {
-  if (!raw || !raw.trim()) return [...DEFAULT_ALLOWED_ORIGINS]
-  return raw
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-}
-
-export function getAllowedOriginPatterns(): string[] {
-  const raw = process.env.ALLOWED_ORIGINS
-  return parseAllowedOrigins(raw)
-}
-
-export function getAllowedOriginRegexes(): RegExp[] {
-  const patterns = getAllowedOriginPatterns()
-  return patterns.map(compileOriginPattern).filter(Boolean) as RegExp[]
-}
-
-/**
- * Validate that all configured origins compile to valid regexes.
- * Throws on hard mis-configuration so deployment fails fast.
- */
-export function validateCorsEnv(): { patterns: string[]; regexes: RegExp[] } {
-  const patterns = getAllowedOriginPatterns()
-  const regexes: RegExp[] = []
-  const invalid: string[] = []
-  for (const p of patterns) {
-    const re = compileOriginPattern(p)
-    if (!re) invalid.push(p)
-    else regexes.push(re)
-  }
-  if (invalid.length) {
-    throw new Error(`Invalid ALLOWED_ORIGINS entries: ${invalid.join(', ')}`)
-  }
-  return { patterns, regexes }
-}
-
-export function getCorsConfig() {
-  return {
-    maxAge: CORS_MAX_AGE,
-    allowedOrigins: getAllowedOriginPatterns(),
-    allowedRegexes: getAllowedOriginRegexes(),
-    allowedMethods: ['GET', 'POST', 'OPTIONS'] as const,
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'] as const,
-  }
-}
-
-// ── Database maintenance (#538) ──────────────────────────────────────────────
-
-export interface MaintenanceConfig {
-  /** Master switch; off unless DB_MAINTENANCE_ENABLED=true. */
-  enabled: boolean
-  /** Vacuum a table once dead tuples exceed this % of all tuples. */
-  bloatThresholdPct: number
-  /** UTC hour [0-23] the low-traffic window opens (inclusive). */
-  windowStartHour: number
-  /** UTC hour [0-23] the low-traffic window closes (exclusive). */
-  windowEndHour: number
-  /** How often the scheduler checks whether work is due. */
-  intervalMs: number
-  /** Minimum gap between REINDEXes of the same table. */
-  reindexCooldownMs: number
-  /** Ignore tables with fewer total tuples than this (vacuum isn't worth it). */
-  minTableTuples: number
-}
-
-function envNumber(raw: string | undefined, fallback: number, { min, max }: { min: number; max: number }): number {
-  if (raw === undefined || raw.trim() === '') return fallback
-  const n = Number(raw)
-  return Number.isFinite(n) && n >= min && n <= max ? n : fallback
-}
-
-/** Read maintenance settings, falling back to the default for any bad value. */
-export function getMaintenanceConfig(env: NodeJS.ProcessEnv = process.env): MaintenanceConfig {
-  return {
-    enabled: env.DB_MAINTENANCE_ENABLED === 'true',
-    bloatThresholdPct: envNumber(env.DB_BLOAT_THRESHOLD_PCT, 20, { min: 1, max: 100 }),
-    windowStartHour: Math.trunc(envNumber(env.DB_MAINTENANCE_WINDOW_START_UTC, 2, { min: 0, max: 23 })),
-    windowEndHour: Math.trunc(envNumber(env.DB_MAINTENANCE_WINDOW_END_UTC, 5, { min: 0, max: 23 })),
-    intervalMs: envNumber(env.DB_MAINTENANCE_INTERVAL_MS, 15 * 60_000, { min: 1_000, max: 24 * 3_600_000 }),
-    reindexCooldownMs: envNumber(env.DB_REINDEX_COOLDOWN_MS, 7 * 24 * 3_600_000, { min: 0, max: 365 * 24 * 3_600_000 }),
-    minTableTuples: envNumber(env.DB_MAINTENANCE_MIN_TUPLES, 1_000, { min: 0, max: Number.MAX_SAFE_INTEGER }),
-  }
-}
+export const serverEnv = validateServerEnv();
