@@ -1,0 +1,37 @@
+name: HelPhone CI / Automated Quality & Security Pipeline
+
+on:
+  push:
+    branches: [ main, develop, 'feature/*' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  quality-and-security-matrix:
+    name: Code Quality, Type Check, Cryptography & State Export Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      - name: Code Formatting & ESLint Quality Check
+        run: npx eslint .
+
+      - name: TypeScript Type Checking (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: Run Vitest Test Suite (Sanity, Feature Flags, State Export & Crypto)
+        run: npm test
+
+      - name: Execute Soroban State Export Verification Script
+        run: bash scripts/export-contract-state.sh

@@ -1,0 +1,7 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "[pre-commit] Executing pre-commit quality checks..."
+npx lint-staged
+npx tsc --noEmit
+echo "[pre-commit] Pre-commit checks passed successfully."

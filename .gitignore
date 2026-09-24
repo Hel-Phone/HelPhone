@@ -11,6 +11,10 @@ yarn-error.log*
 .vite/
 .thumbnail
 
+# State Export Snapshots
+snapshots/
+test-snapshots/
+
 # Rust/Soroban build output
 contract/**/target/
 contracts/**/target/
