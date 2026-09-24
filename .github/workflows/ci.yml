@@ -66,6 +66,7 @@ jobs:
           workspaces: |
             contracts/aegis_vault
             contracts/maintainer_vault
+            contracts/helphone_dao
             contract
 
       - name: Run cargo test (aegis_vault)
@@ -74,6 +75,12 @@ jobs:
 
       - name: Run cargo test (maintainer_vault)
         working-directory: contracts/maintainer_vault
+        run: cargo test --locked
+
+      # Closes #587 — DAO + open source sustainability reserve (1% fee,
+      # DAO-voted maintainer grants).
+      - name: Run cargo test (helphone_dao)
+        working-directory: contracts/helphone_dao
         run: cargo test --locked
 
       # The `soroban` CLI was renamed to `stellar` (soroban-cli -> stellar-cli);
@@ -97,6 +104,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # commit-range signature checks (#619)
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -124,3 +133,23 @@ jobs:
       - name: Dependency health monitor
         run: node scripts/monitor-dep-health.js --offline
         continue-on-error: true
+
+      # Closes #586 — npm + Cargo license scan; fails on unapproved
+      # GPL/AGPL/strong-copyleft licenses (see docs/legal-compliance.md).
+      - name: License compliance & copyleft gate
+        run: node scripts/license-compliance.js --no-write
+
+      # Closes #599 — GitHub Security Advisory scan + minimum-patch plan.
+      # Report-only here; scheduled patch PRs come from cve-patch-bot.yml.
+      - name: CVE patch plan
+        run: node scripts/auto-patch-cve.js --fail-on critical
+
+      # Closes #619 — commit signatures vs live key revocation lists + WoT.
+      - name: Maintainer key revocation check
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            RANGE="origin/${{ github.base_ref }}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+          node scripts/security/verify_maintainer_keys.js --pinned --range "$RANGE" --max 100

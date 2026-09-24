@@ -322,3 +322,42 @@ stellar keys fund helphone-deployer --network testnet
 6. ✅ Remove `src/lib/supabase.js` and `@supabase/supabase-js`
 7. ✅ ZK proof badges — dynamic instead of "SOON"
 8. ⬜ Test end-to-end
+
+---
+
+## Open Source Sustainability Reserve (`contracts/helphone_dao`, #587)
+
+The DAO contract holds a reserve that funds maintainers of the open source
+dependencies HelPhone ships. The reserve logic is in
+`contracts/helphone_dao/src/sustainability.rs`, and its entry points are on `HelPhoneDao`.
+
+- **1% protocol fee.** `collect_sustainability_fee(payer, gross_amount)` pulls
+  `gross_amount * 100 / 10_000` (`SUSTAINABILITY_FEE_BPS = 100`) of the
+  configured SAC token from `payer` into the reserve. Amounts are rounded down,
+  so a dust payment pays nothing.
+- **DAO-voted grants.** `propose_maintainer_grant(proposer, maintainer, package,
+  amount, title, description)` opens a `FundAllocation` proposal and attaches a
+  `MaintainerGrant`. When the proposal passes and `execute_proposal` runs after
+  the timelock, the grant is paid automatically if the reserve covers it. If the
+  reserve is short, the grant stays `Pending`. Anyone can then call
+  `disburse_grant(proposal_id)` once the reserve has grown. Grants attached to
+  failed or cancelled proposals can never be paid.
+- **Reads:** `get_sustainability_stats()` returns reserve, collected,
+  disbursed, grants proposed/paid and maintainers funded (used by
+  `/vault` via `getSustainabilityStats()` in `src/lib/contract.ts`).
+  `get_maintainer_grant(proposal_id)` and `get_maintainer_funding(maintainer)`
+  are the other two reads.
+- **Admin:** `configure_sustainability(admin, reserve_token)` picks the SAC
+  token. `set_voting_supply(admin, supply)` sets the quorum denominator, because
+  SEP-41 tokens expose no `total_supply()`.
+
+```bash
+cd contracts/helphone_dao && cargo test          # grant lifecycle tests
+stellar contract build                            # wasm32v1-none artifact
+stellar contract deploy --wasm ../../target/wasm32v1-none/release/helphone_dao.wasm \
+  --source helphone-deployer --network testnet -- \
+  --admin <G...> --governance_token <C...>
+```
+
+Set `VITE_HELPHONE_DAO_CONTRACT_ID` to show the dependency funding stats on the
+Vault dashboard.

@@ -14,6 +14,7 @@ yarn-error.log*
 # Rust/Soroban build output
 contract/**/target/
 contracts/**/target/
+/target/
 contracts/noir_verifier/
 circuits/target/proof/
 circuits/target/vk/
@@ -27,3 +28,9 @@ support.js
 # Loose asset copies in root only
 /*.png
 tests/integration/.local-deployment.json
+
+# CVE patch bot scratch output (#599)
+.cve-patch-pr.md
+
+# maintainer key cache (#619)
+.cache/

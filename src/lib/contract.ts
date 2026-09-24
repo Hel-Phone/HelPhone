@@ -528,6 +528,137 @@ export async function getMaintainerFunding() {
   });
 }
 
+// ── HelPhone DAO — open source sustainability reserve (#587) ──
+// contracts/helphone_dao routes 1% of protocol transactions (SAC token) into
+// a reserve and pays DAO-approved grants to dependency maintainers.
+
+/** Basis-point cut of each gross protocol amount routed to the reserve. */
+export const SUSTAINABILITY_FEE_BPS = 100;
+
+/** Fee the DAO collects on `grossAmount` (integer stroops), rounded down to
+ *  match the contract's i128 arithmetic. Returns a BigInt. */
+export function computeSustainabilityFee(grossAmount) {
+  const gross = BigInt(grossAmount);
+  if (gross <= 0n) return 0n;
+  return (gross * BigInt(SUSTAINABILITY_FEE_BPS)) / 10_000n;
+}
+
+/** Decode `get_sustainability_stats` into plain numbers for the UI. */
+export function normalizeSustainabilityStats(raw) {
+  if (!raw) return null;
+  const toNum = (v) => {
+    const n = safeToNumber(v ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  };
+  return {
+    token: raw.token || null,
+    feeBps: toNum(raw.fee_bps),
+    reserve: toNum(raw.reserve),
+    totalCollected: toNum(raw.total_collected),
+    totalDisbursed: toNum(raw.total_disbursed),
+    grantsProposed: toNum(raw.grants_proposed),
+    grantsDisbursed: toNum(raw.grants_disbursed),
+    maintainersFunded: toNum(raw.maintainers_funded),
+  };
+}
+
+/** Decode a `MaintainerGrant` (status is a unit enum → `[name]` or `name`). */
+export function normalizeMaintainerGrant(raw) {
+  if (!raw) return null;
+  const status = Array.isArray(raw.status) ? raw.status[0] : raw.status;
+  return {
+    proposalId: safeToNumber(raw.proposal_id),
+    maintainer: raw.maintainer,
+    package: raw.package,
+    amount: safeToNumber(raw.amount),
+    status: status === "Disbursed" ? "Disbursed" : "Pending",
+    disbursedAt: safeToNumber(raw.disbursed_at) || null,
+  };
+}
+
+function _daoContractId() {
+  const id = import.meta.env?.VITE_HELPHONE_DAO_CONTRACT_ID;
+  return id ? assertValidContractId(id, "VITE_HELPHONE_DAO_CONTRACT_ID") : null;
+}
+
+/** Reserve + grant statistics. Returns null when the DAO is not deployed
+ *  (VITE_HELPHONE_DAO_CONTRACT_ID unset). */
+export async function getSustainabilityStats() {
+  const id = _daoContractId();
+  if (!id) return null;
+  return _withCache("getSustainabilityStats", [id], CACHE_TTL.short, async () => {
+    const sim = await simulateRead(new Contract(id).call("get_sustainability_stats"));
+    if (!sim.result) return null;
+    return normalizeSustainabilityStats(scValToNative(sim.result.retval));
+  });
+}
+
+export async function getMaintainerGrant(proposalId) {
+  const id = _daoContractId();
+  if (!id) return null;
+  const sim = await simulateRead(
+    new Contract(id).call("get_maintainer_grant", scv(BigInt(proposalId), { type: "u64" })),
+  );
+  if (!sim.result) return null;
+  return normalizeMaintainerGrant(scValToNative(sim.result.retval));
+}
+
+async function _daoWrite(fn, args, wallet) {
+  const id = _daoContractId();
+  if (!id) throw new Error("VITE_HELPHONE_DAO_CONTRACT_ID not configured");
+  const signerAddress = await resolveWalletAddress(wallet);
+  if (!signerAddress) throw new Error("Wallet address is not available yet");
+  await ensureAccountFunded(signerAddress);
+  const account = await server.getAccount(signerAddress);
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK,
+  })
+    .addOperation(
+      Operation.invokeContractFunction({
+        contract: id,
+        function: fn,
+        args: args(signerAddress),
+      }),
+    )
+    .setTimeout(30)
+    .build();
+  return await sendWrite(tx, wallet, fn);
+}
+
+/** Open a DAO FundAllocation proposal granting `amount` stroops of the
+ *  reserve token to `maintainer` for `pkg` (e.g. "npm:@stellar/stellar-sdk"). */
+export async function proposeMaintainerGrant(
+  maintainer,
+  pkg,
+  amount,
+  title,
+  description,
+  wallet,
+) {
+  return _daoWrite(
+    "propose_maintainer_grant",
+    (signer) => [
+      scv(signer, { type: "address" }),
+      scv(maintainer, { type: "address" }),
+      scv(pkg, { type: "string" }),
+      scv(BigInt(amount), { type: "i128" }),
+      scv(title, { type: "string" }),
+      scv(description, { type: "string" }),
+    ],
+    wallet,
+  );
+}
+
+/** Retry a grant left Pending because the reserve was short at execution. */
+export async function disburseMaintainerGrant(proposalId, wallet) {
+  return _daoWrite(
+    "disburse_grant",
+    () => [scv(BigInt(proposalId), { type: "u64" })],
+    wallet,
+  );
+}
+
 export async function getExpertVerifications(walletAddress, limit = 10) {
   if (!walletAddress) return [];
   return _withCache('getExpertVerifications', [walletAddress, limit], CACHE_TTL.long, async () => {

@@ -174,12 +174,19 @@ npm run security:typosquat       # #588 typosquatting gate (blocks suspicious na
 npm run security:transitive-vuln # #589 transitive DAG + CVE depth scan
 npm run security:wasm-verify     # #590 WASM hash + deterministic-flag check
 npm run security:dep-health      # #591 dependency health index + report
+npm run security:license-gate    # #586 npm + Cargo license scan, copyleft gate
+npm run licenses:generate        # #586 regenerate licenses.json attribution manifest
+npm run security:cve-patch       # #599 GitHub advisory scan + minimum-patch plan (--apply / --open-pr)
+npm run security:maintainer-keys # #619 signatures vs live key revocation lists + web of trust
 ```
 
 - `docs/security-runbook.md` — typosquat triage and transitive-vuln override flow.
 - `docs/sustainability-report.md` — auto-generated health index (12-month abandonment rule).
 - `docs/zk-design.md` → Binary Reproducibility — artifact pinning for `circuits/target/aegis.json`.
-- All four gates also run in the CI `supply-chain` job (dep-health is informational).
+- `docs/legal-compliance.md`: license policy, exceptions and the `licenses.json` manifest (#586).
+- `.github/workflows/cve-patch-bot.yml`: weekly automated security-patch PRs (#599).
+- `.github/workflows/verify-keys.yml`: nightly key-revocation sweep over release tags (#619).
+- All of these gates also run in the CI `supply-chain` job. dep-health is informational, and the CVE plan fails only on critical advisories.
 
 ## Notes
 

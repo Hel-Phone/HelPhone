@@ -135,3 +135,32 @@ export interface WalletKit {
   signTransaction(xdr: string, opts: { networkPassphrase: string }): Promise<string | { signedTxXdr: string }>
   on(event: string, handler: (event?: unknown) => void): () => void
 }
+
+// ── Open source sustainability reserve (#587) ───────────────────────────────
+
+/** `get_sustainability_stats` from contracts/helphone_dao, normalized. */
+export interface SustainabilityStats {
+  /** SAC token the reserve is held in; null until the admin configures it. */
+  token: string | null
+  /** Basis points of each protocol transaction routed to the reserve (100 = 1%). */
+  feeBps: number
+  reserve: number
+  totalCollected: number
+  totalDisbursed: number
+  grantsProposed: number
+  grantsDisbursed: number
+  maintainersFunded: number
+}
+
+export type GrantStatus = 'Pending' | 'Disbursed'
+
+/** A DAO-voted grant to an open source dependency maintainer. */
+export interface MaintainerGrant {
+  proposalId: number
+  maintainer: string
+  /** Dependency identifier, e.g. "npm:@stellar/stellar-sdk". */
+  package: string
+  amount: number
+  status: GrantStatus
+  disbursedAt: number | null
+}

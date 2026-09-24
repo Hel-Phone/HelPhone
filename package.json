@@ -23,6 +23,12 @@
     "security:wasm-verify": "bash scripts/verify-wasm-build.sh",
     "security:dep-health": "node scripts/monitor-dep-health.js --offline",
     "security:commits": "node scripts/security/verify_commit_signatures.js --range origin/main..HEAD",
+    "security:license-gate": "node scripts/license-compliance.js --no-write",
+    "licenses:generate": "node scripts/license-compliance.js",
+    "build:release": "vite build && node scripts/license-compliance.js --out dist/licenses.json",
+    "security:cve-patch": "node scripts/auto-patch-cve.js",
+    "security:cve-patch:apply": "node scripts/auto-patch-cve.js --apply",
+    "security:maintainer-keys": "node scripts/security/verify_maintainer_keys.js",
     "build:all": "npm run build && npm run build --workspace server --if-present",
     "preview": "vite preview",
     "lint": "eslint .",
@@ -106,12 +112,23 @@
     "express-rate-limit": "^8.6.2",
     "i18next": "^25.3.2",
     "mapbox-gl": "^3.25.0",
-    "morgan": "^1.11.0",
+    "morgan": "^1.12.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-i18next": "^15.5.3",
     "react-map-gl": "^8.1.1",
     "react-router-dom": "^7.18.0",
     "supercluster": "~9.0.0"
+  },
+  "overrides": {
+    "axios": "^1.18.0",
+    "js-yaml": "^4.3.2",
+    "nanoid": "^3.3.18",
+    "postcss": "^8.5.23",
+    "react-router": "^7.18.2",
+    "smol-toml": "^1.7.1",
+    "ws@8.20.1": "8.21.0",
+    "qs": "^6.16.0",
+    "body-parser": "^1.20.6"
   }
 }

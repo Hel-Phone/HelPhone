@@ -6,3 +6,21 @@ members = [
   "contracts/maintainer_vault",
 ]
 exclude = ["contract"]
+
+# Member crates' [profile.release] sections are ignored inside a workspace;
+# the Soroban size/safety profile has to live at the root.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+overflow-checks = true
+debug-assertions = false
+
+# #586: Cargo licenses are gated with the npm tree by
+# scripts/license-compliance.js (via `cargo metadata --locked`); see
+# docs/legal-compliance.md for the approved/denied policy.
+[workspace.metadata.license-compliance]
+gate = "node scripts/license-compliance.js --no-write"
+manifest = "licenses.json"
