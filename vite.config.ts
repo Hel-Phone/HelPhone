@@ -228,7 +228,7 @@ export default defineConfig(({ mode }) => ({
       "@noir-lang/noirc_abi",
       "@aztec/bb.js",
     ],
-    include: ["buffer"],
+    include: ["buffer", "fuse.js"],
   },
   worker: {
     format: "es",

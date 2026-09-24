@@ -139,3 +139,28 @@ export default {
   shutdownPool,
   pingDatabase,
 };
+
+// Schema migrations — lazy import avoids a circular dependency between
+// connection and migrator (see migrator.ts for behaviour). The runner shape
+// mirrors migrator.runMigrations options.
+export async function migrate(options: {
+  migrationsDir?: string;
+  runner?: { name: string; query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> };
+  log?: (message: string, ...args: unknown[]) => void;
+} = {}): Promise<MigrationRunReportShape> {
+  const { runMigrations } = await import('./migrator.js');
+  return runMigrations(options);
+}
+
+export interface MigrationRunReportShape {
+  applied: string[];
+  upgraded: string[];
+  skipped: string[];
+  error?: string;
+  reason?: string;
+}
+
+export async function migrateAtStartup(): Promise<MigrationRunReportShape> {
+  const { runMigrationsAtStartup } = await import('./migrator.js');
+  return runMigrationsAtStartup();
+}

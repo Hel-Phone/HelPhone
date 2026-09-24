@@ -6,6 +6,8 @@ import { i18nReady } from "./i18n";
 import ErrorBoundary from "./components/ErrorBoundary";
 import OfflineIndicator from "./components/OfflineIndicator";
 import { initThemeEngine } from "./styles/themeEngine";
+import { bootstrapMultiTabSync } from "./lib/swChannel";
+import { initHelpStoreChannelSync } from "./stores/helpStore";
 import { scheduleKeyDerivationBenchmark } from "./lib/pbkdf2Key";
 import App from "./App";
 import "./App.css";
@@ -75,6 +77,12 @@ function render() {
     </React.StrictMode>,
   );
 }
+
+// Issue #516: multi-tab coordination. One tab (the Web-Locks leader) runs the
+// Soroban/SSE poller and fans contract lifecycle events out to every other tab
+// via BroadcastChannel + the service worker; CRDT stores listen for remote ops.
+initHelpStoreChannelSync();
+void bootstrapMultiTabSync();
 
 // Wait for translation bundles to load before first render so the page
 // never flashes untranslated keys.

@@ -24,6 +24,11 @@ import type {
   RankingEntry,
   RequestStatus,
 } from "../types/index";
+import {
+  getCachedFootprintTemplate,
+  buildSorobanTransaction,
+  summarizeFootprint,
+} from "./footprint";
 
 /** Validate a Stellar Soroban contract ID (strkey 'C...' with CRC16 checksum).
  *  Throws immediately with a clear message instead of letting a malformed ID
@@ -896,6 +901,51 @@ function guardNaN(val, label) {
   return num;
 }
 
+// ── Automated footprint assembly (#517) ─────────────────────────────────
+// Functions whose storage key set is purely determined by their arguments can
+// reuse a server-verified footprint template baked into the envelope. The write
+// path ONLY reuses templates the inspector already cached — it never performs
+// an inspection round-trip itself (that would double RPC calls and slow the
+// critical submit path). Templates are produced up-front by inspectFootprint /
+// warmFootprintTemplates (client pre-flight or the server inspection endpoint).
+const SAFE_FOOTPRINT_FUNCTIONS = new Set([
+  "mark_arrived",
+  "resolve_request",
+  "cancel_request",
+  "propose_transfer",
+  "accept_transfer",
+  "revoke_transfer",
+  "create_admin_proposal",
+  "approve_admin_proposal",
+  "execute_admin_proposal",
+]);
+
+/** Build a contract invocation, baking a cached/verified footprint in when one
+ *  is already resident. Cache misses degrade gracefully to the footprint-free
+ *  envelope (pre-sign simulation derives the keys as it always has). */
+async function buildInvocation({ account, functionName, args, timeoutSeconds = 30 }) {
+  let template;
+  if (SAFE_FOOTPRINT_FUNCTIONS.has(functionName)) {
+    template = getCachedFootprintTemplate(CONTRACT_ID, functionName, args);
+    if (template) {
+      const summary = summarizeFootprint(template);
+      console.debug(
+        `[footprint] ${functionName}: using cached template (${summary.readOnlyCount} read / ${summary.readWriteCount} write keys, resource fee ${summary.resourceFee})`,
+      );
+    }
+  }
+  const { transaction } = buildSorobanTransaction({
+    account,
+    contractId: CONTRACT_ID,
+    functionName,
+    args,
+    template,
+    networkPassphrase: NETWORK,
+    timeoutSeconds,
+  });
+  return transaction;
+}
+
 export async function createRequest(
   requester,
   lat,
@@ -980,22 +1030,14 @@ export async function markArrived(responder, requestId, wallet) {
   if (!signerAddress) throw new Error("Wallet address is not available yet");
   await ensureAccountFunded(signerAddress);
   const account = await server.getAccount(signerAddress);
-  const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
-    networkPassphrase: NETWORK,
-  })
-    .addOperation(
-      Operation.invokeContractFunction({
-        contract: CONTRACT_ID,
-        function: "mark_arrived",
-        args: [
-          scv(responder, { type: "address" }),
-          scv(Number(requestId), { type: "u64" }),
-        ],
-      }),
-    )
-    .setTimeout(30)
-    .build();
+  const tx = await buildInvocation({
+    account,
+    functionName: "mark_arrived",
+    args: [
+      scv(responder, { type: "address" }),
+      scv(Number(requestId), { type: "u64" }),
+    ],
+  });
 
   return await sendWrite(tx, wallet, "mark_arrived");
 }
@@ -1059,22 +1101,11 @@ export async function resolveRequest(requester, requestId, wallet) {
   if (!signerAddress) throw new Error("Wallet address is not available yet");
   await ensureAccountFunded(signerAddress);
   const account = await server.getAccount(signerAddress);
-  const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
-    networkPassphrase: NETWORK,
-  })
-    .addOperation(
-      Operation.invokeContractFunction({
-        contract: CONTRACT_ID,
-        function: "resolve_request",
-        args: [
-          scv(requester, { type: "address" }),
-          scv(Number(requestId), { type: "u64" }),
-        ],
-      }),
-    )
-    .setTimeout(30)
-    .build();
+  const tx = await buildInvocation({
+    account,
+    functionName: "resolve_request",
+    args: [scv(requester, { type: "address" }), scv(Number(requestId), { type: "u64" })],
+  });
 
   await sendWrite(tx, wallet, "resolve_request");
 }
@@ -1084,22 +1115,11 @@ export async function cancelRequest(requester, requestId, wallet) {
   if (!signerAddress) throw new Error("Wallet address is not available yet");
   await ensureAccountFunded(signerAddress);
   const account = await server.getAccount(signerAddress);
-  const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
-    networkPassphrase: NETWORK,
-  })
-    .addOperation(
-      Operation.invokeContractFunction({
-        contract: CONTRACT_ID,
-        function: "cancel_request",
-        args: [
-          scv(requester, { type: "address" }),
-          scv(Number(requestId), { type: "u64" }),
-        ],
-      }),
-    )
-    .setTimeout(30)
-    .build();
+  const tx = await buildInvocation({
+    account,
+    functionName: "cancel_request",
+    args: [scv(requester, { type: "address" }), scv(Number(requestId), { type: "u64" })],
+  });
 
   await sendWrite(tx, wallet, "cancel_request");
 }
@@ -1364,22 +1384,11 @@ export async function proposeTransfer(currentOwner, newOwner, wallet) {
   if (!signerAddress) throw new Error("Wallet address is not available yet");
   await ensureAccountFunded(signerAddress);
   const account = await server.getAccount(signerAddress);
-  const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
-    networkPassphrase: NETWORK,
-  })
-    .addOperation(
-      Operation.invokeContractFunction({
-        contract: CONTRACT_ID,
-        function: "propose_transfer",
-        args: [
-          scv(signerAddress, { type: "address" }),
-          scv(newOwner, { type: "address" }),
-        ],
-      }),
-    )
-    .setTimeout(30)
-    .build();
+  const tx = await buildInvocation({
+    account,
+    functionName: "propose_transfer",
+    args: [scv(signerAddress, { type: "address" }), scv(newOwner, { type: "address" })],
+  });
   return await sendWrite(tx, wallet, "propose_transfer");
 }
 
@@ -1396,19 +1405,11 @@ export async function acceptTransfer(newOwner, wallet) {
   if (!signerAddress) throw new Error("Wallet address is not available yet");
   await ensureAccountFunded(signerAddress);
   const account = await server.getAccount(signerAddress);
-  const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
-    networkPassphrase: NETWORK,
-  })
-    .addOperation(
-      Operation.invokeContractFunction({
-        contract: CONTRACT_ID,
-        function: "accept_transfer",
-        args: [scv(signerAddress, { type: "address" })],
-      }),
-    )
-    .setTimeout(30)
-    .build();
+  const tx = await buildInvocation({
+    account,
+    functionName: "accept_transfer",
+    args: [scv(signerAddress, { type: "address" })],
+  });
   return await sendWrite(tx, wallet, "accept_transfer");
 }
 
@@ -1425,19 +1426,11 @@ export async function revokeTransfer(callerAddress, wallet) {
   if (!signerAddress) throw new Error("Wallet address is not available yet");
   await ensureAccountFunded(signerAddress);
   const account = await server.getAccount(signerAddress);
-  const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
-    networkPassphrase: NETWORK,
-  })
-    .addOperation(
-      Operation.invokeContractFunction({
-        contract: CONTRACT_ID,
-        function: "revoke_transfer",
-        args: [scv(signerAddress, { type: "address" })],
-      }),
-    )
-    .setTimeout(30)
-    .build();
+  const tx = await buildInvocation({
+    account,
+    functionName: "revoke_transfer",
+    args: [scv(signerAddress, { type: "address" })],
+  });
   return await sendWrite(tx, wallet, "revoke_transfer");
 }
 
@@ -1493,14 +1486,11 @@ async function sendMultisigCall(signerAddress, functionName, args, wallet) {
   if (!signer) throw new Error("Wallet address is not available yet");
   await ensureAccountFunded(signer);
   const account = await server.getAccount(signer);
-  const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: NETWORK })
-    .addOperation(Operation.invokeContractFunction({
-      contract: CONTRACT_ID,
-      function: functionName,
-      args,
-    }))
-    .setTimeout(30)
-    .build();
+  const tx = await buildInvocation({
+    account,
+    functionName,
+    args,
+  });
   return sendWrite(tx, wallet, functionName);
 }
 
