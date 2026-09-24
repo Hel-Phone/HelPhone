@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { WalletProvider } from "./contexts/WalletContext";
 import { i18nReady } from "./i18n";
 import ErrorBoundary from "./components/ErrorBoundary";
+import OfflineIndicator from "./components/OfflineIndicator";
 import { initThemeEngine } from "./styles/themeEngine";
 import { scheduleKeyDerivationBenchmark } from "./lib/pbkdf2Key";
 import App from "./App";
@@ -57,6 +58,7 @@ function render() {
         */}
         <WalletProvider>
           <BrowserRouter>
+            <OfflineIndicator />
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<App />} />

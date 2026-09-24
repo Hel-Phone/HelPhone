@@ -35,3 +35,37 @@ jobs:
 
       - name: Execute Soroban State Export Verification Script
         run: bash scripts/export-contract-state.sh
+
+  # Network throttling matrix (CDP): one leg per profile so a regression names the network class it breaks on
+  e2e-throttling:
+    name: E2E throttling (${{ matrix.profile }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ['2g', '3g', 'cap-500kbps', 'offline']
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run throttling profile
+        run: npm run test:e2e:throttling -- --grep "\\[${{ matrix.profile }}\\]"
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: throttling-${{ matrix.profile }}
+          path: test-results/
