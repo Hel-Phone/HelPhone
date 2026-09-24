@@ -17,6 +17,12 @@ services:
         value: "CC325F37QW7N2F5M3QGHL4A4O7J2K9L0M1N2O3P4Q5R6S7T8U9V0"
       - key: ALLOWED_ORIGINS
         value: "https://helphone.com,https://staging.helphone.com,http://localhost:3000"
+      # #530: extra connect-src origins beyond the built-in defaults (comma-separated).
+      - key: CSP_CONNECT_SRC
+        value: ""
+      # Set to "true" to roll the policy out in report-only mode first.
+      - key: CSP_REPORT_ONLY
+        value: "false"
 
   - type: cron
     name: soroban-daily-state-exporter

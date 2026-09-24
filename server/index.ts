@@ -5,6 +5,7 @@ import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { SorobanStateExporter, loadLatestSnapshot } from './indexer/exporter.js'
 import { authMiddleware } from './middleware/auth.js'
+import { createCspMiddleware, createHtmlHandler } from './middleware/csp.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -20,6 +21,7 @@ app.use(
     optionsSuccessStatus: 204,
   })
 )
+app.use(createCspMiddleware())
 app.use(express.json({ limit: '1mb' }))
 
 const stateExporter = new SorobanStateExporter()
@@ -59,6 +61,12 @@ app.get('/api/state/snapshots/latest', (_req: Request, res: Response) => {
 app.post('/api/protected/action', authMiddleware, (req: Request, res: Response) => {
   res.json({ success: true, message: 'Authenticated payload verified successfully', user: (req as any).authenticatedUser })
 })
+
+// Built frontend (nonce-injected HTML). Only active when `vite build` output
+// exists, so an API-only deployment keeps behaving exactly as before.
+const DIST_DIR = join(__dirname, '..', 'dist')
+app.use(express.static(DIST_DIR, { index: false }))
+app.get(/^\/(?!api\/|zk\/|health$|metrics).*/, createHtmlHandler({ htmlPath: join(DIST_DIR, 'index.html') }))
 
 // Automated Daily State Snapshot Cron (Interval fallback)
 const CRON_INTERVAL_MS = 24 * 60 * 60 * 1000
