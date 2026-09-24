@@ -1412,3 +1412,26 @@ export async function revokeTransfer(callerAddress, wallet) {
     .build();
   return await sendWrite(tx, wallet, "revoke_transfer");
 }
+
+// ── Replay-protection nonce tracking (client-side mirror of contract/nonce.rs) ──
+//
+// Tracks the next expected on-chain nonce per account locally so callers can
+// attach it to state-changing invocations without an extra read round-trip.
+// The contract is still the source of truth: a stale local value is only a
+// perf miss, never a correctness issue, since the contract itself rejects a
+// reused/out-of-order nonce (#560).
+const _localNonceCache = new Map();
+
+export function getLocalNonce(accountAddress) {
+  return _localNonceCache.get(accountAddress) ?? 0;
+}
+
+export function advanceLocalNonce(accountAddress) {
+  const next = getLocalNonce(accountAddress) + 1;
+  _localNonceCache.set(accountAddress, next);
+  return next;
+}
+
+export function resetLocalNonce(accountAddress, value = 0) {
+  _localNonceCache.set(accountAddress, value);
+}
