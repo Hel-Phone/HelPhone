@@ -5,6 +5,8 @@ dist/
 .DS_Store
 **/.DS_Store
 *.log
+# Build-time npm audit snapshot served by /api/supply-chain (#600)
+security-audit.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -18,6 +20,7 @@ test-snapshots/
 # Rust/Soroban build output
 contract/**/target/
 contracts/**/target/
+scripts/spikes/**/target/
 contracts/noir_verifier/
 circuits/target/proof/
 circuits/target/vk/
@@ -30,3 +33,7 @@ support.js
 
 # Loose asset copies in root only
 /*.png
+tests/integration/.local-deployment.json
+
+# WASM spike reader build output (ADR-014)
+src/wasm/**/target/

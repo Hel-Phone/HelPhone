@@ -1,11 +1,6 @@
-import {
-  useState,
-  useEffect,
-  useRef,
-  Fragment,
-  useCallback,
-  useReducer,
-} from "react";
+import styles from "./Help.module.css";
+import { cx } from "../styles/cssModules";
+import { useState, useEffect, useRef, Fragment, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { StellarWalletsKit } from "@creit-tech/stellar-wallets-kit/sdk";
 import { KitEventType } from "@creit-tech/stellar-wallets-kit/types";
@@ -38,6 +33,16 @@ import {
   generateLocationProof,
   shortProofId,
 } from "../lib/zk";
+import {
+  processImage,
+  MAX_DIMENSION,
+  DEFAULT_QUALITY,
+} from "../lib/imageProcessor.js";
+import {
+  restoreDraft,
+  startAutoSave,
+  clearDraft as clearCrashDraft,
+} from "../lib/crashRecovery.ts";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -485,6 +490,25 @@ function Step({ n, title, subtitle, done, active, children }) {
   );
 }
 
+export const HELP_ONBOARDING_STEPS = [
+  {
+    label: "Request",
+    title: "Help when you need it",
+    body: "HelPhone connects you with people nearby when you're in an emergency. You can request help or offer help to others. Everything runs on Stellar — fast, public, and verifiable.",
+  },
+  {
+    label: "Receipt",
+    title: "Your action goes on-chain first",
+    body: "When you request or offer help, Stellar confirms it in seconds. That creates a public transaction hash — your receipt.",
+  },
+  {
+    label: "Wallet",
+    title: "Connect your preferred wallet",
+    body: "Your Stellar wallet only signs transactions — it's not a tracking tool. Connect to request help, offer help, or verify your identity on the network.",
+    isLast: true,
+  },
+];
+
 function HelpOnboardingModal({ open, onClose, onConnectWallet }) {
   const [step, setStep] = useState(0);
   useEffect(() => {
@@ -493,27 +517,8 @@ function HelpOnboardingModal({ open, onClose, onConnectWallet }) {
 
   if (!open) return null;
 
-  const totalSteps = 3;
-
-  const steps = [
-    {
-      label: "Request",
-      title: "Help when you need it",
-      body: "HelPhone connects you with people nearby when you're in an emergency. You can request help or offer help to others. Everything runs on Stellar — fast, public, and verifiable.",
-    },
-    {
-      label: "Receipt",
-      title: "Your action goes on-chain first",
-      body: "When you request or offer help, Stellar confirms it in seconds. That creates a public transaction hash — your receipt.",
-    },
-    {
-      label: "Wallet",
-      title: "Connect your preferred wallet",
-      body: "Your Stellar wallet only signs transactions — it's not a tracking tool. Connect to request help, offer help, or verify your identity on the network.",
-      isLast: true,
-    },
-  ];
-
+  const totalSteps = HELP_ONBOARDING_STEPS.length;
+  const steps = HELP_ONBOARDING_STEPS;
   const current = steps[step];
 
   async function handleLastAction() {
@@ -1128,113 +1133,6 @@ const ET_ICONS = {
   ),
 };
 
-// ── ZK state reducer ─────────────────────────────────────────────────────────
-// Declared outside the component so the function reference is stable across
-// renders and React can use it without re-creating the reducer identity.
-
-/** Maximum number of log lines kept in the ring-buffer. */
-export const LOG_RING_SIZE = 6;
-
-/** Immutable initial state — also used as the reset target. */
-export const ZK_INITIAL = Object.freeze({
-  status: "idle",
-  logs: [],
-  proof: null,
-  error: "",
-});
-
-/**
- * Pure reducer for all ZK proof state.
- *
- * Actions:
- *   { type: "RESET" }
- *     → atomically clears all four fields in one React state transition.
- *       Prevents the buffer-overflow window that existed when four separate
- *       setState calls were issued from an async context.
- *
- *   { type: "SET_STATUS", payload: string }
- *   { type: "SET_ERROR",  payload: string }
- *   { type: "SET_PROOF",  payload: object|null }
- *     → targeted single-field updates used by buildPrivacyProof /
- *       recordZkCheckpoint after the reset boundary has been established.
- *
- *   { type: "PUSH_LOG", payload: string }
- *     → ring-buffer append with consecutive-duplicate guard.
- *       The ring is always capped at LOG_RING_SIZE entries so the render
- *       loop iterates over a bounded list regardless of how many onLog
- *       callbacks an in-flight WASM worker fires.
- *
- *   { type: "PATCH_PROOF", payload: object }
- *     → shallow-merges fields into the existing proof object (used when
- *       txHash / recordTxHash arrive after the proof is already set).
- */
-export function zkReducer(state, action) {
-  switch (action.type) {
-    case "RESET":
-      // Single atomic transition — no intermediate render between fields
-      return { ...ZK_INITIAL, logs: [] };
-
-    case "SET_STATUS":
-      if (state.status === action.payload) return state; // bail-out, no render
-      return { ...state, status: action.payload };
-
-    case "SET_ERROR":
-      if (state.error === action.payload) return state;
-      return { ...state, error: action.payload };
-
-    case "SET_PROOF":
-      return { ...state, proof: action.payload };
-
-    case "PATCH_PROOF":
-      if (!state.proof) return state;
-      return { ...state, proof: { ...state.proof, ...action.payload } };
-
-    case "PUSH_LOG": {
-      const msg = action.payload;
-      const prev = state.logs;
-      // Consecutive-duplicate guard — identical adjacent messages are dropped
-      if (prev.length > 0 && prev[prev.length - 1] === msg) return state;
-      // Ring-buffer cap — oldest entry evicted once limit is reached
-      const next =
-        prev.length < LOG_RING_SIZE
-          ? [...prev, msg]
-          : [...prev.slice(-(LOG_RING_SIZE - 1)), msg];
-      return { ...state, logs: next };
-    }
-
-    default:
-      return state;
-  }
-}
-
-// ── Wallet connection helpers ─────────────────────────────────────────────────
-// Declared outside the component so they carry no closure over component state
-// and can be imported directly by tests without mounting React.
-
-/**
- * Stellar G-address structural validator.
- *
- * A valid Stellar public key (G-address) is:
- *   - exactly 56 characters
- *   - starts with the letter G
- *   - consists only of base-32 alphabet characters (A-Z, 2-7)
- *
- * Validating before storing prevents a compromised or misbehaving wallet
- * extension from injecting an arbitrary string into state and propagating it
- * into contract calls and ZK proof `recipientAddress` fields.
- *
- * Returns the trimmed address if valid, or an empty string otherwise.
- * Intentionally returns "" rather than throwing so callers treat an invalid
- * address the same as a cancelled / empty connection — no special error path.
- */
-export function sanitizeWalletAddress(raw) {
-  if (typeof raw !== "string") return "";
-  const addr = raw.trim();
-  // Stellar public key: 56-char base-32 string beginning with G
-  if (!/^G[A-Z2-7]{55}$/.test(addr)) return "";
-  return addr;
-}
-
 export default function Help() {
   const [mode, setMode] = useState("get");
 
@@ -1274,7 +1172,7 @@ export default function Help() {
   const [myRequestsLoading, setMyRequestsLoading] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(null);
 
-  const [openRequests, setOpenRequests] = useState(new Map());
+  const [openRequests, setOpenRequests] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [offerSubmitting, setOfferSubmitting] = useState(false);
   const [lastOfferReceipt, setLastOfferReceipt] = useState(null);
@@ -1284,21 +1182,10 @@ export default function Help() {
   const [arrivalSubmitting, setArrivalSubmitting] = useState(false);
   const [arrivalThanksOpen, setArrivalThanksOpen] = useState(false);
   const [requesterLocation, setRequesterLocation] = useState(null);
-  // ── ZK state — single reducer for atomic resets ───────────────────────────
-  // All four ZK fields are managed together so that resetZkCheckpoint()
-  // dispatches ONE action → ONE state transition → ONE scheduled render.
-  // Issuing four separate setState calls from an async context (handleSubmit /
-  // handleOffer) allows in-flight onLog callbacks to append to a partially-reset
-  // buffer between renders, which causes stale log entries that the ring-buffer
-  // deduplicator then silently drops, ultimately losing the first log line of
-  // the new proof session and surfacing as a dropped emergency request UI state.
-  const [zkState, dispatchZk] = useReducer(zkReducer, ZK_INITIAL);
-  // Destructured aliases — downstream code uses these names directly so no
-  // further renaming is needed across the 20+ call sites in the component.
-  const zkStatus = zkState.status;
-  const zkLogs = zkState.logs;
-  const zkProof = zkState.proof;
-  const zkError = zkState.error;
+  const [zkStatus, setZkStatus] = useState("idle");
+  const [zkLogs, setZkLogs] = useState([]);
+  const [zkProof, setZkProof] = useState(null);
+  const [zkError, setZkError] = useState("");
 
   const [walletAddress, setWalletAddress] = useState("");
   const activeWalletAddress = walletAddress;
@@ -1309,9 +1196,46 @@ export default function Help() {
   const handleOfferBusy = useRef(false);
   const handleOfferMounted = useRef(true);
   const handleOfferSeq = useRef(0);
-  // Re-entrant guard for promptWalletConnection: prevents two concurrent auth
-  // modals from racing and broadcasting a stale address from the slower one.
-  const walletConnectionInFlight = useRef(false);
+
+  // ── Crash Recovery: IndexedDB draft restore & auto-save ───────────────────
+  const [draftBanner, setDraftBanner] = useState(
+    /** @type {'idle'|'found'|'dismissed'} */ ("idle"),
+  );
+
+  // On mount: check for a saved draft and rehydrate form state
+  useEffect(() => {
+    let cancelled = false;
+    restoreDraft()
+      .then((draft) => {
+        if (cancelled || !draft) return;
+        if (draft.emergencyType) setEmergencyType(draft.emergencyType);
+        if (draft.nickname || draft.contact) {
+          setProfile((prev) => ({
+            nickname: draft.nickname || prev.nickname,
+            contact: draft.contact || prev.contact,
+          }));
+        }
+        if (draft.location) setLocation(draft.location);
+        if (draft.searchQuery) setSearchQuery(draft.searchQuery);
+        setDraftBanner("found");
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []); // mount-only — intentionally empty dep array (restoreDraft runs once)
+
+  // Auto-save form state to IndexedDB every 2s while filling the request form
+  useEffect(() => {
+    const stop = startAutoSave(() => ({
+      emergencyType: emergencyType ?? null,
+      nickname: profile.nickname,
+      contact: profile.contact,
+      location: location ?? null,
+      searchQuery,
+    }));
+    return stop;
+  }, [emergencyType, profile, location, searchQuery]);
 
   useEffect(() => {
     if (!location?.[0] || !location?.[1]) return;
@@ -1324,8 +1248,8 @@ export default function Help() {
 
     async function syncWallet() {
       try {
-        const { address: raw } = await StellarWalletsKit.getAddress();
-        if (mounted) setWalletAddress(sanitizeWalletAddress(raw));
+        const { address } = await StellarWalletsKit.getAddress();
+        if (mounted) setWalletAddress(address || "");
       } catch {
         if (mounted) setWalletAddress("");
       }
@@ -1334,7 +1258,7 @@ export default function Help() {
     syncWallet();
     offState = StellarWalletsKit.on(KitEventType.STATE_UPDATED, (event) => {
       if (!mounted) return;
-      setWalletAddress(sanitizeWalletAddress(event?.payload?.address));
+      setWalletAddress(event?.payload?.address || "");
     });
     offDisconnect = StellarWalletsKit.on(KitEventType.DISCONNECT, () => {
       if (mounted) setWalletAddress("");
@@ -1354,14 +1278,6 @@ export default function Help() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!sidebarRef.current) return;
-    if (showMobileForm) {
-      sidebarRef.current.classList.add("hp-mobile-open");
-    } else {
-      sidebarRef.current.classList.remove("hp-mobile-open");
-    }
-  }, [showMobileForm]);
 
   useEffect(() => {
     if (!styleOpen) return;
@@ -1456,11 +1372,13 @@ export default function Help() {
           ),
         ).then((results) => results.filter(Boolean));
         if (mounted) {
-          const map = new Map(requests.map((req) => [Number(req.id), req]));
-          setOpenRequests(map);
+          setOpenRequests(requests);
           setSelectedRequest((current) => {
             if (!current) return current;
-            return map.get(Number(current.id)) || null;
+            return (
+              requests.find((req) => Number(req.id) === Number(current.id)) ||
+              null
+            );
           });
         }
       } catch (_) {}
@@ -1499,57 +1417,22 @@ export default function Help() {
     );
   }
 
-  /**
-   * Open the wallet auth modal and return the connected address.
-   *
-   * Hardening applied:
-   *
-   * 1. Re-entrant gate (walletConnectionInFlight ref)
-   *    Only one auth modal may be open at a time.  A second call while the
-   *    first is still awaiting user interaction returns "" immediately without
-   *    opening a second modal.  This prevents two concurrent callers (e.g. the
-   *    mode-toggle button and handleSubmit) from both calling authModal(),
-   *    where the slower one would broadcast a stale or mismatched address.
-   *
-   * 2. Address validation (sanitizeWalletAddress)
-   *    The raw value from authModal() is passed through the structural
-   *    validator before it touches state.  A wallet extension returning a
-   *    non-G-address string (malformed, injected, or a dev-mode dummy) is
-   *    silently rejected — the function returns "" and setWalletAddress is
-   *    never called, so no stale value propagates into contract calls or ZK
-   *    proof recipientAddress fields.
-   *
-   * 3. Side-channel elimination
-   *    The catch block no longer logs err.message.  Some wallet-kit
-   *    implementations embed partial signing-key context, session tokens, or
-   *    WalletConnect handshake data in rejection error messages.  Logging
-   *    these with console.warn exposes them to any browser extension or
-   *    injected script that monkeypatches the console.  Errors are now
-   *    swallowed silently; only the boolean "cancelled / failed" signal
-   *    matters to callers (both paths return "").
-   */
   async function promptWalletConnection() {
-    // Re-entrant gate — return immediately if a modal is already open
-    if (walletConnectionInFlight.current) return "";
-    walletConnectionInFlight.current = true;
     try {
-      // Defer to the next macrotask so the triggering click handler returns
-      // before the wallet-kit UI mounts (fixes Safari / Firefox timing).
+      // Defer opening the modal to the next macrotask so the click handler
+      // that triggered this returns immediately instead of holding the main
+      // thread while the wallet-kit UI mounts (source of the inconsistent
+      // cross-browser behavior, worst on Safari/Firefox).
       await new Promise((resolve) => setTimeout(resolve, 0));
-      const { address: raw } = await StellarWalletsKit.authModal();
-      // Validate address structure before storing — rejects malformed /
-      // injected values from misbehaving wallet extensions
-      const address = sanitizeWalletAddress(raw);
+      const { address } = await StellarWalletsKit.authModal();
       if (address) {
         setWalletAddress(address);
         return address;
       }
-    } catch {
-      // Intentionally silent: error messages from wallet-kit rejections can
-      // contain cryptographic session material (side-channel risk).
-      // Callers treat "" as "not connected" — no distinct error path needed.
-    } finally {
-      walletConnectionInFlight.current = false;
+    } catch (err) {
+      if (err?.message) {
+        console.warn("Wallet connection cancelled or failed:", err.message);
+      }
     }
     return "";
   }
@@ -1629,95 +1512,33 @@ export default function Help() {
     );
   }
 
-  /**
-   * Append a diagnostic line to the ZK log ring-buffer.
-   *
-   * Type-safe entry point for all ZK log messages. Accepts any value that
-   * callers (including external WASM/worker callbacks via `onLog`) might
-   * produce and coerces it to a non-empty string before touching state.
-   *
-   * Coercion rules (applied in order):
-   *   null / undefined      → silently dropped  (no-op)
-   *   Error instance        → err.message, falling back to err.toString()
-   *   object / array        → JSON.stringify, falling back to String()
-   *   number / boolean      → String()
-   *   empty string / blanks → silently dropped  (no-op)
-   *
-  /**
-   * Append a diagnostic line to the ZK log ring-buffer.
-   *
-   * Delegates to the reducer's PUSH_LOG action which enforces the ring-buffer
-   * cap and consecutive-duplicate guard atomically inside the reducer, keeping
-   * all buffer-overflow protection in one auditable place.
-   *
-   * Type coercion rules (applied before dispatch):
-   *   null / undefined      → silently dropped  (no-op)
-   *   Error instance        → err.message, falling back to err.toString()
-   *   object / array        → JSON.stringify, falling back to String()
-   *   number / boolean      → String()
-   *   empty string / blanks → silently dropped  (no-op)
-   */
   function pushZkLog(message) {
-    let safe;
-    if (message === null || message === undefined) return;
-    if (message instanceof Error) {
-      safe = message.message || message.toString();
-    } else if (typeof message === "object") {
-      try {
-        safe = JSON.stringify(message);
-      } catch {
-        safe = String(message);
-      }
-    } else {
-      safe = String(message);
-    }
-    safe = safe.trim();
-    if (!safe) return;
-    dispatchZk({ type: "PUSH_LOG", payload: safe });
+    setZkLogs((prev) => [...prev.slice(-5), message]);
   }
 
-  /**
-   * Atomically reset all ZK proof state to the initial idle snapshot.
-   *
-   * A single reducer dispatch guarantees ONE React state transition for all
-   * four fields (status / logs / proof / error). This closes the window that
-   * existed with four sequential setState calls where an in-flight onLog
-   * callback from a previous proof run could append to a partially-cleared
-   * log buffer between intermediate renders, causing:
-   *   1. The ring-buffer deduplicator to silently drop the first log line of
-   *      the new proof session if it matched the last stale entry.
-   *   2. The emergency request UI to show a stale "proved" / "recorded" badge
-   *      during the reset frame, then snap to "idle" — a visible flicker that
-   *      caused users to retry and submit duplicate requests.
-   */
   function resetZkCheckpoint() {
-    dispatchZk({ type: "RESET" });
+    setZkStatus("idle");
+    setZkLogs([]);
+    setZkProof(null);
+    setZkError("");
   }
 
-  // O(1) removal: Map keyed by numeric id — no linear scan
   function removeOpenRequest(reqId) {
-    const key = Number(reqId);
     setSelectedRequest((current) =>
-      Number(current?.id) === key ? null : current,
+      Number(current?.id) === Number(reqId) ? null : current,
     );
-    setOpenRequests((prev) => {
-      if (!prev.has(key)) return prev;
-      const next = new Map(prev);
-      next.delete(key);
-      return next;
-    });
+    setOpenRequests((prev) =>
+      prev.filter((r) => Number(r.id) !== Number(reqId)),
+    );
   }
 
   function syncOpenRequest(reqId, fresh) {
-    const key = Number(reqId);
     const request = { ...fresh, id: reqId };
-    setOpenRequests((prev) => {
-      const next = new Map(prev);
-      next.set(key, request);
-      return next;
-    });
+    setOpenRequests((prev) =>
+      prev.map((r) => (Number(r.id) === Number(reqId) ? request : r)),
+    );
     setSelectedRequest((current) =>
-      Number(current?.id) === key ? request : current,
+      Number(current?.id) === Number(reqId) ? request : current,
     );
     return request;
   }
@@ -1755,9 +1576,10 @@ export default function Help() {
     radiusMeters = 3000,
   }) {
     const zone = buildLocationProofZone({ lat, lng, radiusMeters });
-    dispatchZk({ type: "SET_STATUS", payload: "proving" });
-    dispatchZk({ type: "SET_ERROR", payload: "" });
-    dispatchZk({ type: "PUSH_LOG", payload: "Preparing private witness" });
+    setZkStatus("proving");
+    setZkError("");
+    setZkLogs([]);
+    pushZkLog("Preparing private witness");
     const proof = await generateLocationProof({
       lat,
       lng,
@@ -1774,8 +1596,8 @@ export default function Help() {
       zone,
       createdAt: new Date().toISOString(),
     };
-    dispatchZk({ type: "SET_PROOF", payload: checkpoint });
-    dispatchZk({ type: "SET_STATUS", payload: "proved" });
+    setZkProof(checkpoint);
+    setZkStatus("proved");
     pushZkLog("Private location proof ready");
     return checkpoint;
   }
@@ -1783,7 +1605,7 @@ export default function Help() {
   async function recordZkCheckpoint(address, action, txHash, checkpoint) {
     if (!checkpoint?.nullifier) return;
     try {
-      dispatchZk({ type: "SET_STATUS", payload: "recording" });
+      setZkStatus("recording");
       pushZkLog("Writing proof fingerprint to Stellar");
       const record = await recordExpertVerification(
         address,
@@ -1792,14 +1614,13 @@ export default function Help() {
         checkpoint.nullifier,
         StellarWalletsKit,
       );
-      dispatchZk({
-        type: "PATCH_PROOF",
-        payload: { recordTxHash: record.hash || "" },
-      });
-      dispatchZk({ type: "SET_STATUS", payload: "recorded" });
+      setZkProof((prev) =>
+        prev ? { ...prev, recordTxHash: record.hash || "" } : prev,
+      );
+      setZkStatus("recorded");
       pushZkLog("Stellar checkpoint recorded");
     } catch (err) {
-      dispatchZk({ type: "SET_STATUS", payload: "proved" });
+      setZkStatus("proved");
       pushZkLog(
         `Checkpoint record skipped: ${err.message || "wallet rejected"}`,
       );
@@ -1858,10 +1679,12 @@ export default function Help() {
       setRequestId(id);
       setRequestStatus("Pending");
       saveMyRequestId(id);
-      dispatchZk({
-        type: "PATCH_PROOF",
-        payload: { requestId: id, txHash: hash },
-      });
+      // Draft submitted successfully — clear crash recovery data
+      clearCrashDraft().catch(() => {});
+      setDraftBanner("dismissed");
+      setZkProof((prev) =>
+        prev ? { ...prev, requestId: id, txHash: hash } : prev,
+      );
       await recordZkCheckpoint(
         address,
         "private_request_proof",
@@ -1869,11 +1692,8 @@ export default function Help() {
         checkpoint,
       );
     } catch (err) {
-      dispatchZk({ type: "SET_STATUS", payload: "error" });
-      dispatchZk({
-        type: "SET_ERROR",
-        payload: err.message || "ZK proof failed",
-      });
+      setZkStatus("error");
+      setZkError(err.message || "ZK proof failed");
       setSubmitError("Could not send. " + (err.message || ""));
     }
     setSubmitting(false);
@@ -1940,7 +1760,7 @@ export default function Help() {
       const latest = await refreshPendingRequest(reqId);
       if (!latest) {
         pushZkLog("Request changed before Stellar confirmation");
-        dispatchZk({ type: "SET_STATUS", payload: "proved" });
+        setZkStatus("proved");
         return;
       }
       const eta = Math.round(Math.random() * 480 + 180);
@@ -1963,10 +1783,9 @@ export default function Help() {
         proofId: checkpoint.nullifier,
         at: new Date().toISOString(),
       });
-      dispatchZk({
-        type: "PATCH_PROOF",
-        payload: { requestId: reqId, txHash: result.hash || "" },
-      });
+      setZkProof((prev) =>
+        prev ? { ...prev, requestId: reqId, txHash: result.hash || "" } : prev,
+      );
       await recordZkCheckpoint(
         address,
         "private_responder_proof",
@@ -1974,11 +1793,7 @@ export default function Help() {
         checkpoint,
       );
       if (!handleOfferMounted.current) return;
-      setOpenRequests((prev) => {
-        const next = new Map(prev);
-        next.delete(reqId);
-        return next;
-      });
+      setOpenRequests((prev) => prev.filter((r) => r.id !== reqId));
       if (latest.lat != null && latest.lng != null) {
         setRequesterLocation([latest.lat, latest.lng]);
       }
@@ -1986,17 +1801,14 @@ export default function Help() {
       if (!handleOfferMounted.current) return;
       if (isRequestStatusRace(err)) {
         removeOpenRequest(reqId);
-        dispatchZk({ type: "SET_STATUS", payload: "proved" });
-        dispatchZk({ type: "SET_ERROR", payload: "" });
+        setZkStatus("proved");
+        setZkError("");
         pushZkLog("Request is no longer pending");
         alert(err.message);
         return;
       }
-      dispatchZk({ type: "SET_STATUS", payload: "error" });
-      dispatchZk({
-        type: "SET_ERROR",
-        payload: err.message || "ZK proof failed",
-      });
+      setZkStatus("error");
+      setZkError(err.message || "ZK proof failed");
       alert("Could not accept request: " + (err.message || ""));
     } finally {
       if (handleOfferMounted.current) setOfferSubmitting(false);
@@ -2234,6 +2046,7 @@ export default function Help() {
   return (
     <div
       id="helphone-help-wrap"
+      className={styles["hp-help-wrap"]}
       style={{
         display: "flex",
         height: "100vh",
@@ -2243,6 +2056,7 @@ export default function Help() {
       <aside
         ref={sidebarRef}
         id="helphone-help-sidebar"
+        className={cx(styles["hp-help-sidebar"], showMobileForm && styles["hp-mobile-open"])}
         style={{
           width: "340px",
           minWidth: "340px",
@@ -2255,33 +2069,6 @@ export default function Help() {
           boxShadow: "4px 0 32px rgba(0,0,0,0.25)",
         }}
       >
-        {/* Mobile drag handle — hidden on desktop via CSS */}
-        <button
-          type="button"
-          aria-label={showMobileForm ? "Collapse panel" : "Expand panel"}
-          aria-expanded={showMobileForm}
-          onClick={() => setShowMobileForm((o) => !o)}
-          id="hp-sidebar-drag-handle"
-          style={{
-            display: "none",
-            width: "100%",
-            padding: "12px 0 6px",
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            flexShrink: 0,
-          }}
-        >
-          <div
-            style={{
-              width: "36px",
-              height: "4px",
-              borderRadius: "2px",
-              background: "rgba(255,255,255,0.2)",
-              margin: "0 auto",
-            }}
-          />
-        </button>
         <div style={{ padding: "20px 20px 36px" }}>
           <div
             style={{
@@ -2550,6 +2337,66 @@ export default function Help() {
 
           {isGetMode && (
             <>
+              {draftBanner === "found" && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "10px",
+                    background: "rgba(63,132,135,0.14)",
+                    border: "1px solid rgba(63,132,135,0.35)",
+                    borderRadius: "10px",
+                    padding: "10px 12px",
+                    marginBottom: "14px",
+                  }}
+                >
+                  <span style={{ fontSize: "16px", lineHeight: 1 }}>💾</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        color: "#7fb8ba",
+                        marginBottom: "2px",
+                      }}
+                    >
+                      Draft restored
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "rgba(242,236,220,0.55)",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Your previous form data was recovered after the page
+                      closed.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Dismiss draft banner"
+                    onClick={() => {
+                      setDraftBanner("dismissed");
+                      clearCrashDraft().catch(() => {});
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "rgba(242,236,220,0.4)",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      lineHeight: 1,
+                      padding: "2px 4px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
               {requestStatus === "idle" ? (
                 <div style={{ marginBottom: "20px" }}>
                   <h2
@@ -3127,9 +2974,9 @@ export default function Help() {
                     lineHeight: 1.5,
                   }}
                 >
-                  {openRequests.size === 0
+                  {openRequests.length === 0
                     ? "No one nearby needs help right now."
-                    : `${openRequests.size} active request${openRequests.size > 1 ? "s" : ""} on the map. Tap a pin to help.`}
+                    : `${openRequests.length} active request${openRequests.length > 1 ? "s" : ""} on the map. Tap a pin to help.`}
                 </p>
               </div>
 
@@ -3380,7 +3227,7 @@ export default function Help() {
                   >
                     ACTIVE REQUESTS
                   </div>
-                  {openRequests.size === 0 ? (
+                  {openRequests.length === 0 ? (
                     <p
                       style={{
                         fontSize: "12px",
@@ -3391,7 +3238,7 @@ export default function Help() {
                       No one nearby needs help right now. Check back soon.
                     </p>
                   ) : (
-                    Array.from(openRequests.values()).map((req) => (
+                    openRequests.map((req) => (
                       <button
                         key={req.id}
                         onClick={() => setSelectedRequest(req)}
@@ -3665,7 +3512,7 @@ export default function Help() {
         </div>
       </aside>
 
-      <div id="helphone-help-map" style={{ flex: 1, position: "relative" }}>
+      <div id="helphone-help-map" className={styles["hp-help-main"]} style={{ flex: 1, position: "relative" }}>
         <Map
           mapboxAccessToken={MAPBOX_TOKEN}
           initialViewState={{
@@ -3787,7 +3634,7 @@ export default function Help() {
             ))}
 
           {!isGetMode &&
-            Array.from(openRequests.values()).map((req) => (
+            openRequests.map((req) => (
               <CharMarker
                 key={req.id}
                 charName={pickChar("default", req.id)}
@@ -4712,55 +4559,36 @@ export default function Help() {
 
       <style>{`
         @media (max-width: 768px) {
-          #helphone-help-wrap {
-            position: relative;
-            overflow-x: hidden;
-            max-width: 100vw;
-          }
+          #helphone-help-wrap { position: relative; }
           #helphone-help-sidebar {
             position: fixed !important;
             bottom: 0 !important;
             left: 0 !important;
             width: 100% !important;
             min-width: 0 !important;
-            max-height: 80vh !important;
+            max-height: 70vh !important;
             border-radius: 20px 20px 0 0 !important;
-            box-shadow: 0 -8px 40px rgba(0,0,0,0.45) !important;
-            transform: translateY(calc(100% - 96px)) !important;
+            box-shadow: 0 -8px 40px rgba(0,0,0,0.35) !important;
+            transform: translateY(calc(100% - 50px)) !important;
             transition: transform 0.35s cubic-bezier(0.22, 0.75, 0.2, 1) !important;
             z-index: 2000 !important;
-            overscroll-behavior: contain !important;
           }
-          #helphone-help-sidebar.hp-mobile-open {
+          #helphone-help-sidebar.${styles["hp-mobile-open"]} {
             transform: translateY(0) !important;
           }
           #helphone-help-sidebar::before {
-            content: none;
+            content: '';
+            display: block;
+            width: 36px;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255,255,255,0.15);
+            margin: 10px auto 0;
           }
-          #hp-sidebar-drag-handle {
-            display: flex !important;
-          }
-          #helphone-help-map {
-            height: 100vh !important;
-            flex: none !important;
-            width: 100vw !important;
-          }
-          #hp-mobile-form-toggle { display: flex !important; bottom: 108px !important; }
-          #helphone-help-sidebar > div:not(#hp-sidebar-drag-handle) { padding-top: 6px !important; }
-          #hp-hint-overlay {
-            bottom: 108px !important;
-            font-size: 12px !important;
-            padding: 8px 14px !important;
-            max-width: calc(100vw - 40px) !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-            white-space: nowrap !important;
-          }
-        }
-        @media (max-width: 480px) {
-          #helphone-help-sidebar {
-            max-height: 88vh !important;
-          }
+          #helphone-help-map { height: 100vh !important; flex: none !important; }
+          #hp-mobile-form-toggle { display: flex !important; }
+          #helphone-help-sidebar > div { padding-top: 8px !important; }
+          #hp-hint-overlay { bottom: 80px !important; font-size: 12px !important; padding: 8px 14px !important; max-width: calc(100vw - 40px) !important; overflow: hidden !important; text-overflow: ellipsis !important; }
         }
       `}</style>
     </div>
