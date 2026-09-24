@@ -154,3 +154,47 @@ export interface RpcHealthSnapshot {
   quality: NetworkQuality;
   endpoints: EndpointHealth[];
 }
+
+// ── Image watermarking (#537) ────────────────────────────────────────────────
+/** Steganographic payload embedded in an image's pixel LSBs. */
+export interface WatermarkPayload {
+  v: 1;
+  /** Unix seconds. */
+  ts: number;
+  /** Random nonce (hex). */
+  n: string;
+  /** SHA-256 of the pixels with RGB LSBs cleared. */
+  d: string;
+  /** SHA-256 of `${ts}:${n}` — the cryptographic timestamp hash. */
+  h: string;
+  /** Optional coarse location as integer hundredths of a degree [lat, lng]. */
+  loc?: [number, number];
+  /** Optional help-request id. */
+  rid?: string;
+}
+
+/** What the ledger stores for a registered watermark. */
+export interface LedgerWatermarkRecord {
+  digest: string;
+  timestamp: number;
+  /** Account that registered it, if the ledger records one. */
+  registrant?: string;
+}
+
+export type WatermarkStatus =
+  | 'authentic'
+  | 'ledger-unchecked'
+  | 'unregistered'
+  | 'ledger-mismatch'
+  | 'tampered'
+  | 'corrupted'
+  | 'no-watermark';
+
+export interface WatermarkVerification {
+  status: WatermarkStatus;
+  payload?: WatermarkPayload;
+  /** Ledger key: SHA-256 of the payload bytes. */
+  id?: string;
+  record?: LedgerWatermarkRecord;
+}
+
