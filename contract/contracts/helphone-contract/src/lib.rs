@@ -1,11 +1,16 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String,
+    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
+    Env, String,
 };
 
 mod multisig;
 mod nonce;
+mod ring_buffer;
+
+use ring_buffer::RingBuffer;
+pub use ring_buffer::CAPACITY as VERIFICATION_CAPACITY;
 
 pub use multisig::{Proposal, ProposalAction};
 
@@ -22,8 +27,8 @@ pub use multisig::{Proposal, ProposalAction};
 //   ("req", u64) → HelpRequest
 //   ("rcount", request_id) → u32   responder count per request
 //   ("resp", request_id, idx) → ResponderRecord
-//   ("evcount", wallet) → u32      verification count per wallet
-//   ("ev", wallet, idx) → ExpertVerification
+//   ("evcount", wallet) → u32      verifications ever recorded per wallet (write cursor)
+//   ("ev", wallet, idx % 500) → ExpertVerification   ring buffer slot (see ring_buffer.rs)
 //
 // ── Footprint contract (client mirror: src/lib/footprint.ts, issue #517) ──
 // The JS client inspects each invocation's storage footprint via an RPC
@@ -119,6 +124,21 @@ pub struct ExpertVerification {
     pub proof_fingerprint: String,
     pub recorded_at: u64,
 }
+
+/// Emitted when a wallet's verification history is full and recording a new
+/// entry displaces the oldest one, so off-chain indexers can archive it.
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Evicted {
+    #[topic]
+    pub wallet: Address,
+    /// Logical index the evicted entry had.
+    pub index: u32,
+    pub record: ExpertVerification,
+}
+
+/// Per-wallet expert verification history, bounded to `VERIFICATION_CAPACITY`.
+const VERIFICATIONS: RingBuffer = RingBuffer::new(symbol_short!("ev"), symbol_short!("evcount"));
 
 #[contract]
 pub struct HelPhone;
@@ -262,21 +282,30 @@ impl HelPhone {
             .get(&(symbol_short!("resp"), request_id, index))
     }
 
+    /// Verifications ever recorded for `wallet`, including evicted ones. This
+    /// is also the logical index the next one will get.
     pub fn get_expert_verification_count(env: Env, wallet: Address) -> u32 {
-        env.storage()
-            .persistent()
-            .get(&(symbol_short!("evcount"), wallet))
-            .unwrap_or(0u32)
+        VERIFICATIONS.total(&env, &wallet)
     }
 
+    /// Logical index of the oldest verification still retained. Indexes below
+    /// it have been evicted.
+    pub fn get_expert_verification_oldest(env: Env, wallet: Address) -> u32 {
+        VERIFICATIONS.oldest(&env, &wallet)
+    }
+
+    /// Maximum verifications retained per wallet.
+    pub fn get_expert_verification_capacity(_env: Env) -> u32 {
+        VERIFICATION_CAPACITY
+    }
+
+    /// Read by logical index. `None` if it was evicted or does not exist yet.
     pub fn get_expert_verification(
         env: Env,
         wallet: Address,
         index: u32,
     ) -> Option<ExpertVerification> {
-        env.storage()
-            .persistent()
-            .get(&(symbol_short!("ev"), wallet, index))
+        VERIFICATIONS.get(&env, &wallet, index)
     }
 
     // ── Compatibility shim — test snapshot helper ────────────────────
@@ -290,11 +319,12 @@ impl HelPhone {
     }
 
     pub fn get_expert_verifications(env: Env, wallet: Address, limit: u32) -> u32 {
-        let total = Self::get_expert_verification_count(env, wallet);
-        if limit < total {
+        // Only retained entries can be read back, so cap by those, not the lifetime total.
+        let retained = VERIFICATIONS.len(&env, &wallet);
+        if limit < retained {
             limit
         } else {
-            total
+            retained
         }
     }
 
@@ -456,11 +486,6 @@ impl HelPhone {
         proof_fingerprint: String,
     ) -> Result<u32, Error> {
         wallet.require_auth();
-        let count: u32 = env
-            .storage()
-            .persistent()
-            .get(&(symbol_short!("evcount"), wallet.clone()))
-            .unwrap_or(0u32);
         let ev = ExpertVerification {
             wallet: wallet.clone(),
             action,
@@ -468,13 +493,17 @@ impl HelPhone {
             proof_fingerprint,
             recorded_at: env.ledger().timestamp(),
         };
-        env.storage()
-            .persistent()
-            .set(&(symbol_short!("ev"), wallet.clone(), count), &ev);
-        env.storage()
-            .persistent()
-            .set(&(symbol_short!("evcount"), wallet), &(count + 1));
-        Ok(count + 1)
+        let outcome = VERIFICATIONS.push(&env, &wallet, &ev);
+        if let Some((index, record)) = outcome.evicted {
+            Evicted {
+                wallet,
+                index,
+                record,
+            }
+            .publish(&env);
+        }
+        // Total recorded so far (unchanged return contract: count after this push).
+        Ok(outcome.index + 1)
     }
 
     // ── Two-Step Ownership Transfer ─────────────────────────────────
