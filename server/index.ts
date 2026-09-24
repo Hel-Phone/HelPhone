@@ -6,6 +6,15 @@ import { fileURLToPath } from 'url'
 import { SorobanStateExporter, loadLatestSnapshot } from './indexer/exporter.js'
 import { authMiddleware } from './middleware/auth.js'
 import { applyKeepAliveTuning, keepAliveMiddleware } from './middleware/keepAlive.js'
+import {
+  createDefaultRedisClient,
+  createWhitelistAdminRouter,
+  createWhitelistMiddleware,
+  createWhitelistStore,
+} from './middleware/whitelist.js'
+import { generalLimiter } from './middleware/rateLimiter.js'
+import { startMaintenanceScheduler } from './db/maintenance.js'
+import { getMaintenanceConfig } from './env.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -25,6 +34,28 @@ app.use(
   })
 )
 app.use(express.json({ limit: '1mb' }))
+
+// Behind a proxy (Render), req.ip is the proxy unless TRUST_PROXY is set to the
+// number of hops (e.g. "1"); whitelist matching and rate limiting both use it.
+if (process.env.TRUST_PROXY) {
+  const hops = Number(process.env.TRUST_PROXY)
+  app.set('trust proxy', Number.isNaN(hops) ? process.env.TRUST_PROXY : hops)
+}
+
+// Verified emergency-service subnets / API keys bypass rate limiting. The
+// whitelist must run before the limiter, which honours `req.bypassRateLimit`.
+export const whitelistStore = createWhitelistStore(createDefaultRedisClient())
+const whitelist = createWhitelistMiddleware(whitelistStore)
+app.use(whitelist)
+app.use(
+  '/admin/whitelist',
+  createWhitelistAdminRouter({
+    store: whitelistStore,
+    adminToken: process.env.WHITELIST_ADMIN_TOKEN,
+    onChange: () => whitelist.invalidate(),
+  })
+)
+if (process.env.NODE_ENV !== 'test') app.use(generalLimiter)
 
 const stateExporter = new SorobanStateExporter()
 
@@ -81,6 +112,8 @@ function scheduleStateBackup() {
 if (process.env.NODE_ENV !== 'test') {
   const server = app.listen(PORT, () => {
     console.log(`HelPhone Server running on http://localhost:${PORT}`)
+    // Off-peak VACUUM ANALYZE / REINDEX CONCURRENTLY (opt-in: DB_MAINTENANCE_ENABLED=true)
+    if (getMaintenanceConfig().enabled) startMaintenanceScheduler()
     scheduleStateBackup()
   })
   applyKeepAliveTuning(server)

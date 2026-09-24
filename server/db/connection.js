@@ -46,6 +46,14 @@ export function getPool() {
 export async function query(sql, params) { return getPool().query(sql, params); }
 export async function getClient() { return getPool().acquire(); }
 export function releaseClient(client) { getPool().release(client); }
+export async function withClient(fn) {
+  const client = await getClient();
+  try {
+    return await fn(client);
+  } finally {
+    releaseClient(client);
+  }
+}
 export async function healthCheck() { return getPool().runHealthCheck(); }
 export function getStats() { return getPool().getStats(); }
 export async function shutdownPool() { if (pgPool) await pgPool.shutdown(); pgPool = null; resetPoolManager(); }
@@ -56,4 +64,4 @@ export async function pingDatabase(timeoutMs = 2000) {
     return { ok: true, latencyMs: Date.now() - start };
   } catch (e) { return { ok: false, latencyMs: Date.now() - start, error: e.message }; }
 }
-export default { getPool, query, getClient, releaseClient, healthCheck, getStats, shutdownPool, pingDatabase };
+export default { getPool, query, getClient, releaseClient, withClient, healthCheck, getStats, shutdownPool, pingDatabase };

@@ -87,6 +87,20 @@ export function releaseClient(client: import('./poolManager.js').PooledClient): 
   getPool().release(client);
 }
 
+/**
+ * Run `fn` on one dedicated pooled client and always release it. Maintenance
+ * statements (VACUUM, REINDEX CONCURRENTLY) can't run inside a transaction and
+ * are long-lived, so they get their own client instead of the shared query path.
+ */
+export async function withClient<T>(fn: (client: import('./poolManager.js').PooledClient) => Promise<T>): Promise<T> {
+  const client = await getClient();
+  try {
+    return await fn(client);
+  } finally {
+    releaseClient(client);
+  }
+}
+
 export async function healthCheck() {
   return getPool().runHealthCheck();
 }
@@ -119,6 +133,7 @@ export default {
   query,
   getClient,
   releaseClient,
+  withClient,
   healthCheck,
   getStats,
   shutdownPool,
