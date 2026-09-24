@@ -37,6 +37,9 @@ export default [
       'no-unused-vars': 'off',
       'no-console': 'off',
       'no-undef': 'off',
+      'no-eval': 'error',
+      'no-implied-eval': 'error',
+      'no-new-func': 'error',
     },
   },
 ]

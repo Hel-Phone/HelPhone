@@ -91,3 +91,19 @@ device salt ┘                                                      │
 **Latency budget.** `benchmarkKeyDerivation()` reports the median and worst latency and whether the median is within 50 ms. `scheduleKeyDerivationBenchmark()` runs it when the browser is idle after startup and logs a warning if the device is over budget. It never blocks startup or throws. The 50 ms figure is a target, not a guarantee: derivation time depends on the device, and slow or busy hardware will exceed it. On a loaded development machine the measurement was roughly 100 to 900 ms.
 
 **Limits.** The passphrase itself is never stored. Locking (`SecureStorage.lock()`) only drops the in-memory key. It does not clear data already decrypted into application state.
+
+## AI-generated code audit (#585)
+
+The CI audit uses the TypeScript compiler parser for JS, JSX, TS, and TSX.
+Rules target secret literals, unvalidated request input reaching network or
+process sinks, unsafe HTML injection, empty catch blocks, dynamic evaluation,
+contract submissions without an authorization/signing check, invalid standard
+API argument counts, and imports absent from the package manifest.
+
+Findings include file, line, column, rule ID, and message and fail the build.
+Rule suppressions are intentionally unsupported; fix the finding or change the
+auditor in a separately reviewed security change.
+
+AI provenance cannot be inferred reliably from syntax. Contributors must apply
+the `ai-generated` PR label. That label activates the protected
+`security-review` GitHub environment, whose required-reviewer configuration

@@ -79,3 +79,29 @@ CONTRACT_ID=CC325F37QW7N2F5M3QGHL4A4O7J2K9L0M1N2O3P4Q5R6S7T8U9V0
 
 - **Server Blueprint**: Managed via `render.yaml` with web service and daily snapshot cron jobs.
 - **CI/CD Pipeline**: GitHub Actions workflow at `.github/workflows/ci.yml`.
+
+## Lockfile integrity
+
+`npm run security:lockfiles` compares every npm SHA-512 integrity value and
+Cargo SHA-256 checksum with the official npm and crates.io registries. CI runs
+the check before installation and fails on divergence. Use
+`npm run security:lockfiles:offline` to validate checksum shape without
+network access; it is not a substitute for the CI registry check.
+
+## Safe dependency installation
+
+Normal npm installs have lifecycle scripts disabled by `.npmrc`. Run
+`npm run security:install` for the standard install and scan. If a reviewed
+native dependency genuinely requires a build script, pass its exact package
+name to `bash scripts/sandbox-install.sh <package>`; the rebuild runs in a
+rootless, capability-dropped container with no network, no host home/SSH mount,
+a read-only container root, and only the repository mounted writable.
+
+## AI-generated code security
+
+`npm run security:ai-code` parses JavaScript and TypeScript ASTs and fails on
+hardcoded secrets, unsanitized request data at sensitive sinks, unsafe HTML,
+dynamic code, swallowed errors, unauthenticated contract submissions, invalid
+platform API signatures, and undeclared package imports. PRs containing
+AI-generated logic must carry the `ai-generated` label; the CI
+`security-review` environment then requires a human security reviewer.

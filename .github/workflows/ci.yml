@@ -21,8 +21,17 @@ jobs:
           node-version: '22.x'
           cache: 'npm'
 
+      - name: Verify lockfile checksums against official registries
+        run: node scripts/verify-lockfile-hashes.js
+
       - name: Install Dependencies
         run: npm ci || npm install
+
+      - name: Scan dependency lifecycle scripts
+        run: bash scripts/sandbox-install.sh --scan node_modules
+
+      - name: Audit generated code for security defects
+        run: npm run security:ai-code
 
       - name: Code Formatting & ESLint Quality Check
         run: npx eslint .
@@ -132,3 +141,17 @@ jobs:
         with:
           name: throttling-${{ matrix.profile }}
           path: test-results/
+
+  ai-security-review:
+    name: Human review for AI-generated logic
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ai-generated')
+    runs-on: ubuntu-latest
+    environment: security-review
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Record required security approval
+        run: |
+          echo "AI-generated logic is labeled and requires an approved security-review environment."
+          echo "Configure required reviewers for this environment in repository settings."
