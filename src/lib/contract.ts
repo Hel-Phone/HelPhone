@@ -1176,6 +1176,33 @@ export async function getAegisPayoutAmount() {
   return safeToNumber(scValToNative(sim.result.retval));
 }
 
+/** The vault's zone differential-privacy policy (#529): the parameters plus
+ *  the smallest box side they currently allow. Null when no vault is
+ *  configured. While `enabled` is false the vault checks nothing. */
+export async function getZonePrivacyPolicy() {
+  if (!AEGIS_VAULT_ID) return null;
+  const vault = new Contract(
+    assertValidContractId(AEGIS_VAULT_ID, "VITE_AEGIS_VAULT_ID"),
+  );
+  return _withCache("getZonePrivacyPolicy", [AEGIS_VAULT_ID], CACHE_TTL.long, async () => {
+    const [params, min] = await Promise.all([
+      simulateRead(vault.call("privacy_params")),
+      simulateRead(vault.call("min_box_dimension")),
+    ]);
+    if (!params.result) return null;
+    const raw = scValToNative(params.result.retval);
+    return {
+      enabled: !!raw.enabled,
+      epsilonMilli: safeToNumber(raw.epsilon_milli),
+      sensitivity: safeToNumber(raw.sensitivity),
+      tailMult: safeToNumber(raw.tail_mult),
+      grid: safeToNumber(raw.grid),
+      kCells: safeToNumber(raw.k_cells),
+      minBoxDimension: min.result ? safeToNumber(scValToNative(min.result.retval)) : 0,
+    };
+  });
+}
+
 export async function setAegisPayoutAmount(admin, amount, wallet) {
   if (!AEGIS_VAULT_ID) throw new Error("VITE_AEGIS_VAULT_ID not configured");
   const signerAddress = await resolveWalletAddress(wallet);

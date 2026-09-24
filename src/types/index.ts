@@ -244,3 +244,25 @@ export interface WatermarkVerification {
   record?: LedgerWatermarkRecord;
 }
 
+
+// --- Zone differential privacy (aegis_vault privacy.rs, #529) ---
+/** Mirrors the vault's `PrivacyParams`. Numbers are stored-coordinate units. */
+export interface ZonePrivacyParams {
+  enabled: boolean
+  /** epsilon x 1000 (1000 = epsilon of 1.0). */
+  epsilonMilli: number
+  sensitivity: number
+  /** The `t` in the Laplace tail bound `b * t`. */
+  tailMult: number
+  /** Cell size that zone edges must align to. */
+  grid: number
+  /** Minimum grid cells any overlap of two zones must still cover. */
+  kCells: number
+}
+
+export type ZonePrivacyViolation =
+  | 'invalid_params'
+  | 'malformed'
+  | 'not_on_grid'
+  | 'too_small'
+  | 'overlap_too_small'
