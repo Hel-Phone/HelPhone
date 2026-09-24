@@ -15,6 +15,8 @@ const Help = lazy(() => import("./pages/Help"));
 const Ranking = lazy(() => import("./pages/Ranking"));
 // #608 spike: WebGPU spatial-clustering prototype + benchmark harness (ADR-008).
 const ClusterLab = lazy(() => import("./components/WebGPUMap"));
+// Binary telemetry protocol spike: decode/GC benchmark harness (ADR-014).
+const TelemetryLab = lazy(() => import("./components/TelemetryLab"));
 
 function RouteFallback() {
   return (
@@ -54,6 +56,7 @@ function render() {
                 <Route path="/help" element={<Help />} />
                 <Route path="/ranking" element={<Ranking />} />
                 <Route path="/lab/cluster-bench" element={<ClusterLab />} />
+                <Route path="/lab/telemetry-bench" element={<TelemetryLab />} />
               </Routes>
             </Suspense>
           </BrowserRouter>
