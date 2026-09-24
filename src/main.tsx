@@ -5,6 +5,7 @@ import { WalletProvider } from "./contexts/WalletContext";
 import { i18nReady } from "./i18n";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { initThemeEngine } from "./styles/themeEngine";
+import { scheduleKeyDerivationBenchmark } from "./lib/pbkdf2Key";
 import App from "./App";
 import "./App.css";
 import "./styles/theme.css";
@@ -41,6 +42,8 @@ function RouteFallback() {
 }
 
 initThemeEngine();
+// Measure PBKDF2 latency off the critical path so a slow device is surfaced early.
+scheduleKeyDerivationBenchmark();
 
 function render() {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

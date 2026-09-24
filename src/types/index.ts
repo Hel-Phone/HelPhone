@@ -104,3 +104,13 @@ export interface WalletState {
   walletType: string | null
   passkeyEnabled: boolean
 }
+
+// --- Client Storage Encryption ---
+export interface KeyDerivationBenchmark {
+  iterations: number
+  runs: number
+  medianMs: number
+  maxMs: number
+  budgetMs: number
+  withinBudget: boolean
+}
