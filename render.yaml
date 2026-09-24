@@ -14,3 +14,26 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      # Performance & pool tuning (overrides defaults in server/db/poolManager.ts & compression.ts)
+      - key: PG_MAX_CONNECTIONS
+        value: "20"
+      - key: PG_IDLE_TIMEOUT_MS
+        value: "30000"
+      - key: COMPRESSION_THRESHOLD
+        value: "1024"
+      - key: DEBUG_POOL
+        value: "false"
+      - key: DEBUG_COMPRESSION
+        value: "false"
+      # Postgres connection (set DATABASE_URL in Render dashboard when Postgres is provisioned)
+      - key: DATABASE_URL
+        sync: false
+      # CORS — stateful regex validation + preflight caching (Access-Control-Max-Age: 86400)
+      # ALLOWED_ORIGINS supports comma-separated regex patterns:
+      #   - Exact: https://helphone.com
+      #   - Regex: https://.*\.helphone\.com , https://staging\.helphone\.com
+      #   - Wildcard: https://*.helphone.com
+      - key: ALLOWED_ORIGINS
+        value: "https://helphone.com,https://staging.helphone.com,https://.*\\.helphone\\.com"
+      - key: CORS_MAX_AGE
+        value: "86400"
