@@ -195,3 +195,11 @@ Without an audit snapshot the index is reported as `partial: true` rather than a
 - The repo is already under git.
 - The ZK bundle is intentionally large and loaded on demand.
 - `Stellar Expert` is the final verification popup shown after successful on-chain actions.
+
+### Visual regression matrix
+
+Playwright captures Help, Ranking, and Admin in light, dark, and high-contrast
+modes. Comparisons fail above a 0.2% changed-pixel ratio. Run
+`npm run test:e2e:visual` to compare baselines or
+`npm run test:e2e:visual:update` after an intentional UI change. CI uploads
+`test-results/` and the Playwright report when a comparison fails.

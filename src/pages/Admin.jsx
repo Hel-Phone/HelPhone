@@ -12,6 +12,10 @@ import {
   proposeTransfer,
   acceptTransfer,
   revokeTransfer,
+  createAdminProposal,
+  approveAdminProposal,
+  executeAdminProposal,
+  getAdminProposal,
 } from "../lib/contract";
 
 function sanitizeAddress(raw) {
@@ -37,6 +41,9 @@ export default function Admin() {
   // ── Ownership transfer state ────────────────────────────────────────────
   const [pendingOwner, setPendingOwner] = useState(null);
   const [transferTarget, setTransferTarget] = useState("");
+  const [proposalTarget, setProposalTarget] = useState("");
+  const [proposalId, setProposalId] = useState("");
+  const [proposal, setProposal] = useState(null);
 
   const isOwner =
     walletAddress &&
@@ -158,6 +165,33 @@ export default function Admin() {
       setMessage("Revoke failed: " + err.message);
       setMessageType("error");
     }
+    setActionLoading(false);
+  }
+
+  async function handleCreateProposal() {
+    const target = sanitizeAddress(proposalTarget);
+    if (!target) { setMessage("Enter a valid proposed admin address."); setMessageType("error"); return; }
+    setActionLoading(true);
+    try {
+      await createAdminProposal(walletAddress, target, StellarWalletsKit);
+      setMessage("Multisig proposal submitted. Enter its on-chain ID to track approvals.");
+      setMessageType("success");
+      setProposalTarget("");
+    } catch (err) { setMessage("Proposal failed: " + err.message); setMessageType("error"); }
+    setActionLoading(false);
+  }
+
+  async function handleProposalAction(action) {
+    const id = Number(proposalId);
+    if (!Number.isSafeInteger(id) || id < 1) { setMessage("Enter a valid proposal ID."); setMessageType("error"); return; }
+    setActionLoading(true);
+    try {
+      if (action === "approve") await approveAdminProposal(id, walletAddress, StellarWalletsKit);
+      if (action === "execute") await executeAdminProposal(id, walletAddress, StellarWalletsKit);
+      setProposal(await getAdminProposal(id));
+      setMessage(action === "load" ? "Proposal loaded." : "Proposal " + action + " submitted.");
+      setMessageType("success");
+    } catch (err) { setMessage("Multisig action failed: " + err.message); setMessageType("error"); }
     setActionLoading(false);
   }
 
@@ -648,6 +682,21 @@ export default function Admin() {
           >
             Refresh
           </button>
+        </div>
+
+        {/* M-of-N Governance */}
+        <div style={cardStyle}>
+          <div style={{ fontSize: "10px", letterSpacing: "1.5px", color: "#7fb8ba", fontWeight: 900, marginBottom: "12px" }}>MULTISIG GOVERNANCE</div>
+          <p style={{ color: "rgba(242,236,220,0.55)", fontSize: "12px", lineHeight: 1.6 }}>Privileged admin transfers execute only after the configured M-of-N threshold is reached.</p>
+          <input aria-label="Proposed admin address" value={proposalTarget} onChange={(e) => setProposalTarget(e.target.value)} placeholder="New admin G…" style={inputStyle} />
+          <button type="button" disabled={actionLoading} onClick={handleCreateProposal} style={{ ...btnPrimary, marginTop: "10px" }}>Create proposal</button>
+          <div style={{ display: "flex", gap: "8px", marginTop: "14px", flexWrap: "wrap" }}>
+            <input aria-label="Proposal ID" value={proposalId} onChange={(e) => setProposalId(e.target.value)} placeholder="Proposal ID" inputMode="numeric" style={{ ...inputStyle, width: "160px" }} />
+            <button type="button" disabled={actionLoading} onClick={() => handleProposalAction("load")} style={btnPrimary}>Load</button>
+            <button type="button" disabled={actionLoading} onClick={() => handleProposalAction("approve")} style={btnPrimary}>Approve</button>
+            <button type="button" disabled={actionLoading} onClick={() => handleProposalAction("execute")} style={btnDanger}>Execute</button>
+          </div>
+          {proposal && <p data-testid="multisig-count" style={{ color: "#F4ECDC", fontSize: "13px" }}>Approvals: {String(proposal.approvals)} · {proposal.executed ? "Executed" : "Pending"}</p>}
         </div>
 
         {/* Update Payout Amount */}

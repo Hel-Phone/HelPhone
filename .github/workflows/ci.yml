@@ -162,3 +162,27 @@ jobs:
       - name: Dependency health monitor
         run: node scripts/monitor-dep-health.js --offline
         continue-on-error: true
+
+  visual-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Run 0.2% visual regression matrix
+        run: npm run test:e2e:visual
+      - name: Upload visual diffs and report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-visual-diffs
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14

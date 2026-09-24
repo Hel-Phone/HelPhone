@@ -1,3 +1,5 @@
+import styles from "./Help.module.css";
+import { cx } from "../styles/cssModules";
 import { useState, useEffect, useRef, Fragment, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { StellarWalletsKit } from "@creit-tech/stellar-wallets-kit/sdk";
@@ -1276,14 +1278,6 @@ export default function Help() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!sidebarRef.current) return;
-    if (showMobileForm) {
-      sidebarRef.current.classList.add("hp-mobile-open");
-    } else {
-      sidebarRef.current.classList.remove("hp-mobile-open");
-    }
-  }, [showMobileForm]);
 
   useEffect(() => {
     if (!styleOpen) return;
@@ -2052,6 +2046,7 @@ export default function Help() {
   return (
     <div
       id="helphone-help-wrap"
+      className={styles["hp-help-wrap"]}
       style={{
         display: "flex",
         height: "100vh",
@@ -2061,6 +2056,7 @@ export default function Help() {
       <aside
         ref={sidebarRef}
         id="helphone-help-sidebar"
+        className={cx(styles["hp-help-sidebar"], showMobileForm && styles["hp-mobile-open"])}
         style={{
           width: "340px",
           minWidth: "340px",
@@ -3516,7 +3512,7 @@ export default function Help() {
         </div>
       </aside>
 
-      <div id="helphone-help-map" style={{ flex: 1, position: "relative" }}>
+      <div id="helphone-help-map" className={styles["hp-help-main"]} style={{ flex: 1, position: "relative" }}>
         <Map
           mapboxAccessToken={MAPBOX_TOKEN}
           initialViewState={{
@@ -4577,7 +4573,7 @@ export default function Help() {
             transition: transform 0.35s cubic-bezier(0.22, 0.75, 0.2, 1) !important;
             z-index: 2000 !important;
           }
-          #helphone-help-sidebar.hp-mobile-open {
+          #helphone-help-sidebar.${styles["hp-mobile-open"]} {
             transform: translateY(0) !important;
           }
           #helphone-help-sidebar::before {

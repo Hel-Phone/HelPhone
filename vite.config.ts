@@ -6,7 +6,14 @@ import { visualizer } from "rollup-plugin-visualizer";
 import { envFirewallVitePlugin } from "./scripts/security/env_firewall.js";
 import deadcodePruner from "./plugins/vite-plugin-deadcode-pruner.js";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  css: {
+    modules: {
+      generateScopedName: mode === "production"
+        ? "[name]__[local]___[hash:base64:5]"
+        : "[name]__[local]",
+    },
+  },
   plugins: [
     react(),
     // #626: fails the build if static output contains leaked secrets.
@@ -207,4 +214,4 @@ export default defineConfig({
   define: {
     "import.meta.env.VITE_WASM_MAX_MEMORY_MB": JSON.stringify(512),
   },
-});
+}));

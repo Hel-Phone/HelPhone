@@ -1,11 +1,13 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype,
-    symbol_short, Address, Env, String,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String,
 };
 
+mod multisig;
 mod nonce;
+
+pub use multisig::{Proposal, ProposalAction};
 
 // ── Storage Keys ───────────────────────────────────────────────────
 //
@@ -23,10 +25,18 @@ mod nonce;
 //   ("evcount", wallet) → u32      verification count per wallet
 //   ("ev", wallet, idx) → ExpertVerification
 
-fn key_admin() -> soroban_sdk::Symbol { symbol_short!("admin") }
-fn key_pending() -> soroban_sdk::Symbol { symbol_short!("pending") }
-fn key_req_count() -> soroban_sdk::Symbol { symbol_short!("rcount") }
-fn key_active_count() -> soroban_sdk::Symbol { symbol_short!("acount") }
+fn key_admin() -> soroban_sdk::Symbol {
+    symbol_short!("admin")
+}
+fn key_pending() -> soroban_sdk::Symbol {
+    symbol_short!("pending")
+}
+fn key_req_count() -> soroban_sdk::Symbol {
+    symbol_short!("rcount")
+}
+fn key_active_count() -> soroban_sdk::Symbol {
+    symbol_short!("acount")
+}
 
 // ── Error Codes ────────────────────────────────────────────────────
 #[contracterror]
@@ -38,6 +48,11 @@ pub enum Error {
     WrongStatus = 4,
     NoPendingTransfer = 5,
     TransferAlreadyPending = 6,
+    InvalidThreshold = 7,
+    NotMultisigSigner = 8,
+    DuplicateApproval = 9,
+    ThresholdNotMet = 10,
+    ProposalExecuted = 11,
 }
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -99,6 +114,7 @@ impl HelPhone {
         env.storage().instance().set(&key_admin(), &admin);
         env.storage().instance().set(&key_req_count(), &0u64);
         env.storage().instance().set(&key_active_count(), &0u32);
+        multisig::initialise(&env, &admin);
     }
 
     // ── Admin reads ─────────────────────────────────────────────────
@@ -111,19 +127,105 @@ impl HelPhone {
         env.storage().instance().get(&key_pending())
     }
 
+    // ── M-of-N multisig governance ──────────────────────────────────
+
+    pub fn configure_multisig(
+        env: Env,
+        caller: Address,
+        admins: soroban_sdk::Vec<Address>,
+        threshold: u32,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&key_admin())
+            .ok_or(Error::NotAuthorized)?;
+        if caller != admin {
+            return Err(Error::NotAuthorized);
+        }
+        let (_, current_threshold) = multisig::configuration(&env);
+        if current_threshold > 1 {
+            return Err(Error::ThresholdNotMet);
+        }
+        if !multisig::configure(&env, &admins, threshold) {
+            return Err(Error::InvalidThreshold);
+        }
+        env.storage().instance().remove(&key_pending());
+        Ok(())
+    }
+
+    pub fn get_multisig_config(env: Env) -> (soroban_sdk::Vec<Address>, u32) {
+        multisig::configuration(&env)
+    }
+
+    pub fn create_admin_proposal(
+        env: Env,
+        proposer: Address,
+        new_admin: Address,
+    ) -> Result<Proposal, Error> {
+        proposer.require_auth();
+        if !multisig::is_signer(&env, &proposer) {
+            return Err(Error::NotMultisigSigner);
+        }
+        Ok(multisig::create(
+            &env,
+            &proposer,
+            ProposalAction::TransferAdmin(new_admin),
+        ))
+    }
+
+    pub fn get_admin_proposal(env: Env, id: u64) -> Option<Proposal> {
+        multisig::get(&env, id)
+    }
+
+    pub fn approve_admin_proposal(env: Env, id: u64, signer: Address) -> Result<Proposal, Error> {
+        signer.require_auth();
+        if !multisig::is_signer(&env, &signer) {
+            return Err(Error::NotMultisigSigner);
+        }
+        multisig::approve(&env, id, &signer).ok_or(Error::DuplicateApproval)
+    }
+
+    pub fn execute_admin_proposal(env: Env, id: u64) -> Result<(), Error> {
+        let mut proposal = multisig::get(&env, id).ok_or(Error::NotFound)?;
+        if proposal.executed {
+            return Err(Error::ProposalExecuted);
+        }
+        let (_, threshold) = multisig::configuration(&env);
+        if proposal.approvals < threshold {
+            return Err(Error::ThresholdNotMet);
+        }
+        match proposal.action.clone() {
+            ProposalAction::TransferAdmin(new_admin) => {
+                env.storage().instance().set(&key_admin(), &new_admin)
+            }
+        }
+        multisig::mark_executed(&env, &mut proposal);
+        Ok(())
+    }
+
     // ── Request reads ───────────────────────────────────────────────
 
     pub fn get_request_count(env: Env) -> u64 {
-        env.storage().instance().get(&key_req_count()).unwrap_or(0u64)
+        env.storage()
+            .instance()
+            .get(&key_req_count())
+            .unwrap_or(0u64)
     }
 
     pub fn get_active_count(env: Env) -> u32 {
-        env.storage().instance().get(&key_active_count()).unwrap_or(0u32)
+        env.storage()
+            .instance()
+            .get(&key_active_count())
+            .unwrap_or(0u32)
     }
 
     /// Return the request ID stored at active-list slot `index`.
     pub fn get_active_request_id(env: Env, index: u32) -> Option<u64> {
-        env.storage().instance().get(&(symbol_short!("active"), index))
+        env.storage()
+            .instance()
+            .get(&(symbol_short!("active"), index))
     }
 
     pub fn get_request(env: Env, id: u64) -> Option<HelpRequest> {
@@ -131,17 +233,21 @@ impl HelPhone {
     }
 
     pub fn get_responder_count(env: Env, request_id: u64) -> u32 {
-        env.storage().persistent()
+        env.storage()
+            .persistent()
             .get(&(symbol_short!("rcount"), request_id))
             .unwrap_or(0u32)
     }
 
     pub fn get_responder(env: Env, request_id: u64, index: u32) -> Option<ResponderRecord> {
-        env.storage().persistent().get(&(symbol_short!("resp"), request_id, index))
+        env.storage()
+            .persistent()
+            .get(&(symbol_short!("resp"), request_id, index))
     }
 
     pub fn get_expert_verification_count(env: Env, wallet: Address) -> u32 {
-        env.storage().persistent()
+        env.storage()
+            .persistent()
             .get(&(symbol_short!("evcount"), wallet))
             .unwrap_or(0u32)
     }
@@ -151,7 +257,9 @@ impl HelPhone {
         wallet: Address,
         index: u32,
     ) -> Option<ExpertVerification> {
-        env.storage().persistent().get(&(symbol_short!("ev"), wallet, index))
+        env.storage()
+            .persistent()
+            .get(&(symbol_short!("ev"), wallet, index))
     }
 
     // ── Compatibility shim — test snapshot helper ────────────────────
@@ -166,7 +274,11 @@ impl HelPhone {
 
     pub fn get_expert_verifications(env: Env, wallet: Address, limit: u32) -> u32 {
         let total = Self::get_expert_verification_count(env, wallet);
-        if limit < total { limit } else { total }
+        if limit < total {
+            limit
+        } else {
+            total
+        }
     }
 
     // ── Emergency Request Lifecycle ─────────────────────────────────
@@ -186,17 +298,26 @@ impl HelPhone {
         let req = HelpRequest {
             id: count,
             requester,
-            lat, lng,
-            emergency_type, nickname, contact,
+            lat,
+            lng,
+            emergency_type,
+            nickname,
+            contact,
             status: Status::Pending,
             created_at: env.ledger().timestamp(),
             resolved_at: None,
         };
-        env.storage().persistent().set(&(symbol_short!("req"), count), &req);
+        env.storage()
+            .persistent()
+            .set(&(symbol_short!("req"), count), &req);
         // Append to active list
         let active_count = Self::get_active_count(env.clone());
-        env.storage().instance().set(&(symbol_short!("active"), active_count), &count);
-        env.storage().instance().set(&key_active_count(), &(active_count + 1));
+        env.storage()
+            .instance()
+            .set(&(symbol_short!("active"), active_count), &count);
+        env.storage()
+            .instance()
+            .set(&key_active_count(), &(active_count + 1));
         count
     }
 
@@ -210,27 +331,37 @@ impl HelPhone {
     ) -> Result<u32, Error> {
         responder.require_auth();
         let mut req: HelpRequest = env
-            .storage().persistent().get(&(symbol_short!("req"), request_id))
+            .storage()
+            .persistent()
+            .get(&(symbol_short!("req"), request_id))
             .ok_or(Error::NotFound)?;
         if req.status != Status::Pending {
             return Err(Error::WrongStatus);
         }
         req.status = Status::Enroute;
-        env.storage().persistent().set(&(symbol_short!("req"), request_id), &req);
+        env.storage()
+            .persistent()
+            .set(&(symbol_short!("req"), request_id), &req);
 
         let idx: u32 = env
-            .storage().persistent()
+            .storage()
+            .persistent()
             .get(&(symbol_short!("rcount"), request_id))
             .unwrap_or(0u32);
         let record = ResponderRecord {
             responder,
-            lat, lng,
+            lat,
+            lng,
             eta_seconds,
             arrived: false,
             responded_at: env.ledger().timestamp(),
         };
-        env.storage().persistent().set(&(symbol_short!("resp"), request_id, idx), &record);
-        env.storage().persistent().set(&(symbol_short!("rcount"), request_id), &(idx + 1));
+        env.storage()
+            .persistent()
+            .set(&(symbol_short!("resp"), request_id, idx), &record);
+        env.storage()
+            .persistent()
+            .set(&(symbol_short!("rcount"), request_id), &(idx + 1));
         Ok(idx)
     }
 
@@ -242,7 +373,8 @@ impl HelPhone {
     ) -> Result<(), Error> {
         responder.require_auth();
         let mut r: ResponderRecord = env
-            .storage().persistent()
+            .storage()
+            .persistent()
             .get(&(symbol_short!("resp"), request_id, responder_index))
             .ok_or(Error::NotFound)?;
         if r.responder != responder {
@@ -252,18 +384,18 @@ impl HelPhone {
             return Err(Error::AlreadyExists);
         }
         r.arrived = true;
-        env.storage().persistent().set(&(symbol_short!("resp"), request_id, responder_index), &r);
+        env.storage()
+            .persistent()
+            .set(&(symbol_short!("resp"), request_id, responder_index), &r);
         Ok(())
     }
 
-    pub fn resolve_request(
-        env: Env,
-        requester: Address,
-        request_id: u64,
-    ) -> Result<(), Error> {
+    pub fn resolve_request(env: Env, requester: Address, request_id: u64) -> Result<(), Error> {
         requester.require_auth();
         let mut req: HelpRequest = env
-            .storage().persistent().get(&(symbol_short!("req"), request_id))
+            .storage()
+            .persistent()
+            .get(&(symbol_short!("req"), request_id))
             .ok_or(Error::NotFound)?;
         if req.requester != requester {
             return Err(Error::NotAuthorized);
@@ -273,18 +405,18 @@ impl HelPhone {
         }
         req.status = Status::Resolved;
         req.resolved_at = Some(env.ledger().timestamp());
-        env.storage().persistent().set(&(symbol_short!("req"), request_id), &req);
+        env.storage()
+            .persistent()
+            .set(&(symbol_short!("req"), request_id), &req);
         Ok(())
     }
 
-    pub fn cancel_request(
-        env: Env,
-        requester: Address,
-        request_id: u64,
-    ) -> Result<(), Error> {
+    pub fn cancel_request(env: Env, requester: Address, request_id: u64) -> Result<(), Error> {
         requester.require_auth();
         let mut req: HelpRequest = env
-            .storage().persistent().get(&(symbol_short!("req"), request_id))
+            .storage()
+            .persistent()
+            .get(&(symbol_short!("req"), request_id))
             .ok_or(Error::NotFound)?;
         if req.requester != requester {
             return Err(Error::NotAuthorized);
@@ -293,7 +425,9 @@ impl HelPhone {
             return Err(Error::WrongStatus);
         }
         req.status = Status::Cancelled;
-        env.storage().persistent().set(&(symbol_short!("req"), request_id), &req);
+        env.storage()
+            .persistent()
+            .set(&(symbol_short!("req"), request_id), &req);
         Ok(())
     }
 
@@ -306,16 +440,23 @@ impl HelPhone {
     ) -> Result<u32, Error> {
         wallet.require_auth();
         let count: u32 = env
-            .storage().persistent()
+            .storage()
+            .persistent()
             .get(&(symbol_short!("evcount"), wallet.clone()))
             .unwrap_or(0u32);
         let ev = ExpertVerification {
             wallet: wallet.clone(),
-            action, tx_hash, proof_fingerprint,
+            action,
+            tx_hash,
+            proof_fingerprint,
             recorded_at: env.ledger().timestamp(),
         };
-        env.storage().persistent().set(&(symbol_short!("ev"), wallet.clone(), count), &ev);
-        env.storage().persistent().set(&(symbol_short!("evcount"), wallet), &(count + 1));
+        env.storage()
+            .persistent()
+            .set(&(symbol_short!("ev"), wallet.clone(), count), &ev);
+        env.storage()
+            .persistent()
+            .set(&(symbol_short!("evcount"), wallet), &(count + 1));
         Ok(count + 1)
     }
 
@@ -341,8 +482,14 @@ impl HelPhone {
         new_owner: Address,
     ) -> Result<(), Error> {
         current_owner.require_auth();
+        let (_, threshold) = multisig::configuration(&env);
+        if threshold > 1 {
+            return Err(Error::ThresholdNotMet);
+        }
         let admin: Address = env
-            .storage().instance().get(&key_admin())
+            .storage()
+            .instance()
+            .get(&key_admin())
             .ok_or(Error::NotAuthorized)?;
         if admin != current_owner {
             return Err(Error::NotAuthorized);
@@ -357,7 +504,9 @@ impl HelPhone {
     pub fn accept_transfer(env: Env, new_owner: Address) -> Result<(), Error> {
         new_owner.require_auth();
         let pending: Address = env
-            .storage().instance().get(&key_pending())
+            .storage()
+            .instance()
+            .get(&key_pending())
             .ok_or(Error::NoPendingTransfer)?;
         if pending != new_owner {
             return Err(Error::NotAuthorized);
@@ -373,10 +522,14 @@ impl HelPhone {
     pub fn revoke_transfer(env: Env, caller: Address) -> Result<(), Error> {
         caller.require_auth();
         let pending: Address = env
-            .storage().instance().get(&key_pending())
+            .storage()
+            .instance()
+            .get(&key_pending())
             .ok_or(Error::NoPendingTransfer)?;
         let admin: Address = env
-            .storage().instance().get(&key_admin())
+            .storage()
+            .instance()
+            .get(&key_admin())
             .ok_or(Error::NotAuthorized)?;
         if caller != admin && caller != pending {
             return Err(Error::NotAuthorized);

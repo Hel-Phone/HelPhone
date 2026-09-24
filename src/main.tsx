@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { WalletProvider } from "./contexts/WalletContext";
 import { i18nReady } from "./i18n";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { initThemeEngine } from "./styles/themeEngine";
 import App from "./App";
 import "./App.css";
 import "./styles/theme.css";
@@ -13,6 +14,7 @@ import "./styles/theme.css";
 // initial bundle and Time-To-Interactive low.
 const Help = lazy(() => import("./pages/Help"));
 const Ranking = lazy(() => import("./pages/Ranking"));
+const Admin = lazy(() => import("./pages/Admin"));
 // #608 spike: WebGPU spatial-clustering prototype + benchmark harness (ADR-008).
 const ClusterLab = lazy(() => import("./components/WebGPUMap"));
 // Binary telemetry protocol spike: decode/GC benchmark harness (ADR-014).
@@ -38,6 +40,8 @@ function RouteFallback() {
   );
 }
 
+initThemeEngine();
+
 function render() {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
@@ -55,6 +59,7 @@ function render() {
                 <Route path="/" element={<App />} />
                 <Route path="/help" element={<Help />} />
                 <Route path="/ranking" element={<Ranking />} />
+                <Route path="/admin" element={<Admin />} />
                 <Route path="/lab/cluster-bench" element={<ClusterLab />} />
                 <Route path="/lab/telemetry-bench" element={<TelemetryLab />} />
               </Routes>
