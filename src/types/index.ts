@@ -1,76 +1,106 @@
 /**
- * Shared TypeScript types — HelPhone
+ * HelPhone System-Wide TypeScript Definitions
  */
 
-export type CssModuleClasses = Readonly<Record<string, string>>;
-
-export interface MultisigSignature { signer: string; signedTransactionXdr: string; }
-export interface MultisigProposal { id: number; proposer: string; approvals: number; threshold: number; executed: boolean; createdAt: number; }
-
-export interface HelpRequest {
-  id: number | string;
-  requester: string;
-  lat: number | null;
-  lng: number | null;
-  emergency_type: string;
-  status: 'Pending' | 'Enroute' | 'Resolved' | 'Cancelled';
-  created_at: number;
-  resolved_at?: number | null;
+// --- Feature Flags Subsystem ---
+export interface FeatureFlagRuleset {
+  enabled: boolean
+  rolloutPercentage?: number
+  targets?: {
+    roles?: string[]
+    environments?: string[]
+    userIds?: string[]
+  }
+  environmentOverrides?: Record<string, boolean>
 }
 
-export interface Responder {
-  responder: string;
-  lat: number | null;
-  lng: number | null;
-  eta_seconds?: number;
-  arrived: boolean;
-  responded_at: number;
+export interface FeatureFlagConfig {
+  version: string
+  updatedAt?: string
+  flags: Record<string, FeatureFlagRuleset>
 }
 
-export interface WasmMemoryStats {
-  totalAllocated: number;
-  poolSize: number;
-  pooledBuffers: number;
-  activeBuffers: number;
-  peakAllocated: number;
-  recycledCount: number;
-  allocationCount: number;
-  recyclingRate: number;
-  utilisationPct: number;
+export interface UserContext {
+  id?: string
+  role?: string
+  environment?: string
+  deviceId?: string
 }
 
-export interface ImageProcessResult {
-  blob: Blob;
-  originalSize: number;
-  compressedSize: number;
-  savingsPct: number;
-  width: number;
-  height: number;
-  originalWidth: number;
-  originalHeight: number;
-  exifStripped: boolean;
-  outputType: string;
-  quality: number;
+export interface FlagEvaluationResult {
+  flagKey: string
+  enabled: boolean
+  reason: 'default' | 'env_override' | 'target_match' | 'percentage_rollout' | 'disabled'
 }
 
-export interface PoolStats {
-  total: number;
-  active: number;
-  idle: number;
-  waiting: number;
-  maxConnections: number;
-  idleTimeoutMs: number;
+// --- Soroban State & Exporter Subsystem ---
+export interface SorobanStorageEntry {
+  key: string
+  val: any
+  durability: 'instance' | 'persistent' | 'temporary'
+  lastModifiedLedgerSeq?: number
 }
 
-export type EmergencyType = 'lost' | 'fallen' | 'medical' | 'car' | 'danger' | 'other';
+export interface ContractStateSnapshot {
+  ledgerSequence: number
+  contractId: string
+  timestamp: string
+  entries: SorobanStorageEntry[]
+  metadata: {
+    exporterVersion: string
+    totalEntries: number
+    networkPassphrase: string
+    rpcUrl: string
+  }
+}
 
-export interface HelpDraft {
-  emergencyType: EmergencyType | string | null
-  nickname: string
-  contact: string
-  location: [number, number] | null
-  searchQuery: string
-  extra?: Record<string, unknown>
-  createdAt: number
-  updatedAt: number
+// --- Cryptography & WebAuthn / Passkey Subsystem ---
+export interface PasskeyCredential {
+  id: string
+  rawId: string
+  type: 'public-key'
+  response: {
+    clientDataJSON: string
+    authenticatorData: string
+    signature: string
+    userHandle?: string
+  }
+}
+
+export interface WebAuthnVerificationResult {
+  verified: boolean
+  publicKeyHex?: string
+  counter?: number
+  userHandle?: string
+  error?: string
+}
+
+export interface CryptoKeyPair {
+  publicKey: string
+  secretKey: string
+}
+
+export interface SignaturePayload {
+  message: string
+  signature: string
+  publicKey: string
+  algorithm: 'ed25519' | 'webauthn-p256' | 'aes-gcm'
+  timestamp: number
+  nonce?: string
+}
+
+export interface EncryptedData {
+  ciphertext: string
+  iv: string
+  authTag: string
+  algorithm: 'AES-GCM'
+}
+
+// --- Wallet & State Context ---
+export interface WalletState {
+  address: string | null
+  network: string
+  isConnected: boolean
+  walletType: string | null
+  passkeyEnabled: boolean
 }

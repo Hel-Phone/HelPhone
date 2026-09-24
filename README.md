@@ -1,205 +1,75 @@
 # HelPhone
 
-HelPhone is a React + Vite community emergency response app built on Stellar. It combines wallet-gated help requests, Soroban contracts, and a local ZK prover for private location attestation.
+HelPhone is a React + Vite community emergency response application built on Stellar. It combines wallet-gated help requests, Soroban smart contracts, local ZK privacy proofs, WebAuthn Passkeys, and automated contract storage state backups.
 
-## The 3-minute story
+---
 
-Someone is in trouble and needs help from nearby people — but broadcasting "I'm hurt, here is my exact address and my name" to a public blockchain is dangerous. HelPhone fixes that:
+## Technical Subsystems & Architecture
 
-1. **Emergency.** A person taps *Get help* and picks what happened (lost, fallen, medical, danger…).
-2. **Identity protected.** Their name and contact never leave the browser. Only a pseudonymous `Private request #N` is written on-chain.
-3. **Location proven, not revealed.** The exact GPS coordinate is used as a *private witness*. A Noir ZK proof is generated **locally** to prove "I am inside this zone" without disclosing where. Only a coarse ~1 km point and a 3 km proof box go on-chain.
-4. **Stellar verifies.** The proof fingerprint (nullifier) and transaction hash are recorded on Soroban testnet, visible in the live `ZK PRIVACY CHECKPOINT` panel.
-5. **Double-claim blocked.** The nullifier is `Poseidon2(secret_id, campaign_id)` — one claim per user per campaign, so the same proof can't be replayed.
+### 1. Soroban Storage Inspection & State Snapshot Dumps
+- **CLI Exporter**: `scripts/export-contract-state.sh` extracts complete contract storage dumps using `stellar contract inspect` or JSON-RPC queries.
+- **Node.js/TypeScript Exporter**: `server/indexer/exporter.ts` indexes storage entries into versioned JSON snapshots (`./snapshots/snapshot-<ledgerSeq>.json`).
+- **Automated Backup Cron**: `server/index.ts` automatically runs daily state export tasks to back up contract storage.
+- **Disaster Recovery Runbook**: See [`docs/disaster-recovery.md`](docs/disaster-recovery.md) for state restoration procedures.
 
-Privacy here is real, not theater: see [`anonymizeLocation`](src/pages/Help.jsx) (coarsens coordinates) and `createRequest(..., '', '', ...)` in [`handleSubmit`](src/pages/Help.jsx) (empty name/contact on-chain).
+### 2. Automated Pre-Commit Code Quality Pipeline
+- **Husky & lint-staged**: Intercepts `git commit` via `.husky/pre-commit` to automatically run linters and type-checkers on staged files.
+- **Quality Verification**:
+  - `npm run lint` (`eslint .`) - Code style & quality checks.
+  - `npm run typecheck` (`tsc --noEmit`) - Strict TypeScript validation without building output.
+  - `npm test` - Vitest test suite execution.
+- **GitHub Actions CI**: `.github/workflows/ci.yml` enforces quality, linting, type-checking, state export verification, and crypto matrix tests on all pull requests and pushes.
 
-## What it does
+### 3. Dynamic Feature Canary Rollouts & State Evaluation
+- **Feature Flag Engine**: `src/lib/featureFlags.ts` evaluates feature flag toggles dynamically.
+- **Remote Config**: Fetches rulesets from `/config.json` without requiring application rebuilds.
+- **Percentage Hashing**: Deterministically hashes user IDs / device IDs for 0-100% canary rollouts.
+- **React Hook Integration**: Components use `useFeatureFlag('flag_name')` for conditional rendering.
 
-- Request help from nearby people
-- Offer help to active requests on the map
-- Generate a ZK location proof through the local prover server
-- Fund testnet accounts automatically through Friendbot
-- Record a final `Stellar Expert` verification on-chain and locally
+### 4. Cross-Layer Signature Verification Testing Suite
+- **Cryptographic Suite**: `src/lib/crypto.ts` provides Ed25519 signature verification, WebAuthn P-256 (ECDSA SHA-256) parsing, and AES-256-GCM encryption/decryption.
+- **Passkey Manager**: `src/lib/passkey.ts` handles browser WebAuthn credential registration and authentication.
+- **Auth Middleware**: `server/middleware/auth.ts` enforces anti-replay timestamp freshness and cryptographic header verification.
+- **Test Matrix**: `test/crypto-verification.test.js` covers positive & negative boundary tests (tampered payload, invalid key, expired signature).
 
-## Stack
+---
 
-- React 19
-- Vite 8
-- Mapbox GL
-- Stellar SDK + Soroban contracts
-- Noir + Barretenberg for ZK
-- Stellar Wallets Kit for wallet connect
-- Express (Brotli + Gzip compression @ 1KB threshold)
-- PostgreSQL connection pool (20 max, 30s idle reclamation, SELECT 1 health checks)
-- WASM memory pool (512MB cap, buffer recycling)
-- Canvas image processor (1200px, EXIF stripping, 80% quality)
-
-## Local setup
+## Quick Start
 
 ```bash
+# Install dependencies
 npm install
+
+# Run local development server & indexer
 npm run dev
+
+# Run code quality & type checking
+npm run lint
+npm run typecheck
+
+# Run complete Vitest test suite
+npm test
+
+# Export Soroban contract storage state manually
+npm run export:state
 ```
 
-`npm run dev` starts both services:
-- `http://localhost:3000`
-- Vite app
-- local ZK prover on `http://localhost:3001`
+---
 
-Build:
+## Environment Variables
 
-```bash
-npm run build
-npm run preview
-```
-
-## Environment
-
-Create or edit `.env`:
+Configure `.env`:
 
 ```bash
 VITE_MAPBOX_TOKEN=...
 VITE_AEGIS_VAULT_ID=...
-VITE_ZK_PROVER_URL=/zk
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+CONTRACT_ID=CC325F37QW7N2F5M3QGHL4A4O7J2K9L0M1N2O3P4Q5R6S7T8U9V0
 ```
 
-`VITE_MAPBOX_TOKEN` is required for location search.
-`VITE_AEGIS_VAULT_ID` is required for the ZK claim flow.
-`VITE_ZK_PROVER_URL` defaults to `/zk`, which Vite proxies to the local prover.
+---
 
-## Wallet flow
+## Deployment & Infrastructure
 
-- The sidebar profile button opens the Stellar Wallets Kit auth modal.
-- The user must connect a wallet before requesting or offering help.
-- The connected address is used for proof generation, funding checks, and contract calls.
-
-## ZK flow
-
-- `server/index.js` loads the Noir circuit from `circuits/target/aegis.json`.
-- The local prover warms CRS once on startup.
-- `src/lib/zk.js` requests proofs from the local prover instead of blocking the browser.
-- Browser fallback is disabled by default. Set `VITE_ZK_BROWSER_FALLBACK=true` only for debugging.
-- The proof fingerprint is recorded with the final verification event.
-- WASM memory is pooled (`src/lib/wasmMemory.ts`) with 512MB cap and buffer recycling across proving runs; `src/workers/zk-worker.js` runs proving off-main-thread with the same pool.
-
-## Performance
-
-- **Compression**: `server/middleware/compression.ts` negotiates Brotli (preferred) / gzip for payloads >1KB, bypasses pre-compressed binaries, and achieves ~65% bandwidth savings on API JSON. See `docs/api-documentation.md`.
-- **Database pool**: `server/db/poolManager.ts` monitors active/idle/waiting, reclaims idle >30s, caps at 20, and pings `SELECT 1` to drop dead sockets. Stats at `GET /health/pool`. See `docs/database-architecture.md`.
-- **Images**: `src/lib/imageProcessor.ts` resizes to 1200px via Canvas, strips EXIF (GPS/serials), and re-encodes at 80% quality (~85% reduction). See `docs/privacy-policy.md` and `src/features/help/CreateRequestModal.tsx`.
-
-## Privacy: Images
-
-Photos are processed entirely in the browser before upload: resized to 1200px, EXIF stripped via `canvas.drawImage()` + `stripExifFromBuffer()`, and compressed to WebP/JPEG @ 80% quality. Original files and GPS never leave your device. See `docs/privacy-policy.md`.
-
-## Deploy
-
-The ZK proof is generated by a Node prover (`server/index.js`) running Noir + Barretenberg. Vercel only serves the static Vite build, so the prover must be hosted separately — otherwise the app shows "ZK prover is not available" in production.
-
-### 1. Prover on Render
-
-- New → Web Service → connect this repo (`render.yaml` is included as a Blueprint).
-- Build command: `npm install && npm run security:audit-report`
-- Start command: `node server/index.js`
-- Health check path: `/health`
-- Render injects `PORT` automatically; no other env vars are required for the prover.
-- `SUPPLY_CHAIN_AUDIT_REPORT` (optional, default `security-audit.json`) points the supply-chain API at the build-time `npm audit --json` snapshot.
-
-Notes:
-- Barretenberg is memory-heavy. The free instance (512 MB) may OOM while warming the CRS or generating a proof — bump to a larger plan if it crashes.
-- Free instances sleep when idle, so the first request after inactivity is slow (cold start + CRS warm). Warm it with one request before a live demo.
-
-Render gives you a URL like `https://helphone-zk-prover.onrender.com`.
-
-### 2. Frontend on Vercel
-
-Add an environment variable and **redeploy** (Vite inlines `VITE_*` at build time, so a redeploy is required after changing it):
-
-```bash
-VITE_ZK_PROVER_URL=https://helphone-zk-prover.onrender.com
-```
-
-The client appends `/zk/prove` and `/zk/health` to this URL. CORS is open on the prover, so the Vercel origin is allowed.
-
-### Alternative: browser proving
-
-To skip the hosted prover entirely, set `VITE_ZK_BROWSER_FALLBACK=true` on Vercel. Proofs then run in the user's browser via WASM (slower, single-threaded unless cross-origin isolation headers are added — which can break Mapbox).
-
-## On-chain records
-
-HelPhone now stores a verification history in the `helphone-contract` Soroban contract.
-
-Each record includes:
-
-- wallet address
-- action name
-- transaction hash
-- proof fingerprint
-- timestamp
-
-That record is also mirrored into localStorage for the popup UI.
-
-## Project structure
-
-```text
-src/
-  App.jsx
-  App.css
-  main.jsx
-  lib/
-  pages/
-contract/
-  contracts/helphone-contract/
-contracts/
-  aegis_vault/
-  noir_verifier/
-circuits/
-docs/
-```
-
-## Useful commands
-
-```bash
-npm run build
-npm run dev
-npm run server
-```
-
-Contract checks:
-
-```bash
-cd contract && cargo test
-cd contracts/aegis_vault && cargo test
-cd contracts/noir_verifier && cargo test
-```
-
-## Supply chain security API
-
-The prover also serves a supply chain security index (#600), computed from `package-lock.json` and a build-time `npm audit --json` snapshot:
-
-| Endpoint | Returns |
-| --- | --- |
-| `GET /api/supply-chain` | JSON report: composite index + grade, lockfile integrity, CVE counts, license compliance, sustainability |
-| `GET /api/supply-chain/dashboard` | Executive HTML dashboard of the same report |
-| `GET /metrics/security` | Prometheus gauges (`helphone_supply_chain_security_index`, `helphone_dependency_vulnerabilities{severity}`, ...) plus `helphone_http_requests_total` |
-
-```bash
-npm run security:audit-report   # refresh the CVE snapshot locally
-```
-
-Without an audit snapshot the index is reported as `partial: true` rather than assuming zero CVEs. Scoring and threat model: [docs/security-architecture.md](docs/security-architecture.md).
-
-## Notes
-
-- The repo is already under git.
-- The ZK bundle is intentionally large and loaded on demand.
-- `Stellar Expert` is the final verification popup shown after successful on-chain actions.
-
-### Visual regression matrix
-
-Playwright captures Help, Ranking, and Admin in light, dark, and high-contrast
-modes. Comparisons fail above a 0.2% changed-pixel ratio. Run
-`npm run test:e2e:visual` to compare baselines or
-`npm run test:e2e:visual:update` after an intentional UI change. CI uploads
-`test-results/` and the Playwright report when a comparison fails.
+- **Server Blueprint**: Managed via `render.yaml` with web service and daily snapshot cron jobs.
+- **CI/CD Pipeline**: GitHub Actions workflow at `.github/workflows/ci.yml`.

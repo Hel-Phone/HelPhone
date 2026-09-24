@@ -1,39 +1,31 @@
-# Render Blueprint for the HelPhone ZK prover service.
-# The prover runs the Noir + Barretenberg backend that the Vercel frontend
-# calls via VITE_ZK_PROVER_URL. Vercel only serves the static build, so the
-# heavy proving step must live on a real Node host like this one.
+# Render Blueprint for HelPhone Services & Automated Soroban State Exporter
 services:
   - type: web
-    name: helphone-zk-prover
+    name: helphone-backend-server
     runtime: node
-    plan: free            # 512MB — Barretenberg may OOM; bump to "starter" if it crashes
+    plan: starter
     buildCommand: npm install
-    startCommand: node server/index.js
+    startCommand: npm run server
     healthCheckPath: /health
-    autoDeploy: false
+    autoDeploy: true
     envVars:
       - key: NODE_VERSION
         value: "22"
-      # Performance & pool tuning (overrides defaults in server/db/poolManager.ts & compression.ts)
-      - key: PG_MAX_CONNECTIONS
-        value: "20"
-      - key: PG_IDLE_TIMEOUT_MS
-        value: "30000"
-      - key: COMPRESSION_THRESHOLD
-        value: "1024"
-      - key: DEBUG_POOL
-        value: "false"
-      - key: DEBUG_COMPRESSION
-        value: "false"
-      # Postgres connection (set DATABASE_URL in Render dashboard when Postgres is provisioned)
-      - key: DATABASE_URL
-        sync: false
-      # CORS — stateful regex validation + preflight caching (Access-Control-Max-Age: 86400)
-      # ALLOWED_ORIGINS supports comma-separated regex patterns:
-      #   - Exact: https://helphone.com
-      #   - Regex: https://.*\.helphone\.com , https://staging\.helphone\.com
-      #   - Wildcard: https://*.helphone.com
+      - key: SOROBAN_RPC_URL
+        value: "https://soroban-testnet.stellar.org"
+      - key: CONTRACT_ID
+        value: "CC325F37QW7N2F5M3QGHL4A4O7J2K9L0M1N2O3P4Q5R6S7T8U9V0"
       - key: ALLOWED_ORIGINS
-        value: "https://helphone.com,https://staging.helphone.com,https://.*\\.helphone\\.com"
-      - key: CORS_MAX_AGE
-        value: "86400"
+        value: "https://helphone.com,https://staging.helphone.com,http://localhost:3000"
+
+  - type: cron
+    name: soroban-daily-state-exporter
+    runtime: node
+    schedule: "0 0 * * *"
+    buildCommand: npm install
+    startCommand: bash scripts/export-contract-state.sh
+    envVars:
+      - key: SOROBAN_RPC_URL
+        value: "https://soroban-testnet.stellar.org"
+      - key: CONTRACT_ID
+        value: "CC325F37QW7N2F5M3QGHL4A4O7J2K9L0M1N2O3P4Q5R6S7T8U9V0"
