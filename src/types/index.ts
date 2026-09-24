@@ -2,6 +2,11 @@
  * Shared TypeScript types — HelPhone
  */
 
+export type CssModuleClasses = Readonly<Record<string, string>>;
+
+export interface MultisigSignature { signer: string; signedTransactionXdr: string; }
+export interface MultisigProposal { id: number; proposer: string; approvals: number; threshold: number; executed: boolean; createdAt: number; }
+
 export interface HelpRequest {
   id: number | string;
   requester: string;

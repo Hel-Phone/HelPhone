@@ -1435,3 +1435,68 @@ export function advanceLocalNonce(accountAddress) {
 export function resetLocalNonce(accountAddress, value = 0) {
   _localNonceCache.set(accountAddress, value);
 }
+
+// ── M-of-N multisig proposals (#575) ─────────────────────────────────────
+/** Combine independently collected signatures for one transaction envelope. */
+export function aggregateProposalSignatures(proposal, signatures, threshold) {
+  if (!proposal?.transactionXdr || !proposal?.networkPassphrase) {
+    throw new Error("Proposal transaction envelope is required");
+  }
+  if (!Number.isInteger(threshold) || threshold < 1) {
+    throw new Error("Threshold must be a positive integer");
+  }
+  const unique = new Map();
+  for (const entry of signatures || []) {
+    if (!entry?.signer || !entry?.signedTransactionXdr) continue;
+    unique.set(entry.signer, entry);
+  }
+  const collected = [...unique.values()];
+  return {
+    ...proposal,
+    signatures: collected,
+    approvalCount: collected.length,
+    threshold,
+    ready: collected.length >= threshold,
+  };
+}
+
+async function sendMultisigCall(signerAddress, functionName, args, wallet) {
+  const signer = await resolveWalletAddress(wallet, signerAddress);
+  if (!signer) throw new Error("Wallet address is not available yet");
+  await ensureAccountFunded(signer);
+  const account = await server.getAccount(signer);
+  const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: NETWORK })
+    .addOperation(Operation.invokeContractFunction({
+      contract: CONTRACT_ID,
+      function: functionName,
+      args,
+    }))
+    .setTimeout(30)
+    .build();
+  return sendWrite(tx, wallet, functionName);
+}
+
+export async function createAdminProposal(proposer, newAdmin, wallet) {
+  return sendMultisigCall(proposer, "create_admin_proposal", [
+    scv(proposer, { type: "address" }),
+    scv(newAdmin, { type: "address" }),
+  ], wallet);
+}
+
+export async function approveAdminProposal(id, signer, wallet) {
+  return sendMultisigCall(signer, "approve_admin_proposal", [
+    scv(BigInt(id), { type: "u64" }),
+    scv(signer, { type: "address" }),
+  ], wallet);
+}
+
+export async function executeAdminProposal(id, signer, wallet) {
+  return sendMultisigCall(signer, "execute_admin_proposal", [
+    scv(BigInt(id), { type: "u64" }),
+  ], wallet);
+}
+
+export async function getAdminProposal(id) {
+  const sim = await simulateRead(contract.call("get_admin_proposal", scv(BigInt(id), { type: "u64" })));
+  return sim.result ? scValToNative(sim.result.retval) : null;
+}

@@ -293,11 +293,14 @@ self.onmessage = async (event) => {
       if (!_noir || !_backend) await init(onLog);
       const artifact = await getCircuitArtifact();
       // Re-use init if needed (already warmed)
+      const profileStart = performance.now();
+      const heapStart = performance.memory?.usedJSHeapSize ?? 0;
       const { witness, returnValue } = await _noir.execute(inputs);
       progress('Generating proof');
       const { proof } = await _backend.generateProof(witness);
       const proofBytes = proof instanceof Uint8Array ? proof : new Uint8Array(proof);
-      self.postMessage({ type: 'done', id, action: 'proveComplete', proof: proofBytes, publicInputs: returnValue, memStats: memPool.stats() }, [proofBytes.buffer]);
+      const profiling = { provingMs: performance.now() - profileStart, heapDeltaBytes: Math.max(0, (performance.memory?.usedJSHeapSize ?? heapStart) - heapStart), memStats: memPool.stats() };
+      self.postMessage({ type: 'done', id, action: 'proveComplete', proof: proofBytes, publicInputs: returnValue, profiling }, [proofBytes.buffer]);
     } catch (error) {
       self.postMessage({ type: 'error', id: data.id, action: 'error', error: error.message || String(error) });
     } finally {

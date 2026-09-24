@@ -254,3 +254,27 @@ Start with Phase 1: build the `pol.circom` circuit with the approximate distance
   `codegen-units = 1`); npm builds install with `npm ci`.
 - After a deliberate, reviewed rebuild: `bash scripts/verify-wasm-build.sh --update`.
 - `src/lib/zk.ts` loads only this verified artifact (see header comment).
+
+## Barretenberg browser feasibility decision (#577)
+
+The browser path is allowed only when all three measured gates pass:
+
+- compiled Noir circuit: at most **50,000 constraints**;
+- warm proof generation: at most **3,000 ms** on the target low-power profile;
+- incremental JS/WASM heap growth: at most **256 MiB**.
+
+`circuits/scripts/benchmark.sh` now fails above the constraint ceiling and reports
+whether measured proving latency selects browser execution or server offload. The
+worker returns `profiling.provingMs`, `profiling.heapDeltaBytes`, and pool stats
+with each proof; `assessBrowserProvingFeasibility` makes the routing decision.
+
+The location circuit keeps four native `u64` bounding-box comparisons and one
+Poseidon2 nullifier, avoiding trigonometric, square-root, and general distance
+gadgets. The humanity prototype removed a redundant pseudo-Y equation that added
+field operations without implementing real curve verification. Humanity proofs
+must not ship until that placeholder is replaced by a reviewed signature gadget.
+
+This environment does not include `nargo`, so no new numeric benchmark result is
+claimed here. Run `bash circuits/scripts/benchmark.sh 5` on the low-power target,
+then retain browser proving only if every gate above passes; otherwise use the
+existing server prover path.

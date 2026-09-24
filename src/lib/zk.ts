@@ -39,6 +39,20 @@ const SERVER_HEALTH_TIMEOUT_MS = 2500;
 const SERVER_PROOF_TIMEOUT_MS = 10 * 60 * 1000;
 const PRODUCTION_ZK_PROVER_URL = "https://helphone.onrender.com";
 
+export const ZK_BROWSER_LIMITS = Object.freeze({
+  maxConstraints: 50_000,
+  maxProvingMs: 3_000,
+  maxHeapDeltaBytes: 256 * 1024 * 1024,
+});
+
+export function assessBrowserProvingFeasibility(profile: { constraints: number; provingMs: number; heapDeltaBytes: number }) {
+  const reasons: string[] = [];
+  if (profile.constraints > ZK_BROWSER_LIMITS.maxConstraints) reasons.push("constraint-budget");
+  if (profile.provingMs > ZK_BROWSER_LIMITS.maxProvingMs) reasons.push("latency-budget");
+  if (profile.heapDeltaBytes > ZK_BROWSER_LIMITS.maxHeapDeltaBytes) reasons.push("memory-budget");
+  return { feasible: reasons.length === 0, strategy: reasons.length ? "server" : "browser", reasons };
+}
+
 function normalizeBase64(input: string, label = "Base64 value") {
   if (typeof input !== "string") {
     throw new Error(`${label} must be a string.`);
