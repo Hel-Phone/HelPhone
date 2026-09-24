@@ -5,6 +5,8 @@ use soroban_sdk::{
     symbol_short, Address, Env, String,
 };
 
+mod nonce;
+
 // ── Storage Keys ───────────────────────────────────────────────────
 //
 // Instance (cheap, contract-lifetime):
