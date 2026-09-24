@@ -20,6 +20,8 @@ import {
   createWhitelistStore,
   isWhitelisted,
 } from "./middleware/whitelist.js";
+import { startMaintenanceScheduler } from "./db/maintenance.js";
+import { getMaintenanceConfig } from "./env.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -496,6 +498,8 @@ app.get("/api/feedback/:requestId", (req, res) => {
 
 export function startServer() {
   const server = app.listen(PORT, () => {
+    // Off-peak VACUUM ANALYZE / REINDEX CONCURRENTLY (opt-in: DB_MAINTENANCE_ENABLED=true)
+    if (getMaintenanceConfig().enabled) startMaintenanceScheduler();
     console.log(`ZK Prover worker ${process.pid} on http://localhost:${PORT}`);
     ensureProver().catch((err) => console.error("[prover] Init failed:", err));
   });

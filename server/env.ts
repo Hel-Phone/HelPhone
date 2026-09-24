@@ -109,3 +109,41 @@ export function getCorsConfig() {
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'] as const,
   }
 }
+
+// ── Database maintenance (#538) ──────────────────────────────────────────────
+
+export interface MaintenanceConfig {
+  /** Master switch; off unless DB_MAINTENANCE_ENABLED=true. */
+  enabled: boolean
+  /** Vacuum a table once dead tuples exceed this % of all tuples. */
+  bloatThresholdPct: number
+  /** UTC hour [0-23] the low-traffic window opens (inclusive). */
+  windowStartHour: number
+  /** UTC hour [0-23] the low-traffic window closes (exclusive). */
+  windowEndHour: number
+  /** How often the scheduler checks whether work is due. */
+  intervalMs: number
+  /** Minimum gap between REINDEXes of the same table. */
+  reindexCooldownMs: number
+  /** Ignore tables with fewer total tuples than this (vacuum isn't worth it). */
+  minTableTuples: number
+}
+
+function envNumber(raw: string | undefined, fallback: number, { min, max }: { min: number; max: number }): number {
+  if (raw === undefined || raw.trim() === '') return fallback
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= min && n <= max ? n : fallback
+}
+
+/** Read maintenance settings, falling back to the default for any bad value. */
+export function getMaintenanceConfig(env: NodeJS.ProcessEnv = process.env): MaintenanceConfig {
+  return {
+    enabled: env.DB_MAINTENANCE_ENABLED === 'true',
+    bloatThresholdPct: envNumber(env.DB_BLOAT_THRESHOLD_PCT, 20, { min: 1, max: 100 }),
+    windowStartHour: Math.trunc(envNumber(env.DB_MAINTENANCE_WINDOW_START_UTC, 2, { min: 0, max: 23 })),
+    windowEndHour: Math.trunc(envNumber(env.DB_MAINTENANCE_WINDOW_END_UTC, 5, { min: 0, max: 23 })),
+    intervalMs: envNumber(env.DB_MAINTENANCE_INTERVAL_MS, 15 * 60_000, { min: 1_000, max: 24 * 3_600_000 }),
+    reindexCooldownMs: envNumber(env.DB_REINDEX_COOLDOWN_MS, 7 * 24 * 3_600_000, { min: 0, max: 365 * 24 * 3_600_000 }),
+    minTableTuples: envNumber(env.DB_MAINTENANCE_MIN_TUPLES, 1_000, { min: 0, max: Number.MAX_SAFE_INTEGER }),
+  }
+}

@@ -13,6 +13,8 @@ import {
   createWhitelistStore,
 } from './middleware/whitelist.js'
 import { generalLimiter } from './middleware/rateLimiter.js'
+import { startMaintenanceScheduler } from './db/maintenance.js'
+import { getMaintenanceConfig } from './env.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -110,6 +112,8 @@ function scheduleStateBackup() {
 if (process.env.NODE_ENV !== 'test') {
   const server = app.listen(PORT, () => {
     console.log(`HelPhone Server running on http://localhost:${PORT}`)
+    // Off-peak VACUUM ANALYZE / REINDEX CONCURRENTLY (opt-in: DB_MAINTENANCE_ENABLED=true)
+    if (getMaintenanceConfig().enabled) startMaintenanceScheduler()
     scheduleStateBackup()
   })
   applyKeepAliveTuning(server)
