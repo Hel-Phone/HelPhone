@@ -4,9 +4,11 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { WalletProvider } from "./contexts/WalletContext";
 import { i18nReady } from "./i18n";
 import ErrorBoundary from "./components/ErrorBoundary";
+import OfflineIndicator from "./components/OfflineIndicator";
 import { initThemeEngine } from "./styles/themeEngine";
 import { bootstrapMultiTabSync } from "./lib/swChannel";
 import { initHelpStoreChannelSync } from "./stores/helpStore";
+import { scheduleKeyDerivationBenchmark } from "./lib/pbkdf2Key";
 import App from "./App";
 import "./App.css";
 import "./styles/theme.css";
@@ -43,6 +45,8 @@ function RouteFallback() {
 }
 
 initThemeEngine();
+// Measure PBKDF2 latency off the critical path so a slow device is surfaced early.
+scheduleKeyDerivationBenchmark();
 
 function render() {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
@@ -56,6 +60,7 @@ function render() {
         */}
         <WalletProvider>
           <BrowserRouter>
+            <OfflineIndicator />
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<App />} />

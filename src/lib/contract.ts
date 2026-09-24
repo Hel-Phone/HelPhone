@@ -16,6 +16,8 @@ import {
   BASE_FEE,
   StrKey,
 } from "@stellar/stellar-sdk";
+import { parseEndpointList } from "./networkEstimator";
+import { initRpcHealth, reportRpcFailure } from "./rpcHealth";
 import type {
   HelpRequest,
   Responder,
@@ -167,7 +169,30 @@ const RPC_URL = ACTIVE_NETWORK.rpcUrl;
 const FRIENDBOT_URL = ACTIVE_NETWORK.friendbotUrl;
 const NETWORK = ACTIVE_NETWORK.networkPassphrase;
 
-const server = new rpc.Server(RPC_URL, { timeout: 30_000 });
+const RPC_TIMEOUT_MS = 30_000;
+let server = new rpc.Server(RPC_URL, { timeout: RPC_TIMEOUT_MS });
+
+// ── RPC health & failover (#539) ────────────────────────────────
+// Backup Soroban RPC nodes come from a comma-separated
+// VITE_STELLAR_<NETWORK>_RPC_FALLBACK_URLS (or the network-agnostic
+// VITE_STELLAR_RPC_FALLBACK_URLS). The estimator probes the pool and, when the
+// primary fails, swaps `server` to the lowest-latency healthy backup; it swaps
+// back once the primary recovers. Probing only runs after startRpcMonitoring()
+// so importing this module has no network side effects (see rpcHealth.ts).
+const RPC_POOL = parseEndpointList(
+  RPC_URL,
+  import.meta.env?.[
+    `VITE_STELLAR_${ACTIVE_NETWORK.name.toUpperCase()}_RPC_FALLBACK_URLS`
+  ],
+  import.meta.env?.VITE_STELLAR_RPC_FALLBACK_URLS,
+);
+
+initRpcHealth({
+  endpoints: RPC_POOL,
+  onChange: (url) => {
+    server = new rpc.Server(url, { timeout: RPC_TIMEOUT_MS });
+  },
+});
 const contract = new Contract(CONTRACT_ID);
 
 // ── RPC Response Cache (issue #63) ──────────────────────────────
@@ -407,6 +432,9 @@ async function withRetry(
       return await fn();
     } catch (err) {
       lastErr = err;
+      // A network-shaped failure counts against the active RPC node so the
+      // estimator can fail over without waiting for its next probe.
+      if (isRetryableError(err)) reportRpcFailure();
       if (!isRetryableError(err) || attempt === maxAttempts - 1) break;
       const delayMs = RETRY_BASE_DELAY_MS * 2 ** attempt;
       console.warn(

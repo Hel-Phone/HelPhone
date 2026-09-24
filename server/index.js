@@ -11,7 +11,17 @@ import { normalizeBase64 } from "./base64Utils.js";
 import { compression as brotliCompression } from "./middleware/compression.js";
 import { logger, poolMonitorMiddleware } from "./middleware/logger.js";
 import { createCorsMiddleware } from "./middleware/cors.js";
+import { applyKeepAliveTuning, keepAliveMiddleware } from "./middleware/keepAlive.js";
 import { getPool } from "./db/connection.js";
+import {
+  createDefaultRedisClient,
+  createWhitelistAdminRouter,
+  createWhitelistMiddleware,
+  createWhitelistStore,
+  isWhitelisted,
+} from "./middleware/whitelist.js";
+import { startMaintenanceScheduler } from "./db/maintenance.js";
+import { getMaintenanceConfig } from "./env.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -24,6 +34,7 @@ const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 60);
 export function createRateLimiter({
   windowMs = RATE_LIMIT_WINDOW_MS,
   max = RATE_LIMIT_MAX,
+  skip = isWhitelisted,
 } = {}) {
   const hits = new Map();
 
@@ -34,6 +45,8 @@ export function createRateLimiter({
   }
 
   function middleware(req, res, next) {
+    // Whitelisted emergency-service callers bypass throttling entirely.
+    if (skip(req)) return next();
     const ip = req.ip || req.socket?.remoteAddress || "unknown";
     const now = Date.now();
     cleanup(now);
@@ -106,6 +119,8 @@ app.use(
   }),
 );
 // Observability: structured logger + pool monitoring
+// Reuse TCP sockets across sequential requests (see middleware/keepAlive.js)
+app.use(keepAliveMiddleware());
 app.use(logger({ slowThresholdMs: 1000 }));
 app.use(poolMonitorMiddleware);
 
@@ -113,6 +128,27 @@ app.use(poolMonitorMiddleware);
 app.use(createCorsMiddleware());
 app.use(compression());
 app.use(express.json({ limit: "1mb" }));
+
+// Behind a proxy (Render), req.ip is the proxy unless TRUST_PROXY is set to the
+// number of hops (e.g. "1"); whitelist matching and rate limiting both use it.
+if (process.env.TRUST_PROXY) {
+  const hops = Number(process.env.TRUST_PROXY);
+  app.set("trust proxy", Number.isNaN(hops) ? process.env.TRUST_PROXY : hops);
+}
+
+// Whitelist of verified emergency-service subnets / API keys (Redis-backed
+// when REDIS_URL is set). Must run before the rate limiter, which honours it.
+export const whitelistStore = createWhitelistStore(createDefaultRedisClient());
+const whitelist = createWhitelistMiddleware(whitelistStore);
+app.use(whitelist);
+app.use(
+  "/admin/whitelist",
+  createWhitelistAdminRouter({
+    store: whitelistStore,
+    adminToken: process.env.WHITELIST_ADMIN_TOKEN,
+    onChange: () => whitelist.invalidate(),
+  }),
+);
 
 // Rate limiter on all routes (disabled in test)
 if (process.env.NODE_ENV !== "test") {
@@ -536,9 +572,14 @@ export function startServer() {
     .catch((err) => console.error("[migrate] startup failure:", err));
 
   return app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
+    // Off-peak VACUUM ANALYZE / REINDEX CONCURRENTLY (opt-in: DB_MAINTENANCE_ENABLED=true)
+    if (getMaintenanceConfig().enabled) startMaintenanceScheduler();
     console.log(`ZK Prover worker ${process.pid} on http://localhost:${PORT}`);
     ensureProver().catch((err) => console.error("[prover] Init failed:", err));
   });
+  applyKeepAliveTuning(server);
+  return server;
 }
 
 function startCluster() {
