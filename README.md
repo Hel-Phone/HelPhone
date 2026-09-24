@@ -38,6 +38,12 @@ HelPhone is a React + Vite community emergency response application built on Ste
 - **Client Storage Encryption**: `src/lib/pbkdf2Key.ts` + `src/lib/secureStorage.ts` derive an AES-256-GCM key via PBKDF2 (100k iterations, per-device salt in IndexedDB) to encrypt local data. See [`docs/security-architecture.md`](docs/security-architecture.md).
 - **Network Resilience Testing**: `tests/e2e/throttling.spec.ts` emulates 2G, 3G, a 500 kbps cap, and offline via CDP, with a CI matrix leg per profile. See [`docs/network-resilience.md`](docs/network-resilience.md).
 
+### 6. Supply Chain Security & License Auditor (#540)
+- **Auditor**: `scripts/audit-deps.js` audits `package-lock.json` and `server/package-lock.json` (zero dependencies, offline) and fails CI on unauthorized copyleft licenses (GPL/AGPL/SSPL/EUPL/OSL/CPAL/RPL not in `scripts/security/license_policy.js` `EXCEPTIONS`), unlisted or suspicious install scripts, and hijack indicators (untrusted registry host, `http://`/git sources, missing or non-sha512 integrity).
+- **Report**: a deterministic `licenses.json`; `npm run security:audit-deps` regenerates it and `npm run security:audit-deps:check` (CI) fails when it is stale.
+- **Runbook**: [docs/security-runbook.md](docs/security-runbook.md).
+- **Tests**: `test/dep-audit.test.js`.
+
 ---
 
 ## Quick Start

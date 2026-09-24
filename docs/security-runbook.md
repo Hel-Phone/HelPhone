@@ -63,3 +63,26 @@ token is unset and 401 on a bad token.
 
 Rotate `WHITELIST_ADMIN_TOKEN` like any other secret; treat a leaked API key as
 revoked immediately.
+
+## Dependency & license auditor (#540)
+
+- Script: `scripts/audit-deps.js` — reads `package-lock.json` and
+  `server/package-lock.json`; shares its license matrix with
+  `scripts/security/license_compliance.js` (`license_policy.js`). Writes a
+  deterministic `licenses.json` (no timestamps).
+- Gate: `npm run security:audit-deps:check` (CI `supply-chain` job). Exit 1 =
+  PR blocked. Server-only run: `npm run audit:deps --workspace server`.
+- **DENIED** — GPL/AGPL/SSPL/EUPL/OSL/CPAL/RPL. Replace the dependency; only
+  add to `EXCEPTIONS` in `license_policy.js` after legal review. Weak copyleft
+  (LGPL/MPL/...) is a REVIEW warning; `--strict` promotes it to a failure.
+- **INSTALL-SCRIPT** — a package gained a lifecycle script. Read the script
+  (`npm view <pkg>@<ver> scripts`); if legitimate, add it to
+  `INSTALL_SCRIPT_ALLOWLIST` with a reason. `suspicious-install-script` means
+  the installed body matched curl|sh, eval, base64, remote URL or env-exfil
+  patterns — treat as a possible compromise: do not install, pin the previous
+  version and report upstream.
+- **SOURCE** — resolved tarball is off the trusted registries (or http/git),
+  or integrity is missing/weak. Usually a tampered lockfile: regenerate it
+  from a clean checkout and diff.
+- **STALE** — `licenses.json` no longer matches the lockfiles; run
+  `npm run security:audit-deps` and commit.
