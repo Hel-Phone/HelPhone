@@ -460,7 +460,81 @@ app.get("/api/feedback/:requestId", (req, res) => {
   res.json(entry);
 });
 
+// ── Soroban Footprint Inspection (#517) ────────────────────────────────
+// Mirror of the server/index.ts endpoint: inspects a contract function's
+// storage footprint via an RPC simulateTransaction call so clients can build
+// envelopes with the required read-only / read-write ledger keys pre-attached.
+app.post("/api/soroban/footprint/inspect", async (req, res) => {
+  try {
+    const { contractId, functionName, args = [] } = req.body || {};
+    if (typeof contractId !== "string" || !contractId)
+      return res.status(400).json({ success: false, error: "contractId is required" });
+    if (typeof functionName !== "string" || !functionName)
+      return res.status(400).json({ success: false, error: "functionName is required" });
+
+    const { Account, Keypair, BASE_FEE, Networks, TransactionBuilder, Operation, nativeToScVal, SorobanDataBuilder } = await import("@stellar/stellar-sdk");
+    const simServer = new rpc.Server(
+      process.env.SOROBAN_RPC_URL || "https://soroban-testnet.stellar.org",
+      { timeout: 30_000 },
+    );
+    const source = new Account(Keypair.random().publicKey(), "0");
+    const probe = new TransactionBuilder(source, {
+      fee: BASE_FEE,
+      networkPassphrase: process.env.SOROBAN_NETWORK_PASSPHRASE || Networks.TESTNET,
+    })
+      .addOperation(
+        Operation.invokeContractFunction({
+          contract: contractId,
+          function: functionName,
+          args: args.map((arg) =>
+            arg && typeof arg === "object" && arg.type && "value" in arg
+              ? nativeToScVal(arg.value, { type: arg.type })
+              : nativeToScVal(arg),
+          ),
+        }),
+      )
+      .setTimeout(30)
+      .build();
+
+    const sim = await simServer.simulateTransaction(probe);
+    if (sim?.error) {
+      return res.status(422).json({ success: false, error: String(sim.error) });
+    }
+
+    let builder;
+    if (typeof sim?.transactionData === "string") {
+      builder = new SorobanDataBuilder(sim.transactionData);
+    } else if (sim?.transactionData?.build) {
+      builder = new SorobanDataBuilder(sim.transactionData.build());
+    } else {
+      builder = new SorobanDataBuilder();
+    }
+
+    const readOnly = builder.getReadOnly();
+    const readWrite = builder.getReadWrite();
+    res.json({
+      success: true,
+      template: {
+        contractId,
+        functionName,
+        readOnlyCount: readOnly.length,
+        readWriteCount: readWrite.length,
+        resourceFee: String(sim?.minResourceFee ?? "0"),
+        footprintXdr: builder.build().toXDR("base64"),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err?.message || String(err) });
+  }
+});
+
 export function startServer() {
+  // Apply schema migrations automatically at boot so the database schema
+  // stays in sync on every deploy (non-fatal; server serves even on failure).
+  import("./db/migrator.js")
+    .then(({ runMigrationsAtStartup }) => runMigrationsAtStartup())
+    .catch((err) => console.error("[migrate] startup failure:", err));
+
   return app.listen(PORT, () => {
     console.log(`ZK Prover worker ${process.pid} on http://localhost:${PORT}`);
     ensureProver().catch((err) => console.error("[prover] Init failed:", err));

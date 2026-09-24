@@ -11,6 +11,11 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      # Postgres connection. Migrations apply automatically at server startup
+      # (see server/db/migrator.ts), so the schema always stays in sync.
+      - key: DATABASE_URL
+        value: fromEnv
+        sync: false
       - key: SOROBAN_RPC_URL
         value: "https://soroban-testnet.stellar.org"
       - key: CONTRACT_ID
@@ -25,6 +30,9 @@ services:
     buildCommand: npm install
     startCommand: bash scripts/export-contract-state.sh
     envVars:
+      - key: DATABASE_URL
+        value: fromEnv
+        sync: false
       - key: SOROBAN_RPC_URL
         value: "https://soroban-testnet.stellar.org"
       - key: CONTRACT_ID

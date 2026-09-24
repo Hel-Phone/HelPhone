@@ -104,3 +104,50 @@ export interface WalletState {
   walletType: string | null
   passkeyEnabled: boolean
 }
+
+// --- Soroban Footprint Inspection (#517) ---
+export interface SorobanFootprintKey {
+  type: 'readOnly' | 'readWrite'
+  /** Base64 xdr.LedgerKey payload (opaque in the API layer). */
+  xdr: string
+}
+
+export interface SorobanFootprint {
+  contractId: string
+  functionName: string
+  readOnly: SorobanFootprintKey[]
+  readWrite: SorobanFootprintKey[]
+  resourceFee: string
+  footprintXdr: string
+  generatedAt: number
+}
+
+export interface SorobanFootprintTemplate {
+  contractId: string
+  functionName: string
+  argsKey: string
+  readOnlyCount: number
+  readWriteCount: number
+  resourceFee: string
+  footprintXdr: string
+}
+
+export interface SorobanFootprintCacheStats {
+  size: number
+  maxEntries: number
+  ttlMs: number
+  hits: number
+  misses: number
+}
+
+export interface SorobanFootprintInspectRequest {
+  contractId: string
+  functionName: string
+  args?: unknown[]
+}
+
+export interface SorobanFootprintInspectResponse {
+  success: boolean
+  template?: SorobanFootprintTemplate
+  error?: string
+}

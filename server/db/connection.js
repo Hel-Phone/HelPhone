@@ -57,3 +57,14 @@ export async function pingDatabase(timeoutMs = 2000) {
   } catch (e) { return { ok: false, latencyMs: Date.now() - start, error: e.message }; }
 }
 export default { getPool, query, getClient, releaseClient, healthCheck, getStats, shutdownPool, pingDatabase };
+
+// Schema migrations — lazy import avoids a circular dependency between
+// connection and migrator (see migrator.js for behaviour).
+export async function migrate(options = {}) {
+  const { runMigrations } = await import('./migrator.js');
+  return runMigrations(options);
+}
+export async function migrateAtStartup() {
+  const { runMigrationsAtStartup } = await import('./migrator.js');
+  return runMigrationsAtStartup();
+}
