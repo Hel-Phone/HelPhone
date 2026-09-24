@@ -46,3 +46,44 @@ Usage: pass `overlays` (an array of `{ id, x, y, kind }` in map viewBox units, `
 ### Frame rate
 
 The loop is driven by `requestAnimationFrame`, so it runs at the display refresh rate (60 Hz on most screens). The rate is measured, not assumed: `FpsMeter` reports `{ fps, frames, windowMs }` once per second through `onRenderStats`. A device that cannot hold 60 FPS shows a lower number instead of a false claim. The unit tests verify the scheduling, the drawing and the message protocol with a fake clock. They do not measure real frame rates, which need a browser and a profile of the actual overlay count.
+
+## Resource hints & module preloading (#542)
+
+Goal: lower First Contentful Paint (FCP) on every route and make in-app
+navigation feel instant, without spending bandwidth on code most sessions never run.
+
+### Layers
+
+| Layer | Where | What |
+| --- | --- | --- |
+| Static hints | `index.html` | `preconnect` to `fonts.googleapis.com` / `fonts.gstatic.com` (crossorigin), `dns-prefetch` to `api.mapbox.com` and `soroban-testnet.stellar.org`. Available before any JS runs. |
+| Runtime hints | `src/lib/resourceHints.ts` → `initResourceHints()` | Deduplicated `<link rel="dns-prefetch|preconnect|modulepreload">` injection. Called once from `src/main.tsx`. `modulepreload` is restricted to same-origin URLs; other rels accept only `http(s)`. |
+| Intent prefetch | `attachIntentPrefetch()` | Delegated `mouseover` (65 ms dwell), `focusin` and `touchstart` listeners. On an anchor whose path has a registered loader, the route's `import()` runs once (memoized), so Vite fetches the chunk and its `modulepreload` dependencies before the click. |
+| Build | `vite.config.ts` `build.modulePreload.resolveDependencies` | Removes the heavy `mapbox-*` and `zk-*` chunks from the entry HTML's preload list, so the landing page does not compete with them for bandwidth. They load on intent or on navigation. |
+
+### Guard rails
+
+- No speculative fetch when `navigator.connection.saveData` is set or the
+  effective connection type is `2g` / `slow-2g`.
+- Only same-origin, non-`_blank`, non-`download` anchors are considered.
+- A failed prefetch is forgotten so the next intent signal retries it, and
+  never surfaces as an unhandled rejection.
+- Hint injection is idempotent; calling it repeatedly (HMR, StrictMode) adds no tags.
+
+### Adding a route
+
+Register the same loader used by `lazy()` in `src/main.tsx`:
+
+```ts
+const loadThing = () => import("./pages/Thing");
+const Thing = lazy(loadThing);
+registerRouteLoaders({ "/thing": loadThing });
+```
+
+### Verifying
+
+- Unit tests: `npx vitest run test/resource-hints.test.js`.
+- In DevTools → Network, hover a nav link: the route chunk appears (Initiator:
+  `resourceHints`) before the click; the landing page's initial requests no
+  longer include the `mapbox` / `zk` chunks.
+- Lighthouse (mobile, throttled): compare FCP before/after on `/`, `/help`, `/ranking`.
