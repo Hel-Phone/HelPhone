@@ -43,6 +43,7 @@ export const TRUSTED_REGISTRIES = new Set(["registry.npmjs.org", "npm.jsr.io"]);
 // Packages with known-legitimate lifecycle scripts (native addon builds and
 // prebuilt-binary fetchers). Anything not listed here fails the gate.
 export const INSTALL_SCRIPT_ALLOWLIST = {
+  esbuild: "postinstall validates the platform-specific binary",
   fsevents: "macOS file-watch native addon build",
   "msgpackr-extract": "prebuilt native msgpack decoder (node-gyp-build)",
   secp256k1: "native secp256k1 addon build",
