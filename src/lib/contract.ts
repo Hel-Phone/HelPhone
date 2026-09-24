@@ -18,6 +18,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { parseEndpointList } from "./networkEstimator";
 import { initRpcHealth, reportRpcFailure } from "./rpcHealth";
+import { toAssetRow, toAmount, classifyOracleError, ORACLE_ERROR_MESSAGES } from "./treasury";
 import type {
   HelpRequest,
   Responder,
@@ -1239,6 +1240,106 @@ export async function upgradeAegisVault(newWasmHash, wallet) {
     .setTimeout(30)
     .build();
   return await sendWrite(tx, wallet, "upgrade");
+}
+
+// ── Multi-asset treasury (Aegis Vault, #541) ───────────────────
+function aegisCall(fn, ...args) {
+  return new Contract(AEGIS_VAULT_ID).call(fn, ...args);
+}
+
+async function readNative(call, fallback) {
+  const sim = await simulateRead(call);
+  if (!sim?.result) return fallback;
+  return scValToNative(sim.result.retval);
+}
+
+/** Per-asset reserve, daily cap usage and target weight for every treasury asset. */
+export async function getTreasurySnapshot() {
+  if (!AEGIS_VAULT_ID) return [];
+  const assets = (await readNative(aegisCall("treasury_assets"), [])) || [];
+  return Promise.all(
+    assets.map(async (asset) => {
+      const arg = scv(asset, { type: "address" });
+      const [reserve, limit, spent, remaining, weight] = await Promise.all([
+        readNative(aegisCall("treasury_reserve", arg), 0n),
+        readNative(aegisCall("daily_limit", arg), 0n),
+        readNative(aegisCall("spent_today", arg), 0n),
+        readNative(aegisCall("remaining_today", arg), 0n),
+        readNative(aegisCall("target_weight", arg), 0),
+      ]);
+      return toAssetRow(asset, { reserve, limit, spent, remaining, weight });
+    }),
+  );
+}
+
+/** Signed buy(+)/sell(-) amounts per treasury asset to reach target weights.
+ *  `prices` follows the order of `treasury_assets`. */
+export async function getTreasuryRebalancePlan(prices) {
+  if (!AEGIS_VAULT_ID) return [];
+  const arg = nativeToScVal(
+    prices.map((p) => BigInt(p)),
+    { type: "i128" },
+  );
+  const plan = await readNative(aegisCall("rebalance_plan", arg), []);
+  return (plan || []).map(toAmount);
+}
+
+export async function setTreasuryDailyLimit(asset, limit, wallet) {
+  if (!AEGIS_VAULT_ID) throw new Error("VITE_AEGIS_VAULT_ID not configured");
+  const signerAddress = await resolveWalletAddress(wallet);
+  if (!signerAddress) throw new Error("Wallet address is not available yet");
+  await ensureAccountFunded(signerAddress);
+  const account = await server.getAccount(signerAddress);
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK,
+  })
+    .addOperation(
+      Operation.invokeContractFunction({
+        contract: AEGIS_VAULT_ID,
+        function: "set_daily_limit",
+        args: [
+          scv(signerAddress, { type: "address" }),
+          scv(asset, { type: "address" }),
+          scv(BigInt(limit), { type: "i128" }),
+        ],
+      }),
+    )
+    .setTimeout(30)
+    .build();
+  return await sendWrite(tx, wallet, "set_daily_limit");
+}
+
+// ── Price oracle conversions (HelPhone DAO, #543) ──────────────
+const DAO_CONTRACT_ID = import.meta.env?.VITE_HELPHONE_DAO_ID || "";
+
+/** Live token conversion via the DAO's oracle adapter (e.g. XLM -> USDC).
+ *  Throws an Error with a user-facing message; a feed older than 1 hour
+ *  surfaces as the "stale" message. */
+export async function getOracleQuote(fromToken, toToken, amount) {
+  if (!DAO_CONTRACT_ID) throw new Error("VITE_HELPHONE_DAO_ID not configured");
+  const call = new Contract(DAO_CONTRACT_ID).call(
+    "quote_conversion",
+    scv(fromToken, { type: "address" }),
+    scv(toToken, { type: "address" }),
+    scv(BigInt(amount), { type: "i128" }),
+  );
+  let sim;
+  try {
+    sim = await simulateRead(call);
+  } catch (err) {
+    throw new Error(ORACLE_ERROR_MESSAGES[classifyOracleError(err)]);
+  }
+  if (sim?.error) {
+    throw new Error(ORACLE_ERROR_MESSAGES[classifyOracleError(sim.error)]);
+  }
+  if (!sim?.result) throw new Error(ORACLE_ERROR_MESSAGES.unknown);
+  return {
+    fromToken,
+    toToken,
+    amountIn: Number(amount),
+    amountOut: toAmount(scValToNative(sim.result.retval)),
+  };
 }
 
 export async function withdrawProtocolFees(

@@ -244,3 +244,31 @@ export interface WatermarkVerification {
   record?: LedgerWatermarkRecord;
 }
 
+
+// --- Multi-Asset Treasury (#541) & Price Oracle (#543) ---
+export interface TreasuryAssetRow {
+  asset: string
+  reserve: number
+  /** Infinity when no cap is configured (i128::MAX on-chain). */
+  dailyLimit: number
+  spentToday: number
+  remainingToday: number
+  targetWeightBps: number
+}
+
+export interface DisbursementUsage {
+  unlimited: boolean
+  /** 0-100, capped. */
+  pct: number
+  remaining: number
+  exhausted: boolean
+}
+
+export interface OracleQuote {
+  fromToken: string
+  toToken: string
+  amountIn: number
+  amountOut: number
+}
+
+export type OracleErrorKind = 'stale' | 'unavailable' | 'invalid' | 'not-configured' | 'unknown'
