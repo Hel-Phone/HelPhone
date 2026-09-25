@@ -64,28 +64,25 @@ token is unset and 401 on a bad token.
 Rotate `WHITELIST_ADMIN_TOKEN` like any other secret; treat a leaked API key as
 revoked immediately.
 
-## Lockfile tamper alert (#583)
+## Dependency & license auditor (#540)
 
-Run `npm run security:lockfiles`. A non-zero exit or `SECURITY:` line means
-at least one locked checksum differs from the official registry (or the
-registry could not be reached). Do not bypass the CI gate.
-
-1. Revert unexplained lockfile edits and rotate credentials used by the update.
-2. Regenerate with a trusted Node/Cargo toolchain in a clean environment.
-3. Re-run the verifier and review package name, version, publisher and source.
-4. Escalate a confirmed registry divergence as a supply-chain incident.
-
-Cargo uses its ecosystem-native SHA-256 checksums; npm uses SHA-512 SRI.
-
-## Suspicious dependency lifecycle script (#584)
-
-`npm ci` must inherit `ignore-scripts=true`. CI then runs
-`npm run security:scan-lifecycle` over installed manifests. On an alert:
-
-1. Do not run the flagged command or disable `.npmrc`.
-2. Quarantine the lockfile change and inspect the package provenance.
-3. Remove or replace a malicious dependency and rotate any possibly exposed secrets.
-4. For a necessary reviewed native build only, pre-pull the pinned Node image
-   and run `scripts/sandbox-install.sh <exact-package-name>`.
-
-The sandbox has no network and does not mount the developer home directory.
+- Script: `scripts/audit-deps.js` — reads `package-lock.json` and
+  `server/package-lock.json`; shares its license matrix with
+  `scripts/security/license_compliance.js` (`license_policy.js`). Writes a
+  deterministic `licenses.json` (no timestamps).
+- Gate: `npm run security:audit-deps:check` (CI `supply-chain` job). Exit 1 =
+  PR blocked. Server-only run: `npm run audit:deps --workspace server`.
+- **DENIED** — GPL/AGPL/SSPL/EUPL/OSL/CPAL/RPL. Replace the dependency; only
+  add to `EXCEPTIONS` in `license_policy.js` after legal review. Weak copyleft
+  (LGPL/MPL/...) is a REVIEW warning; `--strict` promotes it to a failure.
+- **INSTALL-SCRIPT** — a package gained a lifecycle script. Read the script
+  (`npm view <pkg>@<ver> scripts`); if legitimate, add it to
+  `INSTALL_SCRIPT_ALLOWLIST` with a reason. `suspicious-install-script` means
+  the installed body matched curl|sh, eval, base64, remote URL or env-exfil
+  patterns — treat as a possible compromise: do not install, pin the previous
+  version and report upstream.
+- **SOURCE** — resolved tarball is off the trusted registries (or http/git),
+  or integrity is missing/weak. Usually a tampered lockfile: regenerate it
+  from a clean checkout and diff.
+- **STALE** — `licenses.json` no longer matches the lockfiles; run
+  `npm run security:audit-deps` and commit.

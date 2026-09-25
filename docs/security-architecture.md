@@ -61,49 +61,50 @@ Non-registry sources are listed explicitly (e.g. the JSR-hosted `@creit-tech/ste
   expr: helphone_dependency_licenses{status="denied"} > 0
 ```
 
----
+# Content Security Policy: Dynamic Nonce Injector (#530)
 
-# Client Storage Encryption: PBKDF2 Key Derivation
+`server/middleware/csp.ts` gives every HTTP response its own cryptographic nonce and a strict policy that only trusts scripts and styles carrying it.
 
-Sensitive client-side data (for example offline help-request locations) is encrypted before it touches browser storage. The pipeline is in `src/lib/pbkdf2Key.ts` and `src/lib/secureStorage.ts`.
+## Flow
 
 ```
-passphrase ─┐
-            ├─> PBKDF2-HMAC-SHA-256, 100,000 iterations ─> AES-256-GCM key (non-extractable)
-device salt ┘                                                      │
-(IndexedDB)                                                        └─> SecureStorage.setItem / getItem
+vite build ──> dist/index.html   <script nonce="__CSP_NONCE__" ...>   (html.cspNonce in vite.config.ts)
+                     │
+request ──> createCspMiddleware ──> res.locals.cspNonce = random 128-bit value
+                     │              Content-Security-Policy: ... 'nonce-<value>' ...
+                     └──> createHtmlHandler ──> injectNonce(html, <value>) ──> Cache-Control: no-store
 ```
 
-| File | Role |
+The header and the markup use the same value because both come from `res.locals.cspNonce`. The handler refuses to render if the middleware did not run first, instead of serving scripts a strict policy would block.
+
+## The policy
+
+| Directive | Value | Why |
+| --- | --- | --- |
+| `default-src` | `'none'` | Everything not listed is denied |
+| `script-src` | `'self'` `'nonce-…'` `'wasm-unsafe-eval'` | No `'unsafe-inline'`. `wasm-unsafe-eval` only lets the Noir/Barretenberg WASM compile; it does not allow `eval()` |
+| `style-src` | `'self'` `'nonce-…'` `fonts.googleapis.com` | Inline `<style>` needs the nonce |
+| `style-src-attr` | `'unsafe-inline'` | Nonces cannot mark `style=""` attributes, which React and Mapbox set at runtime. Scoped to attributes only |
+| `connect-src` | `'self'` + allowlist | Soroban RPC, Horizon, Mapbox and the API. Extend with `CSP_CONNECT_SRC` |
+| `object-src` / `frame-ancestors` | `'none'` | No plugins, no framing |
+| `base-uri` / `form-action` | `'self'` | Blocks base-tag and form-hijack injection |
+
+## Configuration
+
+| Variable | Effect |
 | --- | --- |
-| `src/lib/pbkdf2Key.ts` | Salt lifecycle, key derivation, latency benchmark |
-| `src/lib/secureStorage.ts` | AES-GCM sealed `localStorage` wrapper (`hp_secure:<name>`) |
-| `src/stores/helpStore.ts` | `persistHelpStore` / `hydrateHelpStore` for the offline CRDT store |
+| `CSP_CONNECT_SRC` | Comma-separated extra `connect-src` origins. Each must be `scheme://host[:port]` with an optional leading `*.`; anything else (`*`, `https:`, entries containing `;` or `,`) is dropped with a warning, never added to the header |
+| `CSP_REPORT_ONLY` | `true` sends `Content-Security-Policy-Report-Only` so a change can be observed before it is enforced |
+| `CSP_REPORT_URI` | Path or URL browsers POST violation reports to |
 
-**Salt.** 16 random bytes, generated once per device and kept in IndexedDB (`helphone-secure` / `kdf`). It is not secret. Its job is to make the derived key unique per device, which defeats precomputed tables. A stored salt with the wrong length is discarded and regenerated.
+`upgrade-insecure-requests` is added when `NODE_ENV=production`.
 
-**Key.** Derived with `extractable: false`, so page script can use the key but cannot read its bytes.
+## Design decisions
 
-**Sealed values.** Each write uses a fresh 12-byte IV. Format: `{ v: 1, iv, ct }`, base64. AES-GCM authenticates the ciphertext, so a wrong passphrase or tampered data is rejected with an error, never decoded to garbage.
+**HTML with a nonce is never cacheable.** A cached page would replay an old nonce against a new header (or the reverse) and break the app, or worse, make a reused nonce guessable. The HTML route sends `Cache-Control: no-store`. Hashed static assets under `dist/` are unaffected.
 
-**Iteration count.** 100,000 meets the issue's requirement. OWASP's current guidance for PBKDF2-HMAC-SHA-256 is far higher (600,000), and `src/lib/keyBackup.ts` already uses 210,000 for key backups. Raising `PBKDF2_ITERATIONS` is a one-line change. Existing entries would need re-encrypting because the key changes, so bump `v` in `secureStorage.ts` when doing so.
+**Invalid configuration fails closed.** A bad `CSP_CONNECT_SRC` entry is discarded rather than interpolated, so an environment typo cannot widen the policy or inject a header.
 
-**Latency budget.** `benchmarkKeyDerivation()` reports the median and worst latency and whether the median is within 50 ms. `scheduleKeyDerivationBenchmark()` runs it when the browser is idle after startup and logs a warning if the device is over budget. It never blocks startup or throws. The 50 ms figure is a target, not a guarantee: derivation time depends on the device, and slow or busy hardware will exceed it. On a loaded development machine the measurement was roughly 100 to 900 ms.
+**The service worker precaches `index.html`.** A precached shell would serve a stale nonce. Keep the navigation route network-first for HTML when this ships; until then a service-worker-served page will be blocked by the policy rather than run unnonced scripts.
 
-**Limits.** The passphrase itself is never stored. Locking (`SecureStorage.lock()`) only drops the in-memory key. It does not clear data already decrypted into application state.
-
-## AI-generated code audit (#585)
-
-The CI audit uses the TypeScript compiler parser for JS, JSX, TS, and TSX.
-Rules target secret literals, unvalidated request input reaching network or
-process sinks, unsafe HTML injection, empty catch blocks, dynamic evaluation,
-contract submissions without an authorization/signing check, invalid standard
-API argument counts, and imports absent from the package manifest.
-
-Findings include file, line, column, rule ID, and message and fail the build.
-Rule suppressions are intentionally unsupported; fix the finding or change the
-auditor in a separately reviewed security change.
-
-AI provenance cannot be inferred reliably from syntax. Contributors must apply
-the `ai-generated` PR label. That label activates the protected
-`security-review` GitHub environment, whose required-reviewer configuration
+**Unchanged for API-only deploys.** The HTML route falls through when `dist/index.html` does not exist.
