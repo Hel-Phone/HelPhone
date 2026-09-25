@@ -7,6 +7,11 @@ import { envFirewallVitePlugin } from "./scripts/security/env_firewall.js";
 import deadcodePruner from "./plugins/vite-plugin-deadcode-pruner.js";
 
 export default defineConfig(({ mode }) => ({
+  html: {
+    // #530: built tags carry this placeholder; server/middleware/csp.ts swaps
+    // in a fresh nonce on every response.
+    cspNonce: "__CSP_NONCE__",
+  },
   css: {
     modules: {
       generateScopedName: mode === "production"
