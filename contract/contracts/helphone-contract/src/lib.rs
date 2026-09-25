@@ -4,6 +4,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String,
 };
 
+mod compression;
 mod multisig;
 mod nonce;
 
@@ -19,7 +20,8 @@ pub use multisig::{Proposal, ProposalAction};
 //   ("active", u32) → u64        active request IDs by slot index
 //
 // Persistent (pay-to-live):
-//   ("req", u64) → HelpRequest
+//   ("req2", u64) → StoredHelpRequest (packed coordinates and timestamp)
+//   ("req", u64) → HelpRequest (legacy entries, read through migration fallback)
 //   ("rcount", request_id) → u32   responder count per request
 //   ("resp", request_id, idx) → ResponderRecord
 //   ("evcount", wallet) → u32      verification count per wallet
@@ -32,7 +34,7 @@ pub use multisig::{Proposal, ProposalAction};
 // repeat invocations.
 //
 //   * mark_arrived / resolve_request / cancel_request touch only
-//     ("req", id) / ("resp", request_id, responder_index) — fully determined
+//     ("req2", id) / ("resp", request_id, responder_index) — fully determined
 //     by the function arguments, so the client pre-bakes their footprint.
 //   * create_request / accept_request / record_expert_verification append to
 //     counter/slot keys whose values depend on on-chain state; their footprint
@@ -97,6 +99,61 @@ pub struct HelpRequest {
     pub status: Status,
     pub created_at: u64,
     pub resolved_at: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+struct StoredHelpRequest {
+    pub id: u64,
+    pub requester: Address,
+    pub packed_location: soroban_sdk::BytesN<16>,
+    pub emergency_type: String,
+    pub nickname: String,
+    pub contact: String,
+    pub status: Status,
+    pub resolved_at: Option<u64>,
+}
+
+fn load_request(env: &Env, id: u64) -> Option<StoredHelpRequest> {
+    if let Some(stored) = env.storage().persistent().get(&(symbol_short!("req2"), id)) {
+        return Some(stored);
+    }
+    let legacy: HelpRequest = env
+        .storage()
+        .persistent()
+        .get(&(symbol_short!("req"), id))?;
+    Some(StoredHelpRequest {
+        id: legacy.id,
+        requester: legacy.requester,
+        packed_location: compression::pack_location(env, legacy.lat, legacy.lng, legacy.created_at),
+        emergency_type: legacy.emergency_type,
+        nickname: legacy.nickname,
+        contact: legacy.contact,
+        status: legacy.status,
+        resolved_at: legacy.resolved_at,
+    })
+}
+
+fn save_request(env: &Env, request: &StoredHelpRequest) {
+    env.storage()
+        .persistent()
+        .set(&(symbol_short!("req2"), request.id), request);
+}
+
+fn request_view(request: StoredHelpRequest) -> HelpRequest {
+    let (lat, lng, created_at) = compression::unpack_location(&request.packed_location);
+    HelpRequest {
+        id: request.id,
+        requester: request.requester,
+        lat,
+        lng,
+        emergency_type: request.emergency_type,
+        nickname: request.nickname,
+        contact: request.contact,
+        status: request.status,
+        created_at,
+        resolved_at: request.resolved_at,
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -246,7 +303,7 @@ impl HelPhone {
     }
 
     pub fn get_request(env: Env, id: u64) -> Option<HelpRequest> {
-        env.storage().persistent().get(&(symbol_short!("req"), id))
+        load_request(&env, id).map(request_view)
     }
 
     pub fn get_responder_count(env: Env, request_id: u64) -> u32 {
@@ -312,21 +369,17 @@ impl HelPhone {
         requester.require_auth();
         let count = Self::get_request_count(env.clone()) + 1;
         env.storage().instance().set(&key_req_count(), &count);
-        let req = HelpRequest {
+        let req = StoredHelpRequest {
             id: count,
             requester,
-            lat,
-            lng,
+            packed_location: compression::pack_location(&env, lat, lng, env.ledger().timestamp()),
             emergency_type,
             nickname,
             contact,
             status: Status::Pending,
-            created_at: env.ledger().timestamp(),
             resolved_at: None,
         };
-        env.storage()
-            .persistent()
-            .set(&(symbol_short!("req"), count), &req);
+        save_request(&env, &req);
         // Append to active list
         let active_count = Self::get_active_count(env.clone());
         env.storage()
@@ -347,18 +400,12 @@ impl HelPhone {
         eta_seconds: u32,
     ) -> Result<u32, Error> {
         responder.require_auth();
-        let mut req: HelpRequest = env
-            .storage()
-            .persistent()
-            .get(&(symbol_short!("req"), request_id))
-            .ok_or(Error::NotFound)?;
+        let mut req = load_request(&env, request_id).ok_or(Error::NotFound)?;
         if req.status != Status::Pending {
             return Err(Error::WrongStatus);
         }
         req.status = Status::Enroute;
-        env.storage()
-            .persistent()
-            .set(&(symbol_short!("req"), request_id), &req);
+        save_request(&env, &req);
 
         let idx: u32 = env
             .storage()
@@ -409,11 +456,7 @@ impl HelPhone {
 
     pub fn resolve_request(env: Env, requester: Address, request_id: u64) -> Result<(), Error> {
         requester.require_auth();
-        let mut req: HelpRequest = env
-            .storage()
-            .persistent()
-            .get(&(symbol_short!("req"), request_id))
-            .ok_or(Error::NotFound)?;
+        let mut req = load_request(&env, request_id).ok_or(Error::NotFound)?;
         if req.requester != requester {
             return Err(Error::NotAuthorized);
         }
@@ -422,19 +465,13 @@ impl HelPhone {
         }
         req.status = Status::Resolved;
         req.resolved_at = Some(env.ledger().timestamp());
-        env.storage()
-            .persistent()
-            .set(&(symbol_short!("req"), request_id), &req);
+        save_request(&env, &req);
         Ok(())
     }
 
     pub fn cancel_request(env: Env, requester: Address, request_id: u64) -> Result<(), Error> {
         requester.require_auth();
-        let mut req: HelpRequest = env
-            .storage()
-            .persistent()
-            .get(&(symbol_short!("req"), request_id))
-            .ok_or(Error::NotFound)?;
+        let mut req = load_request(&env, request_id).ok_or(Error::NotFound)?;
         if req.requester != requester {
             return Err(Error::NotAuthorized);
         }
@@ -442,9 +479,7 @@ impl HelPhone {
             return Err(Error::WrongStatus);
         }
         req.status = Status::Cancelled;
-        env.storage()
-            .persistent()
-            .set(&(symbol_short!("req"), request_id), &req);
+        save_request(&env, &req);
         Ok(())
     }
 

@@ -59,10 +59,13 @@ export interface PasskeyCredential {
   id: string
   rawId: string
   type: 'public-key'
+  challenge?: string
   response: {
-    clientDataJSON: string
-    authenticatorData: string
-    signature: string
+    clientDataJSON?: string
+    authenticatorData?: string
+    signature?: string
+    attestationObject?: string
+    transports?: string[]
     userHandle?: string
   }
 }
@@ -176,6 +179,7 @@ export interface OverlayRenderStats {
   fps: number
   frames: number
   windowMs: number
+}
 
 // ── RPC health (network estimator, #539) ─────────────────────────────────────
 /** 'unknown' = no estimator registered yet. */

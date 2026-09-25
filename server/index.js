@@ -22,6 +22,7 @@ import {
 } from "./middleware/whitelist.js";
 import { startMaintenanceScheduler } from "./db/maintenance.js";
 import { getMaintenanceConfig } from "./env.js";
+import { createPasskeyAuthRouter } from "./routes/passkey-auth.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -155,6 +156,7 @@ if (process.env.NODE_ENV !== "test") {
   const rateLimiter = createRateLimiter();
   app.use(rateLimiter);
 }
+app.use("/api/auth/passkey", createPasskeyAuthRouter());
 
 // ── Contract event bridge ────────────────────────────────────────
 // Issue #177: the frontend used to poll the contract directly on a timer

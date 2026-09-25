@@ -1,8 +1,36 @@
 import { Request, Response, NextFunction } from 'express'
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import { verifyEd25519Signature, verifyWebAuthnSignature } from '../../src/lib/crypto.js'
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
+    const bearer = req.header('Authorization')?.match(/^Bearer ([A-Za-z0-9_.-]+)$/)?.[1]
+    if (bearer) {
+      const parts = bearer.split('.')
+      if (parts.length !== 3 || !process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
+        return res.status(401).json({ success: false, error: 'Invalid passkey session' })
+      }
+      const unsigned = `${parts[0]}.${parts[1]}`
+      const expected = createHmac('sha256', process.env.SESSION_SECRET).update(unsigned).digest()
+      const actual = Buffer.from(parts[2], 'base64url')
+      if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+        return res.status(401).json({ success: false, error: 'Invalid passkey session' })
+      }
+      let header: { alg?: string }
+      let claims: { sub?: string; username?: string; exp?: number }
+      try {
+        header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'))
+        claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'))
+      } catch {
+        return res.status(401).json({ success: false, error: 'Malformed passkey session' })
+      }
+      if (header.alg !== 'HS256' || !claims.sub || !Number.isFinite(claims.exp) || claims.exp <= Date.now() / 1000) {
+        return res.status(401).json({ success: false, error: 'Expired or invalid passkey session' })
+      }
+      ;(req as any).authenticatedUser = { id: claims.sub, username: claims.username, algorithm: 'webauthn' }
+      return next()
+    }
+
     const signature = req.header('X-Signature')
     const publicKey = req.header('X-Public-Key')
     const timestampStr = req.header('X-Timestamp')

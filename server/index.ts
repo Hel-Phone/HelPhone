@@ -17,6 +17,7 @@ import {
 import { SorobanStateExporter, loadLatestSnapshot } from './indexer/exporter.js'
 import { authMiddleware } from './middleware/auth.js'
 import { createCspMiddleware, createHtmlHandler } from './middleware/csp.js'
+import { createPasskeyAuthRouter } from './routes/passkey-auth.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -59,6 +60,7 @@ app.use(
   })
 )
 if (process.env.NODE_ENV !== 'test') app.use(generalLimiter)
+app.use('/api/auth/passkey', createPasskeyAuthRouter())
 
 const stateExporter = new SorobanStateExporter()
 
@@ -123,7 +125,6 @@ if (process.env.NODE_ENV !== 'test') {
   // stays in sync on every deploy (non-fatal; server serves even on failure).
   void runMigrationsAtStartup()
 
-  app.listen(PORT, () => {
   const server = app.listen(PORT, () => {
     console.log(`HelPhone Server running on http://localhost:${PORT}`)
     // Off-peak VACUUM ANALYZE / REINDEX CONCURRENTLY (opt-in: DB_MAINTENANCE_ENABLED=true)

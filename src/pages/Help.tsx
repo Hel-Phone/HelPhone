@@ -30,11 +30,10 @@ export default function Help() {
   const handlePasskeyAuth = async () => {
     try {
       setStatusMessage('Authenticating with WebAuthn Passkey...')
-      const challenge = passkeyManager.generateChallenge()
-      const credential = await passkeyManager.authenticatePasskey(challenge)
+      const credential = await passkeyManager.authenticatePasskey()
 
       if (credential) {
-        const verification = await passkeyManager.verifyAssertion(credential, challenge)
+        const verification = await passkeyManager.verifyAssertion(credential)
         if (verification.verified) {
           setPasskeyVerified(true)
           setStatusMessage('✅ Passkey authenticated successfully! Emergency broadcast authorized.')
