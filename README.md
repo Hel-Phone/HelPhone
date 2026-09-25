@@ -44,6 +44,14 @@ HelPhone is a React + Vite community emergency response application built on Ste
 - **Runbook**: [docs/security-runbook.md](docs/security-runbook.md).
 - **Tests**: `test/dep-audit.test.js`.
 
+### 7. Build Pipeline Egress Monitoring & Data Exfiltration Prevention
+- **Monitor**: `scripts/monitor-build-egress.sh` wraps a build command (`npm run build` by default) with a packet capture (`tcpdump`, or `iptables` LOG/REJECT when running as root) and classifies every observed destination — tcpdump `src > dst` lines, iptables `DST=` log lines, and DNS query names.
+- **Unauthorized Connection Gate**: loopback/RFC1918/CGNAT plus a curated registry allowlist (npm, GitHub, PyPI, crates.io, Node.js) are permitted; anything else — including cloud metadata endpoints (`169.254.169.254`) — fails the build with exit code 1. `--enforce` additionally REJECTs the connection through an `iptables` `OUTPUT` chain while the build runs.
+- **Egress Audit Logs**: `egress-capture.log` (raw packets), `egress-audit.log` (per-destination verdicts) and `egress-summary.log` are written to `artifacts/build-egress/` and uploaded as CI artifacts for security review.
+- **CI Gate**: the `build-egress-monitor` job in `.github/workflows/ci.yml` runs installation and the production build inside the monitor in `--strict` mode (fails when capture is unavailable or unauthorized egress is seen).
+- **Runbook**: [docs/security-runbook.md](docs/security-runbook.md).
+- **Tests**: `test/egress-detector.test.js`.
+
 ---
 
 ## Quick Start

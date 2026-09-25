@@ -7,7 +7,8 @@
     "start": "node index.js",
     "build": "node -e \"process.exit(0)\"",
     "test": "node --test *.test.js",
-    "audit:deps": "node ../scripts/audit-deps.js --lock server/package-lock.json --no-write"
+    "audit:deps": "node ../scripts/audit-deps.js --lock server/package-lock.json --no-write",
+    "security:egress": "bash ../scripts/monitor-build-egress.sh --strict -- npm run build"
   },
   "dependencies": {
     "@aztec/bb.js": "^0.87.9",

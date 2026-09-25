@@ -159,3 +159,47 @@ jobs:
 
       - name: Audit dependencies
         run: node scripts/audit-deps.js --check
+
+  # Build-pipeline network egress monitor: every outbound connection made
+  # while dependencies are fetched and while `npm run build` runs is captured
+  # (tcpdump) and classified against the allowlist in
+  # scripts/monitor-build-egress.sh. Unauthorized destinations fail the job
+  # and the audit logs are uploaded for security review.
+  build-egress-monitor:
+    name: Build Egress Monitor & Data Exfiltration Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install packet capture tooling
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq tcpdump
+
+      - name: Install dependencies inside the egress monitor (strict gate)
+        run: >
+          bash scripts/monitor-build-egress.sh --strict
+          --log-dir artifacts/build-egress/install
+          -- npm ci --ignore-scripts
+
+      - name: Run production build inside the egress monitor (egress gate)
+        # This job owns the network verdict only: the app build's own exit
+        # code is recorded in the summary artifact but does not fail the job
+        # (compilation errors belong to the build, see docs/security-runbook.md).
+        run: >
+          bash scripts/monitor-build-egress.sh --strict --ignore-command-exit
+          --log-dir artifacts/build-egress/build
+          -- npm run build
+
+      - name: Upload build egress audit logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-egress-audit
+          path: artifacts/build-egress/
+          if-no-files-found: warn
