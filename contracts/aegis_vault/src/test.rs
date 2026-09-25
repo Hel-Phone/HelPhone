@@ -211,20 +211,10 @@ fn claim_aid_rejects_when_not_claimed() {
 
 mod privacy_checks {
     use super::*;
-    use soroban_sdk::{
-        contract, contractimpl,
-        token::{StellarAssetClient, TokenClient},
-    };
+    use soroban_sdk::token::{StellarAssetClient, TokenClient};
 
-    /// Stands in for the noir verifier: accepts every proof, so tests reach the
-    /// code after verification without needing a real UltraHonk proof.
-    #[contract]
-    struct MockVerifier;
-
-    #[contractimpl]
-    impl MockVerifier {
-        pub fn verify_proof(_env: Env, _public_inputs: Bytes, _proof: Bytes) {}
-    }
+    // The claim tests below reuse the file-level `MockVerifier`, which accepts
+    // any proof whose first byte is 1 (they pass `[1u8; 32]`).
 
     const ON: PrivacyParams = PrivacyParams { enabled: true, ..PrivacyParams::defaults() };
     const MIN: u64 = 300_000; // default: b = 100_000, t = 3
@@ -321,7 +311,7 @@ mod privacy_checks {
         let stranger = Address::generate(&c.env);
         assert_eq!(
             c.client.try_set_privacy_params(&stranger, &ON),
-            Err(Ok(VaultError::NotAuthorized))
+            Err(Ok(VaultError::NotAdmin))
         );
         assert!(!c.client.privacy_params().enabled);
         c.client.set_privacy_params(&c.admin, &ON);
@@ -480,11 +470,10 @@ mod privacy_checks {
         assert_eq!(c.client.try_validate_zone(&sliver), Err(Ok(VaultError::ZoneOverlapTooSmall)));
     }
 
-    /// 224-byte public inputs: the zone prefix, recipient field, nullifier.
-    fn claim_inputs(c: &Ctx, prefix: &Bytes, recipient: &Address, nullifier: u8) -> Bytes {
+    /// 224-byte public inputs: the zone prefix, recipient field (unchecked), nullifier.
+    fn claim_inputs(c: &Ctx, prefix: &Bytes, nullifier: u8) -> Bytes {
         let mut buf = [0u8; 224];
         prefix.copy_into_slice(&mut (buf[..160]));
-        buf[160..192].copy_from_slice(&address_to_field_bytes(&c.env, recipient).to_array());
         buf[223] = nullifier;
         Bytes::from_slice(&c.env, &buf)
     }
@@ -497,7 +486,7 @@ mod privacy_checks {
         fund(&c, &prefix).unwrap().unwrap();
 
         let recipient = Address::generate(&c.env);
-        let inputs = claim_inputs(&c, &prefix, &recipient, 9);
+        let inputs = claim_inputs(&c, &prefix, 9);
         c.client.claim_aid(&recipient, &inputs, &Bytes::from_slice(&c.env, &[1u8; 32]));
 
         assert_eq!(c.token.balance(&recipient), DEFAULT_PAYOUT_STROOP);
@@ -517,7 +506,7 @@ mod privacy_checks {
 
         enable(&c);
         let recipient = Address::generate(&c.env);
-        let inputs = claim_inputs(&c, &prefix, &recipient, 3);
+        let inputs = claim_inputs(&c, &prefix, 3);
         c.client.claim_aid(&recipient, &inputs, &Bytes::from_slice(&c.env, &[1u8; 32]));
         assert_eq!(c.token.balance(&recipient), DEFAULT_PAYOUT_STROOP);
     }
@@ -546,4 +535,337 @@ mod privacy_checks {
         let sliver_old = (oldest.0 + MIN - 10_000, oldest.1 + MIN, oldest.2, oldest.3);
         assert_eq!(fund(&c, &zone(&c.env, sliver_old, 252)), Ok(Ok(())));
     }
+}
+
+// ── Treasury / disbursement (#541) ─────────────────────────────────
+
+use soroban_sdk::testutils::Ledger;
+use soroban_sdk::{contract, contractimpl, token::StellarAssetClient, token::TokenClient, vec};
+
+#[contract]
+struct MockVerifier;
+
+#[contractimpl]
+impl MockVerifier {
+    /// Accepts a proof iff its first byte is 1.
+    pub fn verify_proof(_env: Env, _public_inputs: Bytes, proof: Bytes) -> bool {
+        proof.get(0) == Some(1)
+    }
+}
+
+const DAY: u64 = 86_400;
+
+struct Ctx<'a> {
+    env: Env,
+    client: AegisVaultClient<'a>,
+    admin: Address,
+    token: Address,
+    campaign: BytesN<32>,
+}
+
+fn new_token(env: &Env) -> Address {
+    env.register_stellar_asset_contract_v2(Address::generate(env))
+        .address()
+}
+
+fn ctx<'a>() -> Ctx<'a> {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(10 * DAY);
+    let verifier = env.register(MockVerifier, ());
+    let token = new_token(&env);
+    let admin = Address::generate(&env);
+    let id = env.register(AegisVault, (verifier, token.clone(), admin.clone()));
+    let client = AegisVaultClient::new(&env, &id);
+    let campaign = BytesN::from_array(&env, &[9u8; 32]);
+    Ctx { env, client, admin, token, campaign }
+}
+
+fn fund(c: &Ctx, amount: i128) {
+    let funder = Address::generate(&c.env);
+    StellarAssetClient::new(&c.env, &c.token).mint(&funder, &amount);
+    c.client.fund_zone(&funder, &prefix(&c.env, &c.campaign), &amount);
+}
+
+fn prefix(env: &Env, campaign: &BytesN<32>) -> Bytes {
+    let mut raw = [0u8; CAMPAIGN_INPUTS_LEN];
+    raw[128..160].copy_from_slice(&campaign.to_array());
+    Bytes::from_slice(env, &raw)
+}
+
+fn inputs(env: &Env, campaign: &BytesN<32>, nullifier: u8) -> Bytes {
+    let mut raw = [0u8; PUBLIC_INPUTS_LEN];
+    raw[128..160].copy_from_slice(&campaign.to_array());
+    raw[192..224].copy_from_slice(&[nullifier; 32]);
+    Bytes::from_slice(env, &raw)
+}
+
+fn good_proof(env: &Env) -> Bytes {
+    Bytes::from_slice(env, &[1u8; 8])
+}
+
+#[test]
+fn fund_zone_credits_campaign_and_treasury_reserve() {
+    let c = ctx();
+    fund(&c, 3 * DEFAULT_PAYOUT_STROOP);
+    assert_eq!(c.client.campaign_balance(&c.campaign), 3 * DEFAULT_PAYOUT_STROOP);
+    assert_eq!(c.client.treasury_reserve(&c.token), 3 * DEFAULT_PAYOUT_STROOP);
+    assert_eq!(c.client.treasury_assets(), vec![&c.env, c.token.clone()]);
+}
+
+#[test]
+fn fund_zone_rejects_non_positive_amounts() {
+    let c = ctx();
+    let funder = Address::generate(&c.env);
+    let p = prefix(&c.env, &c.campaign);
+    assert_eq!(c.client.try_fund_zone(&funder, &p, &0), Err(Ok(VaultError::InvalidAmount)));
+    assert_eq!(c.client.try_fund_zone(&funder, &p, &-5), Err(Ok(VaultError::InvalidAmount)));
+    let short = Bytes::from_slice(&c.env, &[0u8; 10]);
+    assert_eq!(
+        c.client.try_fund_zone(&funder, &short, &5),
+        Err(Ok(VaultError::InvalidPublicInputs))
+    );
+}
+
+#[test]
+fn claim_aid_pays_recipient_and_updates_books() {
+    let c = ctx();
+    fund(&c, 2 * DEFAULT_PAYOUT_STROOP);
+    let recipient = Address::generate(&c.env);
+    let pi = inputs(&c.env, &c.campaign, 1);
+
+    c.client.claim_aid(&recipient, &pi, &good_proof(&c.env));
+
+    assert_eq!(TokenClient::new(&c.env, &c.token).balance(&recipient), DEFAULT_PAYOUT_STROOP);
+    assert_eq!(c.client.campaign_balance(&c.campaign), DEFAULT_PAYOUT_STROOP);
+    assert_eq!(c.client.treasury_reserve(&c.token), DEFAULT_PAYOUT_STROOP);
+    assert_eq!(c.client.spent_today(&c.token), DEFAULT_PAYOUT_STROOP);
+    assert!(c.client.is_claimed(&BytesN::from_array(&c.env, &[1u8; 32])));
+}
+
+#[test]
+fn claim_aid_rejects_replayed_nullifier() {
+    let c = ctx();
+    fund(&c, 3 * DEFAULT_PAYOUT_STROOP);
+    let recipient = Address::generate(&c.env);
+    let pi = inputs(&c.env, &c.campaign, 1);
+    c.client.claim_aid(&recipient, &pi, &good_proof(&c.env));
+    assert_eq!(
+        c.client.try_claim_aid(&recipient, &pi, &good_proof(&c.env)),
+        Err(Ok(VaultError::AlreadyClaimed))
+    );
+}
+
+#[test]
+fn claim_aid_rejects_invalid_proof() {
+    let c = ctx();
+    fund(&c, DEFAULT_PAYOUT_STROOP);
+    let recipient = Address::generate(&c.env);
+    let bad = Bytes::from_slice(&c.env, &[0u8; 8]);
+    assert_eq!(
+        c.client.try_claim_aid(&recipient, &inputs(&c.env, &c.campaign, 1), &bad),
+        Err(Ok(VaultError::VerificationFailed))
+    );
+    assert!(!c.client.is_claimed(&BytesN::from_array(&c.env, &[1u8; 32])));
+}
+
+#[test]
+fn claim_aid_rejects_underfunded_campaign() {
+    let c = ctx();
+    fund(&c, DEFAULT_PAYOUT_STROOP - 1);
+    let recipient = Address::generate(&c.env);
+    assert_eq!(
+        c.client.try_claim_aid(&recipient, &inputs(&c.env, &c.campaign, 1), &good_proof(&c.env)),
+        Err(Ok(VaultError::InsufficientFunds))
+    );
+}
+
+#[test]
+fn daily_limit_caps_disbursements_and_resets_next_day() {
+    let c = ctx();
+    fund(&c, 3 * DEFAULT_PAYOUT_STROOP);
+    c.client.set_daily_limit(&c.admin, &c.token, &(2 * DEFAULT_PAYOUT_STROOP));
+    assert_eq!(c.client.daily_limit(&c.token), 2 * DEFAULT_PAYOUT_STROOP);
+    let recipient = Address::generate(&c.env);
+
+    c.client.claim_aid(&recipient, &inputs(&c.env, &c.campaign, 1), &good_proof(&c.env));
+    assert_eq!(c.client.remaining_today(&c.token), DEFAULT_PAYOUT_STROOP);
+    c.client.claim_aid(&recipient, &inputs(&c.env, &c.campaign, 2), &good_proof(&c.env));
+    assert_eq!(c.client.remaining_today(&c.token), 0);
+
+    let third = inputs(&c.env, &c.campaign, 3);
+    assert_eq!(
+        c.client.try_claim_aid(&recipient, &third, &good_proof(&c.env)),
+        Err(Ok(VaultError::DailyLimitExceeded))
+    );
+    // A rejected claim must not burn the nullifier or move funds.
+    assert!(!c.client.is_claimed(&BytesN::from_array(&c.env, &[3u8; 32])));
+    assert_eq!(c.client.campaign_balance(&c.campaign), DEFAULT_PAYOUT_STROOP);
+
+    c.env.ledger().set_timestamp(11 * DAY);
+    assert_eq!(c.client.spent_today(&c.token), 0);
+    c.client.claim_aid(&recipient, &third, &good_proof(&c.env));
+    assert_eq!(c.client.campaign_balance(&c.campaign), 0);
+}
+
+#[test]
+fn constructor_sets_default_daily_limit() {
+    let c = ctx();
+    assert_eq!(c.client.daily_limit(&c.token), DEFAULT_DAILY_LIMIT_STROOP);
+    // Unregistered assets are uncapped until registered/configured.
+    assert_eq!(c.client.daily_limit(&Address::generate(&c.env)), i128::MAX);
+}
+
+#[test]
+fn daily_limit_admin_only_and_validated() {
+    let c = ctx();
+    let other = Address::generate(&c.env);
+    assert_eq!(
+        c.client.try_set_daily_limit(&other, &c.token, &1),
+        Err(Ok(VaultError::NotAdmin))
+    );
+    assert_eq!(
+        c.client.try_set_daily_limit(&c.admin, &c.token, &0),
+        Err(Ok(VaultError::InvalidAmount))
+    );
+    assert_eq!(
+        c.client.try_set_daily_limit(&c.admin, &Address::generate(&c.env), &1),
+        Err(Ok(VaultError::UnknownAsset))
+    );
+}
+
+#[test]
+fn treasury_holds_multiple_assets() {
+    let c = ctx();
+    let usdc = new_token(&c.env);
+    let depositor = Address::generate(&c.env);
+    StellarAssetClient::new(&c.env, &usdc).mint(&depositor, &1_000);
+
+    // Unregistered asset is refused until an admin adds it.
+    assert_eq!(
+        c.client.try_treasury_deposit(&depositor, &usdc, &500),
+        Err(Ok(VaultError::UnknownAsset))
+    );
+    assert_eq!(
+        c.client.try_add_treasury_asset(&Address::generate(&c.env), &usdc),
+        Err(Ok(VaultError::NotAdmin))
+    );
+    c.client.add_treasury_asset(&c.admin, &usdc);
+    c.client.add_treasury_asset(&c.admin, &usdc); // idempotent
+    c.client.treasury_deposit(&depositor, &usdc, &500);
+
+    assert_eq!(c.client.treasury_reserve(&usdc), 500);
+    assert_eq!(c.client.treasury_assets().len(), 2);
+    assert_eq!(
+        c.client.try_treasury_deposit(&depositor, &usdc, &0),
+        Err(Ok(VaultError::InvalidAmount))
+    );
+}
+
+#[test]
+fn treasury_withdraw_is_admin_only_and_capped() {
+    let c = ctx();
+    let usdc = new_token(&c.env);
+    let depositor = Address::generate(&c.env);
+    StellarAssetClient::new(&c.env, &usdc).mint(&depositor, &1_000);
+    c.client.add_treasury_asset(&c.admin, &usdc);
+    c.client.treasury_deposit(&depositor, &usdc, &1_000);
+    c.client.set_daily_limit(&c.admin, &usdc, &600);
+    let to = Address::generate(&c.env);
+
+    assert_eq!(
+        c.client.try_treasury_withdraw(&Address::generate(&c.env), &usdc, &to, &1),
+        Err(Ok(VaultError::NotAdmin))
+    );
+    assert_eq!(
+        c.client.try_treasury_withdraw(&c.admin, &usdc, &to, &0),
+        Err(Ok(VaultError::InvalidAmount))
+    );
+    c.client.treasury_withdraw(&c.admin, &usdc, &to, &400);
+    assert_eq!(TokenClient::new(&c.env, &usdc).balance(&to), 400);
+    assert_eq!(c.client.treasury_reserve(&usdc), 600);
+    assert_eq!(
+        c.client.try_treasury_withdraw(&c.admin, &usdc, &to, &201),
+        Err(Ok(VaultError::DailyLimitExceeded))
+    );
+    // Within the cap but above the reserve.
+    c.client.set_daily_limit(&c.admin, &usdc, &10_000);
+    assert_eq!(
+        c.client.try_treasury_withdraw(&c.admin, &usdc, &to, &601),
+        Err(Ok(VaultError::InsufficientFunds))
+    );
+}
+
+fn two_asset_treasury(c: &Ctx) -> Address {
+    let usdc = new_token(&c.env);
+    c.client.add_treasury_asset(&c.admin, &usdc);
+    let who = Address::generate(&c.env);
+    StellarAssetClient::new(&c.env, &usdc).mint(&who, &100);
+    StellarAssetClient::new(&c.env, &c.token).mint(&who, &100);
+    c.client.treasury_deposit(&who, &usdc, &100);
+    c.client.treasury_deposit(&who, &c.token, &100);
+    usdc
+}
+
+#[test]
+fn target_weights_validated_and_stored() {
+    let c = ctx();
+    let usdc = two_asset_treasury(&c);
+    let assets = vec![&c.env, c.token.clone(), usdc.clone()];
+
+    assert_eq!(
+        c.client.try_set_target_weights(&Address::generate(&c.env), &assets, &vec![&c.env, 5_000u32, 5_000]),
+        Err(Ok(VaultError::NotAdmin))
+    );
+    assert_eq!(
+        c.client.try_set_target_weights(&c.admin, &assets, &vec![&c.env, 5_000u32]),
+        Err(Ok(VaultError::InvalidWeights))
+    );
+    assert_eq!(
+        c.client.try_set_target_weights(&c.admin, &assets, &vec![&c.env, 6_000u32, 4_001]),
+        Err(Ok(VaultError::InvalidWeights))
+    );
+    let stranger = vec![&c.env, Address::generate(&c.env)];
+    assert_eq!(
+        c.client.try_set_target_weights(&c.admin, &stranger, &vec![&c.env, 100u32]),
+        Err(Ok(VaultError::UnknownAsset))
+    );
+
+    c.client.set_target_weights(&c.admin, &assets, &vec![&c.env, 7_500u32, 2_500]);
+    assert_eq!(c.client.target_weight(&c.token), 7_500);
+    assert_eq!(c.client.target_weight(&usdc), 2_500);
+}
+
+#[test]
+fn rebalance_plan_moves_reserves_toward_targets() {
+    let c = ctx();
+    let usdc = two_asset_treasury(&c);
+    let assets = vec![&c.env, c.token.clone(), usdc];
+    c.client.set_target_weights(&c.admin, &assets, &vec![&c.env, 7_500u32, 2_500]);
+
+    // Equal prices: 200 total value → target 150 / 50.
+    let plan = c.client.rebalance_plan(&vec![&c.env, 1i128, 1]);
+    assert_eq!(plan, vec![&c.env, 50i128, -50]);
+
+    // Second asset worth 3× the first: 100 + 300 = 400 → targets 300 / 100 value.
+    let plan = c.client.rebalance_plan(&vec![&c.env, 1i128, 3]);
+    assert_eq!(plan, vec![&c.env, 200i128, -66]);
+}
+
+#[test]
+fn rebalance_plan_validates_prices() {
+    let c = ctx();
+    two_asset_treasury(&c);
+    assert_eq!(
+        c.client.try_rebalance_plan(&vec![&c.env, 1i128]),
+        Err(Ok(VaultError::InvalidPrices))
+    );
+    assert_eq!(
+        c.client.try_rebalance_plan(&vec![&c.env, 1i128, 0]),
+        Err(Ok(VaultError::InvalidPrices))
+    );
+    assert_eq!(
+        c.client.try_rebalance_plan(&vec![&c.env, i128::MAX, 1]),
+        Err(Ok(VaultError::Overflow))
+    );
 }

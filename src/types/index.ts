@@ -176,6 +176,30 @@ export interface OverlayRenderStats {
   fps: number
   frames: number
   windowMs: number
+}
+
+// --- Client routing / compact spatial graph (#582) ---
+export interface SpatialGraph {
+  nodeCount: number
+  offsets: Uint32Array
+  targets: Uint32Array
+  weights: Float32Array
+}
+
+export interface RoadNetworkDocument {
+  format: 'helphone-csr-v1'
+  nodeCount: number
+  offsets: number[]
+  targets: number[]
+  weights: number[]
+  metadata?: Record<string, string>
+}
+
+export interface RouteResult {
+  distanceKm: number
+  path: number[]
+  visitedNodes: number
+}
 
 // ── RPC health (network estimator, #539) ─────────────────────────────────────
 /** 'unknown' = no estimator registered yet. */
@@ -266,3 +290,50 @@ export type ZonePrivacyViolation =
   | 'not_on_grid'
   | 'too_small'
   | 'overlap_too_small'
+
+// --- Multi-Asset Treasury (#541) & Price Oracle (#543) ---
+export interface TreasuryAssetRow {
+  asset: string
+  reserve: number
+  /** Infinity when no cap is configured (i128::MAX on-chain). */
+  dailyLimit: number
+  spentToday: number
+  remainingToday: number
+  targetWeightBps: number
+}
+
+export interface DisbursementUsage {
+  unlimited: boolean
+  /** 0-100, capped. */
+  pct: number
+  remaining: number
+  exhausted: boolean
+}
+
+export interface OracleQuote {
+  fromToken: string
+  toToken: string
+  amountIn: number
+  amountOut: number
+}
+
+export type OracleErrorKind = 'stale' | 'unavailable' | 'invalid' | 'not-configured' | 'unknown'
+
+// --- Bounded Expert Verification History (contract ring buffer, #531) ---
+/**
+ * A wallet's verification history is a fixed-capacity ring buffer. Entries have
+ * a logical index that only ever grows; once `total` exceeds `capacity` the
+ * oldest indexes are evicted and read back as `null`.
+ */
+export interface ExpertVerificationWindow {
+  /** Verifications ever recorded, evicted ones included; the next entry's index. */
+  total: number
+  /** Most entries the contract retains per wallet. */
+  capacity: number
+  /** Logical index of the oldest entry still readable. */
+  oldest: number
+  /** Entries currently readable (`total - oldest`, never above `capacity`). */
+  retained: number
+  /** Entries that have been evicted (`oldest`). */
+  evicted: number
+}

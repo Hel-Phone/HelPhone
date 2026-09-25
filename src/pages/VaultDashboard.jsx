@@ -3,12 +3,15 @@ import { Link } from "react-router-dom";
 import { StellarWalletsKit } from "@creit-tech/stellar-wallets-kit/sdk";
 import { KitEventType } from "@creit-tech/stellar-wallets-kit/types";
 import useDocumentTitle from "../lib/useDocumentTitle";
+import { TreasuryPanel, OracleQuoteForm } from "../components/TreasuryPanel";
 import {
   getAegisCampaignBalance,
   getAegisPayoutAmount,
   getAegisIsClaimed,
   claimAid,
   fundZone,
+  getTreasurySnapshot,
+  getOracleQuote,
   sanitizeWalletAddress,
   buildLocationProofZone,
 } from "../lib/contract";
@@ -265,6 +268,28 @@ export default function VaultDashboard() {
   const [contributing, setContributing] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
+  const [treasury, setTreasury] = useState([]);
+  const [treasuryLoading, setTreasuryLoading] = useState(true);
+
+  // Real-time multi-asset treasury reserves (#541): refresh every 15s.
+  useEffect(() => {
+    let cancelled = false;
+    async function refresh() {
+      try {
+        const rows = await getTreasurySnapshot();
+        if (!cancelled) setTreasury(rows);
+      } catch {
+      } finally {
+        if (!cancelled) setTreasuryLoading(false);
+      }
+    }
+    refresh();
+    const timer = setInterval(refresh, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -710,6 +735,8 @@ export default function VaultDashboard() {
             </p>
           </div>
         )}
+        <TreasuryPanel rows={treasury} loading={treasuryLoading} />
+        <OracleQuoteForm getQuote={getOracleQuote} />
       </div>
     </div>
   );
