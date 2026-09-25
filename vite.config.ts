@@ -159,6 +159,15 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     chunkSizeWarningLimit: 500,
+    // #542 FCP: keep heavy, route-specific chunks (Mapbox GL, ZK/WASM prover)
+    // out of the entry HTML's modulepreload list; they are fetched on intent
+    // (see src/lib/resourceHints.ts) or on navigation instead.
+    modulePreload: {
+      resolveDependencies: (_file, deps, { hostType }) =>
+        hostType === "html"
+          ? deps.filter((d) => !/(^|\/)(mapbox|zk)-[^/]*\.js$/.test(d))
+          : deps,
+    },
     rollupOptions: {
       output: {
         manualChunks(id) {

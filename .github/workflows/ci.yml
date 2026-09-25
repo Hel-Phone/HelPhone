@@ -159,3 +159,20 @@ jobs:
 
       - name: Audit dependencies
         run: node scripts/audit-deps.js --check
+
+  # #541 / #543 — Soroban contract unit tests (aegis_vault treasury, DAO oracle).
+  contracts:
+    name: Soroban Contract Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run contract tests
+        run: cargo test --workspace --locked
