@@ -244,3 +244,22 @@ export interface WatermarkVerification {
   record?: LedgerWatermarkRecord;
 }
 
+
+// --- Bounded Expert Verification History (contract ring buffer, #531) ---
+/**
+ * A wallet's verification history is a fixed-capacity ring buffer. Entries have
+ * a logical index that only ever grows; once `total` exceeds `capacity` the
+ * oldest indexes are evicted and read back as `null`.
+ */
+export interface ExpertVerificationWindow {
+  /** Verifications ever recorded, evicted ones included; the next entry's index. */
+  total: number
+  /** Most entries the contract retains per wallet. */
+  capacity: number
+  /** Logical index of the oldest entry still readable. */
+  oldest: number
+  /** Entries currently readable (`total - oldest`, never above `capacity`). */
+  retained: number
+  /** Entries that have been evicted (`oldest`). */
+  evicted: number
+}
