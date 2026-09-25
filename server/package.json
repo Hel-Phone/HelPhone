@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "build": "node -e \"process.exit(0)\"",
-    "test": "node --test *.test.js"
+    "test": "node --test *.test.js",
+    "audit:deps": "node ../scripts/audit-deps.js --lock server/package-lock.json --no-write"
   },
   "dependencies": {
     "@aztec/bb.js": "^0.87.9",
