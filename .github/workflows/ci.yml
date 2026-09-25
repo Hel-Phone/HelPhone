@@ -132,3 +132,21 @@ jobs:
         with:
           name: throttling-${{ matrix.profile }}
           path: test-results/
+
+  # Closes #540 — license gate (fails on GPL/unauthorized copyleft),
+  # install-script allowlist, registry/integrity hijack checks, and a
+  # committed licenses.json freshness check. Zero dependencies: no install.
+  supply-chain-audit:
+    name: Supply Chain & License Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - name: Audit dependencies
+        run: node scripts/audit-deps.js --check

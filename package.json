@@ -17,6 +17,8 @@
     "test:watch": "vitest",
     "test:e2e:throttling": "playwright test --project=throttling",
     "lint": "eslint .",
+    "security:audit-deps": "node scripts/audit-deps.js",
+    "security:audit-deps:check": "node scripts/audit-deps.js --check",
     "typecheck": "tsc --noEmit",
     "export:state": "bash scripts/export-contract-state.sh",
     "prepare": "husky",
