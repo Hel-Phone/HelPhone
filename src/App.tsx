@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { FeatureFlagProvider, useFeatureFlag } from './lib/featureFlags.js'
 import { WalletProvider } from './contexts/WalletContext.js'
+import LanguageSwitcher from './components/LanguageSwitcher'
 
 function AppContent() {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -55,8 +56,7 @@ function AppContent() {
         style={{
           position: 'fixed',
           top: 0,
-          left: 0,
-          right: 0,
+          insetInline: 0,
           zIndex: 100,
           background: 'rgba(28, 44, 36, 0.92)',
           backdropFilter: 'blur(8px)',
@@ -98,6 +98,7 @@ function AppContent() {
           {sorobanBackupEnabled && (
             <span style={{ fontSize: '0.8rem', color: '#3F8487' }}>🛡️ State Backup Active</span>
           )}
+          <LanguageSwitcher />
         </div>
       </nav>
 

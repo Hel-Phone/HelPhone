@@ -2,6 +2,21 @@
  * HelPhone System-Wide TypeScript Definitions
  */
 
+export type DaoProposalStatus = 'Active' | 'Passed' | 'Queued' | 'Failed' | 'Executed' | 'Cancelled'
+
+export interface DaoTimelockState {
+  queued_at: number
+  execute_after: number
+}
+
+export interface DaoProposalSummary {
+  id: number
+  status: DaoProposalStatus
+  timelock: DaoTimelockState | null
+  cancellationApprovals: number
+  cancellationThreshold: number
+}
+
 // --- Feature Flags Subsystem ---
 export interface FeatureFlagRuleset {
   enabled: boolean

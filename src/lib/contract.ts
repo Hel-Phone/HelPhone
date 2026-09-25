@@ -165,6 +165,12 @@ const CONTRACT_ID = assertValidContractId(
   ACTIVE_NETWORK.contractId,
   "CONTRACT_ID",
 );
+const DAO_CONTRACT_ID = import.meta.env?.VITE_HELPHONE_DAO_CONTRACT_ID;
+
+function getDaoContractId() {
+  if (!DAO_CONTRACT_ID) throw new Error("VITE_HELPHONE_DAO_CONTRACT_ID is not configured");
+  return assertValidContractId(DAO_CONTRACT_ID, "VITE_HELPHONE_DAO_CONTRACT_ID");
+}
 const RPC_URL = ACTIVE_NETWORK.rpcUrl;
 const FRIENDBOT_URL = ACTIVE_NETWORK.friendbotUrl;
 const NETWORK = ACTIVE_NETWORK.networkPassphrase;
@@ -604,30 +610,85 @@ export async function getExpertVerifications(walletAddress, limit = 10) {
 // depending on whether this connects.
 const EVENTS_URL =
   import.meta.env?.VITE_EVENTS_URL || "http://localhost:3001/events/stream";
+const EVENTS_WS_URL = import.meta.env?.VITE_EVENTS_WS_URL ||
+  `${EVENTS_URL.replace(/^http/, "ws").replace(/\/events\/stream(?:\?.*)?$/, "/events/ws")}`;
 
 /** Subscribe to contract lifecycle events. `onEvent` is called with
  *  `{ topic, ledger, id }` for each event. Returns an unsubscribe function.
  *  Never throws — a construction failure (e.g. no EventSource support)
  *  just means the caller's polling fallback keeps doing all the work. */
 export function subscribeToContractEvents(onEvent) {
-  let es;
-  try {
-    es = new EventSource(EVENTS_URL);
-  } catch {
-    return () => {};
-  }
-  es.onmessage = (msg) => {
+  let es = null;
+  let ws = null;
+  let reconnectTimer = null;
+  let reconnectAttempt = 0;
+  let stopped = false;
+  const recentIds = new Set();
+  const deliver = (raw) => {
     try {
-      onEvent(JSON.parse(msg.data));
+      const decoded = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const event = decoded?.type === "contract-event" ? decoded : decoded;
+      if (decoded?.type && decoded.type !== "contract-event") return;
+      if (!event || typeof event.topic !== "string" || typeof event.id !== "string" || !Number.isSafeInteger(event.ledger)) return;
+      if (recentIds.has(event.id)) return;
+      recentIds.add(event.id);
+      if (recentIds.size > 512) recentIds.delete(recentIds.values().next().value);
+      onEvent(event);
     } catch {
-      // malformed event payload — ignore, don't crash the subscriber
+      // Malformed event payloads are ignored; polling remains the backstop.
     }
   };
-  es.onerror = () => {
-    // EventSource auto-reconnects on transient errors; nothing to do here.
-    // The caller's polling fallback continues covering us regardless.
+
+  const openSseFallback = () => {
+    if (stopped || es || typeof EventSource === "undefined") return;
+    try {
+      es = new EventSource(EVENTS_URL);
+      es.onmessage = (message) => deliver(message.data);
+      es.onerror = () => {
+        // EventSource performs its own retry; the contract polling loop is a backstop.
+      };
+    } catch {
+      es = null;
+    }
   };
-  return () => es.close();
+
+  const connectWebSocket = () => {
+    if (stopped || typeof WebSocket === "undefined") {
+      openSseFallback();
+      return;
+    }
+    try {
+      const url = new URL(EVENTS_WS_URL, window.location.href);
+      const tenant = import.meta.env?.VITE_TENANT_ID;
+      if (tenant) url.searchParams.set("tenant", tenant);
+      ws = new WebSocket(url.toString());
+      ws.onopen = () => {
+        reconnectAttempt = 0;
+        es?.close();
+        es = null;
+        ws?.send(JSON.stringify({ type: "subscribe", topics: ["RqCreated", "RqAcptd", "LocUpd", "Arrived", "Resolved", "Cancelled"] }));
+      };
+      ws.onmessage = (message) => deliver(message.data);
+      ws.onerror = () => openSseFallback();
+      ws.onclose = () => {
+        ws = null;
+        openSseFallback();
+        if (stopped) return;
+        const delay = Math.min(30_000, 500 * 2 ** reconnectAttempt++);
+        reconnectTimer = window.setTimeout(connectWebSocket, delay);
+      };
+    } catch {
+      openSseFallback();
+    }
+  };
+
+  connectWebSocket();
+  return () => {
+    stopped = true;
+    if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+    es?.close();
+    ws?.close(1000, "Unsubscribed");
+  };
 }
 
 export async function getWalletBalances(address) {
@@ -923,10 +984,10 @@ const SAFE_FOOTPRINT_FUNCTIONS = new Set([
 /** Build a contract invocation, baking a cached/verified footprint in when one
  *  is already resident. Cache misses degrade gracefully to the footprint-free
  *  envelope (pre-sign simulation derives the keys as it always has). */
-async function buildInvocation({ account, functionName, args, timeoutSeconds = 30 }) {
+async function buildInvocation({ account, functionName, args, timeoutSeconds = 30, contractId = CONTRACT_ID }) {
   let template;
   if (SAFE_FOOTPRINT_FUNCTIONS.has(functionName)) {
-    template = getCachedFootprintTemplate(CONTRACT_ID, functionName, args);
+    template = getCachedFootprintTemplate(contractId, functionName, args);
     if (template) {
       const summary = summarizeFootprint(template);
       console.debug(
@@ -936,7 +997,7 @@ async function buildInvocation({ account, functionName, args, timeoutSeconds = 3
   }
   const { transaction } = buildSorobanTransaction({
     account,
-    contractId: CONTRACT_ID,
+    contractId,
     functionName,
     args,
     template,
@@ -1517,4 +1578,62 @@ export async function executeAdminProposal(id, signer, wallet) {
 export async function getAdminProposal(id) {
   const sim = await simulateRead(contract.call("get_admin_proposal", scv(BigInt(id), { type: "u64" })));
   return sim.result ? scValToNative(sim.result.retval) : null;
+}
+
+async function sendDaoCall(signerAddress, functionName, args, wallet) {
+  const signer = await resolveWalletAddress(wallet, signerAddress);
+  if (!signer) throw new Error("Wallet address is not available yet");
+  const contractId = getDaoContractId();
+  await ensureAccountFunded(signer);
+  const account = await server.getAccount(signer);
+  const tx = await buildInvocation({ account, functionName, args, contractId });
+  return sendWrite(tx, wallet, functionName);
+}
+
+async function simulateDaoRead(functionName, args) {
+  const dao = new Contract(getDaoContractId());
+  const sim = await simulateRead(dao.call(functionName, ...args));
+  return sim.result ? scValToNative(sim.result.retval) : null;
+}
+
+export async function getDaoProposal(id) {
+  const proposalId = BigInt(id);
+  const [proposal, timelock, cancellationApprovals, securityMultisig] = await Promise.all([
+    simulateDaoRead("get_proposal", [scv(proposalId, { type: "u64" })]),
+    simulateDaoRead("get_timelock", [scv(proposalId, { type: "u64" })]),
+    simulateDaoRead("get_cancellation_approval_count", [scv(proposalId, { type: "u64" })]),
+    simulateDaoRead("get_security_multisig", []),
+  ]);
+  return proposal ? {
+    ...proposal,
+    timelock,
+    cancellationApprovals: Number(cancellationApprovals || 0),
+    cancellationThreshold: Number(Array.isArray(securityMultisig) ? securityMultisig[1] : 1),
+  } : null;
+}
+
+export function queueDaoProposal(id, signer, wallet) {
+  return sendDaoCall(signer, "queue_proposal", [scv(BigInt(id), { type: "u64" })], wallet);
+}
+
+export function executeDaoProposal(id, signer, wallet) {
+  return sendDaoCall(signer, "execute_proposal", [scv(BigInt(id), { type: "u64" })], wallet);
+}
+
+export function approveDaoCancellation(id, guardian, wallet) {
+  return sendDaoCall(guardian, "approve_cancellation", [
+    scv(guardian, { type: "address" }), scv(BigInt(id), { type: "u64" }),
+  ], wallet);
+}
+
+export function cancelQueuedDaoProposal(id, signer, wallet) {
+  return sendDaoCall(signer, "cancel_queued_proposal", [scv(BigInt(id), { type: "u64" })], wallet);
+}
+
+export function configureDaoSecurityMultisig(admin, guardianAddresses, threshold, wallet) {
+  return sendDaoCall(admin, "set_security_multisig", [
+    scv(admin, { type: "address" }),
+    scv(guardianAddresses, { type: "vec", elementType: "address" }),
+    scv(Number(threshold), { type: "u32" }),
+  ], wallet);
 }
