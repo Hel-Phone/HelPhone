@@ -30,6 +30,7 @@ import {
   buildSorobanTransaction,
   summarizeFootprint,
 } from "./footprint";
+import { verificationWindow } from "./ringBuffer";
 
 /** Validate a Stellar Soroban contract ID (strkey 'C...' with CRC16 checksum).
  *  Throws immediately with a clear message instead of letting a malformed ID
@@ -593,6 +594,32 @@ export async function getExpertVerifications(walletAddress, limit = 10) {
       );
       if (!sim.result) return [];
       return scValToNative(sim.result.retval) || [];
+    },
+  );
+}
+
+/** Which verification indexes are still readable for a wallet. The contract
+ *  keeps only the newest `capacity` entries per wallet (#531); older ones read
+ *  back as missing, so callers should page within `[oldest, total)`. */
+export async function getExpertVerificationWindow(walletAddress) {
+  if (!walletAddress) return null;
+  return _withCache(
+    "getExpertVerificationWindow",
+    [walletAddress],
+    CACHE_TTL.short,
+    async () => {
+      const readCount = async (method, ...args) => {
+        const sim = await simulateRead(contract.call(method, ...args));
+        return sim.result ? safeToNumber(scValToNative(sim.result.retval)) : 0;
+      };
+      const [total, capacity] = await Promise.all([
+        readCount(
+          "get_expert_verification_count",
+          scv(walletAddress, { type: "address" }),
+        ),
+        readCount("get_expert_verification_capacity"),
+      ]);
+      return verificationWindow(total, capacity);
     },
   );
 }

@@ -57,3 +57,18 @@ has a live quote form.
 The DAO crate previously did not compile (syntax errors in `cast_vote` /
 `execute_proposal`, missing `total_supply` client, non-`Copy` error enum);
 those are fixed so the oracle work is testable, and governance now has tests.
+
+## Bounded verification history (ring buffer)
+
+`record_expert_verification` keeps at most **500** entries per wallet. When a wallet's history is full, recording a new entry overwrites the oldest one (FIFO) and emits an `Evicted` event.
+
+| Function | Returns |
+| --- | --- |
+| `get_expert_verification_count(wallet)` | Verifications ever recorded, evicted ones included. Also the index the next one gets |
+| `get_expert_verification_oldest(wallet)` | Index of the oldest entry still readable (`count - 500`, floored at 0) |
+| `get_expert_verification_capacity()` | `500` |
+| `get_expert_verification(wallet, index)` | The entry, or `None` if evicted or not yet written |
+
+`Evicted` event: topics `["evicted", wallet]`, data `{ index, record }` where `record` is the full displaced `ExpertVerification`, so an indexer can archive it before it is unreadable on chain.
+
+See `docs/storage-optimization.md` for the layout, rent and compatibility notes.

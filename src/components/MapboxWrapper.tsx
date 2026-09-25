@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useRef, useState } from 'react'
 import Map, { NavigationControl } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { searchCities, isOffline } from '../lib/geocoder.ts'
+import { loadRoadNetwork } from '../lib/routing.ts'
 
 /**
  * MapboxWrapper (#87)
@@ -74,6 +75,11 @@ const MapboxWrapper = forwardRef<unknown, MapboxWrapperProps>(function MapboxWra
   useEffect(() => {
     if (typeof onProviderChange === 'function') onProviderChange(provider)
   }, [provider, onProviderChange])
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void loadRoadNetwork().catch(() => undefined) }, 0)
+    return () => window.clearTimeout(id)
+  }, [])
 
   return (
     <Map

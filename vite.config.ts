@@ -84,6 +84,11 @@ export default defineConfig(({ mode }) => ({
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         runtimeCaching: [
           {
+            urlPattern: /\/data\/road-network\.(json|bin)$/,
+            handler: "CacheFirst",
+            options: { cacheName: "road-network-v1" },
+          },
+          {
             urlPattern: /^https:\/\/api\.mapbox\.com\/.*/i,
             handler: "CacheFirst",
             options: {
