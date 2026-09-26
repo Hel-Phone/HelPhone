@@ -31,6 +31,7 @@ import {
   summarizeFootprint,
 } from "./footprint";
 import { verificationWindow } from "./ringBuffer";
+import { isEncryptedEnvelope } from "./crypto";
 
 /** Validate a Stellar Soroban contract ID (strkey 'C...' with CRC16 checksum).
  *  Throws immediately with a clear message instead of letting a malformed ID
@@ -365,8 +366,29 @@ function scv(val, opts) {
 
 const PRIORITY_LEVELS = ["Low", "Medium", "High", "Critical"];
 
+/**
+ * Parse the sealed envelope the contract returned.
+ *
+ * The contract stores it as opaque bytes (we submit hex), so anything that
+ * fails to parse is surfaced as `null` rather than crashing a map render — a
+ * responder dashboard must still show the request's location and status.
+ */
+function parseEncryptedPayload(raw) {
+  const hex = typeof raw === "string" ? raw : raw?.toString?.("hex");
+  if (typeof hex !== "string" || hex.length === 0) return null;
+  try {
+    const envelope = JSON.parse(Buffer.from(hex, "hex").toString("utf8"));
+    return isEncryptedEnvelope(envelope) ? envelope : null;
+  } catch {
+    return null;
+  }
+}
+
 function mapRequest(raw) {
   const STATUS = ["Pending", "Enroute", "Resolved", "Cancelled"];
+  // `priority` is a client-side display concern; the contract has no such
+  // field, so it is carried through from local state when present and
+  // defaulted otherwise.
   const rawPriority =
     typeof raw.priority === "number"
       ? PRIORITY_LEVELS[raw.priority]
@@ -379,8 +401,9 @@ function mapRequest(raw) {
     lat: decodeLat(raw.lat),
     lng: decodeLng(raw.lng),
     emergency_type: raw.emergency_type,
-    nickname: raw.nickname,
-    contact: raw.contact,
+    // The contact number and medical notes now live *inside* this envelope,
+    // sealed to the authorized responders. Decrypt locally to read them.
+    encrypted_payload: parseEncryptedPayload(raw.encrypted_payload),
     status:
       STATUS[raw.status] ??
       (Array.isArray(raw.status) ? raw.status[0] : raw.status),
@@ -974,21 +997,63 @@ async function buildInvocation({ account, functionName, args, timeoutSeconds = 3
   return transaction;
 }
 
+/**
+ * Encode a sealed emergency payload for `create_request`.
+ *
+ * Accepts the `EncryptedEnvelope` produced by `encryptEmergencyPayload` (the
+ * normal path) or a raw hex string (for tests / replay). Plaintext is
+ * rejected outright: contact numbers and medical notes must never reach a
+ * ledger entry, and the contract now refuses an empty payload.
+ */
+export function encodeEncryptedPayload(payload) {
+  if (typeof payload === "string") {
+    const hex = payload.trim();
+    if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) {
+      throw new Error(
+        "Encrypted payload must be a hex string or an EncryptedEnvelope.",
+      );
+    }
+    return hex;
+  }
+  if (payload && typeof payload === "object") {
+    if (!isEncryptedEnvelope(payload)) {
+      throw new Error(
+        "Encrypted payload envelope is malformed, truncated or of an unknown version.",
+      );
+    }
+    return Buffer.from(JSON.stringify(payload), "utf8").toString("hex");
+  }
+  throw new Error(
+    "An encrypted payload is required. Emergency contact details are never sent in plaintext.",
+  );
+}
+
+/**
+ * Broadcast a help request.
+ *
+ * @param encryptedPayload sealed `EncryptedEnvelope` (or hex string). The
+ *        contact number, nickname and medical notes must already be inside it
+ *        — use `encryptEmergencyPayload` with each responder's public key.
+ * @param options.priority client-side display tier only. It is *not* a
+ *        contract field and is deliberately not sent on-chain: the deployed
+ *        `create_request` takes exactly five arguments, and sending a sixth
+ *        used to make every submission revert.
+ */
 export async function createRequest(
   requester,
   lat,
   lng,
   emergencyType,
-  nickname,
-  contact,
+  encryptedPayload,
   wallet,
-  priority = "Medium",
+  options = {},
 ) {
   const signerAddress = await resolveWalletAddress(wallet, requester);
   if (!signerAddress) throw new Error("Wallet address is not available yet");
   await ensureAccountFunded(signerAddress);
   const account = await server.getAccount(signerAddress);
-  const priorityIndex = PRIORITY_LEVELS.indexOf(priority);
+  const payloadHex = encodeEncryptedPayload(encryptedPayload);
+  const priorityIndex = PRIORITY_LEVELS.indexOf(options.priority);
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
     networkPassphrase: NETWORK,
@@ -1002,9 +1067,7 @@ export async function createRequest(
           scv(encodeCoord(lat, "lat"), { type: "i32" }),
           scv(encodeCoord(lng, "lng"), { type: "i32" }),
           scv(emergencyType, { type: "string" }),
-          scv(nickname, { type: "string" }),
-          scv(contact, { type: "string" }),
-          scv(priorityIndex >= 0 ? priorityIndex : 1, { type: "u32" }),
+          scv(Buffer.from(payloadHex, "hex"), { type: "bytes" }),
         ],
       }),
     )
@@ -1013,7 +1076,11 @@ export async function createRequest(
 
   const result = await sendWrite(tx, wallet, "create_request");
   const retval = scValToNative(result.returnValue);
-  return { requestId: safeToNumber(retval), hash: result.hash };
+  return {
+    requestId: safeToNumber(retval),
+    hash: result.hash,
+    priority: priorityIndex >= 0 ? options.priority : "Medium",
+  };
 }
 
 export async function acceptRequest(
