@@ -31,6 +31,10 @@ export function logger(opts: LoggerOptions = {}) {
   return (req: Request, res: Response, next: NextFunction) => {
     const start = Date.now();
     const { method, originalUrl } = req;
+    const traceparent = req.get('traceparent');
+    const traceId = typeof traceparent === 'string' && /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/i.test(traceparent)
+      ? traceparent.split('-')[1].toLowerCase()
+      : null;
 
     // Capture end to log
     const originalEnd = res.end.bind(res) as typeof res.end;
@@ -47,6 +51,7 @@ export function logger(opts: LoggerOptions = {}) {
 
       const entry: Record<string, unknown> = {
         ts: new Date().toISOString(),
+        traceId,
         method,
         url: originalUrl,
         status,
