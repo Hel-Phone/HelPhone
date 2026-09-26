@@ -1,9 +1,13 @@
 #![no_std]
 
+mod oracle;
+
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address, Env,
     IntoVal, Symbol, Val, Vec as SorobanVec,
 };
+
+pub use oracle::{OracleAsset, PriceData, MAX_PRICE_AGE_SECS};
 
 // ── Constants ──────────────────────────────────────────────────────
 const MAX_PROPOSALS: u32 = 100;
@@ -12,6 +16,14 @@ const VOTING_PERIOD_SECS: u64 = 3 * 24 * 60 * 60; // 3 days
 const EXECUTION_DELAY_SECS: u64 = 48 * 60 * 60;
 const QUORUM_THRESHOLD_PCT: u32 = 20; // 20% of total supply must vote
 const PASS_THRESHOLD_PCT: u32 = 50; // >50% of votes to pass
+
+/// Governance-token surface the DAO reads (`total_supply` is not part of the
+/// generic SEP-41 client, so it is declared here).
+#[contractclient(name = "GovTokenClient")]
+pub trait GovToken {
+    fn balance(env: Env, id: Address) -> i128;
+    fn total_supply(env: Env) -> i128;
+}
 
 // ── Data Keys ──────────────────────────────────────────────────────
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -104,7 +116,7 @@ pub struct TimelockState {
 
 // ── Errors ─────────────────────────────────────────────────────────
 #[contracterror]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DaoError {
     NotAdmin = 1,
     ProposalNotFound = 2,
@@ -144,6 +156,14 @@ pub struct VoteCastEvent<'a> {
     pub voter: &'a Address,
     pub direction: &'a VoteDirection,
     pub weight: &'a i128,
+}
+
+#[contractevent(topics = ["disbursed"], data_format = "map")]
+pub struct AidDisbursedEvent<'a> {
+    #[topic]
+    pub recipient: &'a Address,
+    pub source_amount: &'a i128,
+    pub payout_amount: &'a i128,
 }
 
 #[contractevent(topics = ["executed"], data_format = "map")]
@@ -300,7 +320,7 @@ impl HelPhoneDao {
     ) -> Result<u64, DaoError> {
         proposer.require_auth();
 
-        let count = Self::get_proposal_count(&env);
+        let count = Self::get_proposal_count(env.clone());
         if count >= MAX_PROPOSALS {
             return Err(DaoError::ProposalLimitReached);
         }
@@ -330,7 +350,7 @@ impl HelPhoneDao {
             .instance()
             .get(&key_token())
             .ok_or(DaoError::InvalidProposal)?;
-        let token_client = soroban_sdk::token::TokenClient::new(&env, &token_addr);
+        let token_client = GovTokenClient::new(&env, &token_addr);
         let total_supply = token_client.total_supply();
 
         let snapshot = TokenSnapshot {
@@ -398,7 +418,7 @@ impl HelPhoneDao {
             .instance()
             .get(&key_token())
             .ok_or(DaoError::InvalidProposal)?;
-        let token_client = soroban_sdk::token::TokenClient::new(&env, &token_addr);
+        let token_client = GovTokenClient::new(&env, &token_addr);
 
         // Use the snapshot ledger for historical balance
         let snapshot: TokenSnapshot = env
@@ -511,7 +531,7 @@ impl HelPhoneDao {
             if now <= proposal.voting_ends {
                 return Err(DaoError::VotingClosed);
             }
-            let status = Self::finalize_proposal(&env, proposal_id)?;
+            let status = Self::finalize_proposal(env.clone(), proposal_id)?;
             if status != ProposalStatus::Passed {
                 return Err(DaoError::NotPassed);
             }
@@ -806,6 +826,84 @@ impl HelPhoneDao {
         admin.require_auth();
         env.storage().instance().set(&key_token(), &new_token);
         Ok(())
+    }
+
+    // ── Price oracle (#543) ────────────────────────────────────────
+    /// Admin: set the SEP-40 price oracle contract (e.g. Reflector).
+    pub fn set_oracle(env: Env, admin: Address, oracle: Address) -> Result<(), DaoError> {
+        let stored_admin: Address = env
+            .storage().instance().get(&key_admin())
+            .ok_or(DaoError::NotAdmin)?;
+        if admin != stored_admin {
+            return Err(DaoError::NotAdmin);
+        }
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Oracle, &oracle);
+        Ok(())
+    }
+
+    pub fn get_oracle(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::Oracle)
+    }
+
+    /// Live conversion of `amount` from one token to another (rounded down),
+    /// e.g. XLM -> USDC. Aborts with `StalePrice` if either feed is > 1 hour old.
+    pub fn quote_conversion(
+        env: Env,
+        from_token: Address,
+        to_token: Address,
+        amount: i128,
+    ) -> Result<i128, DaoError> {
+        let oracle: Address = env
+            .storage().instance().get(&DataKey::Oracle)
+            .ok_or(DaoError::OracleNotSet)?;
+        Ok(oracle::convert(
+            &env,
+            &oracle,
+            &OracleAsset::Stellar(from_token),
+            &OracleAsset::Stellar(to_token),
+            amount,
+        ))
+    }
+
+    /// Admin: pay `recipient` the `payout_token` equivalent of `source_amount`
+    /// of `source_token` at the current oracle rate. Returns the amount paid.
+    pub fn disburse_aid(
+        env: Env,
+        admin: Address,
+        recipient: Address,
+        source_token: Address,
+        payout_token: Address,
+        source_amount: i128,
+    ) -> Result<i128, DaoError> {
+        let stored_admin: Address = env
+            .storage().instance().get(&key_admin())
+            .ok_or(DaoError::NotAdmin)?;
+        if admin != stored_admin {
+            return Err(DaoError::NotAdmin);
+        }
+        admin.require_auth();
+        let payout = Self::quote_conversion(
+            env.clone(),
+            source_token,
+            payout_token.clone(),
+            source_amount,
+        )?;
+        if payout <= 0 {
+            return Err(DaoError::InvalidAmount);
+        }
+        soroban_sdk::token::TokenClient::new(&env, &payout_token).transfer(
+            &env.current_contract_address(),
+            &recipient,
+            &payout,
+        );
+        AidDisbursedEvent {
+            recipient: &recipient,
+            source_amount: &source_amount,
+            payout_amount: &payout,
+        }
+        .publish(&env);
+        Ok(payout)
     }
 
     /// Admin: transfer admin role.
