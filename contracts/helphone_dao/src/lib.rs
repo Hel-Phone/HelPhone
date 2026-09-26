@@ -3,18 +3,19 @@
 mod oracle;
 
 use soroban_sdk::{
-    contract, contractclient, contracterror, contractevent, contractimpl, contracttype,
-    symbol_short, Address, Env, Symbol, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address, Env,
+    IntoVal, Symbol, Val, Vec as SorobanVec,
 };
 
 pub use oracle::{OracleAsset, PriceData, MAX_PRICE_AGE_SECS};
 
 // ── Constants ──────────────────────────────────────────────────────
-const MAX_PROPOSALS: u64 = 100;
+const MAX_PROPOSALS: u32 = 100;
+const MAX_SECURITY_GUARDIANS: u32 = 20;
 const VOTING_PERIOD_SECS: u64 = 3 * 24 * 60 * 60; // 3 days
-const EXECUTION_DELAY_SECS: u64 = 1 * 24 * 60 * 60; // 1 day timelock
+const EXECUTION_DELAY_SECS: u64 = 48 * 60 * 60;
 const QUORUM_THRESHOLD_PCT: u32 = 20; // 20% of total supply must vote
-const PASS_THRESHOLD_PCT: u32 = 50;   // >50% of votes to pass
+const PASS_THRESHOLD_PCT: u32 = 50; // >50% of votes to pass
 
 /// Governance-token surface the DAO reads (`total_supply` is not part of the
 /// generic SEP-41 client, so it is declared here).
@@ -32,11 +33,15 @@ pub enum DataKey {
     GovernanceToken,
     ProposalCount,
     Proposal(u64),
-    Vote(u64, Address),       // (proposal_id, voter) -> VoteRecord
-    TokenSnapshot(u64),       // proposal_id -> TokenSnapshot
-    TotalSupplyAt(u64),       // proposal_id -> total token supply at snapshot
+    Vote(u64, Address), // (proposal_id, voter) -> VoteRecord
+    TokenSnapshot(u64), // proposal_id -> TokenSnapshot
+    TotalSupplyAt(u64), // proposal_id -> total token supply at snapshot
     ExecutedProposals,
-    Oracle,
+    Timelock(u64),
+    SecurityKeys,
+    SecurityThreshold,
+    SecurityApproval(u64, u32, Address),
+    SecurityEpoch,
 }
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -48,6 +53,7 @@ pub enum ProposalStatus {
     Failed,
     Executed,
     Cancelled,
+    Queued,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -101,6 +107,13 @@ pub struct TokenSnapshot {
     pub snapshot_ledger: u32,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct TimelockState {
+    pub queued_at: u64,
+    pub execute_after: u64,
+}
+
 // ── Errors ─────────────────────────────────────────────────────────
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -117,13 +130,14 @@ pub enum DaoError {
     TimelockNotExpired = 10,
     ExecutionFailed = 11,
     ProposalLimitReached = 12,
-    OracleNotSet = 13,
-    /// Oracle price is older than `MAX_PRICE_AGE_SECS`.
-    StalePrice = 14,
-    PriceUnavailable = 15,
-    InvalidPrice = 16,
-    InvalidAmount = 17,
-    Overflow = 18,
+    QueueRequired = 13,
+    NotSecurityGuardian = 14,
+    InvalidSecurityThreshold = 15,
+    InsufficientSecurityApprovals = 16,
+    TimelockOverflow = 17,
+    ProposalNotQueued = 18,
+    TimelockExpired = 19,
+    SecurityEpochOverflow = 20,
 }
 
 // ── Events ─────────────────────────────────────────────────────────
@@ -159,10 +173,32 @@ pub struct ProposalExecutedEvent<'a> {
     pub success: &'a bool,
 }
 
-fn key_admin() -> Symbol { symbol_short!("admin") }
-fn key_token() -> Symbol { symbol_short!("token") }
-fn key_proposal_count() -> Symbol { symbol_short!("pcount") }
-fn key_executed_set() -> Symbol { symbol_short!("execd") }
+#[contractevent(topics = ["queued"], data_format = "map")]
+pub struct ProposalQueuedEvent<'a> {
+    #[topic]
+    pub proposal_id: &'a u64,
+    pub execute_after: &'a u64,
+}
+
+#[contractevent(topics = ["cancelled"], data_format = "map")]
+pub struct ProposalCancelledEvent<'a> {
+    #[topic]
+    pub proposal_id: &'a u64,
+    pub approvals: &'a u32,
+}
+
+fn key_admin() -> Symbol {
+    symbol_short!("admin")
+}
+fn key_token() -> Symbol {
+    symbol_short!("token")
+}
+fn key_proposal_count() -> Symbol {
+    symbol_short!("pcount")
+}
+fn key_executed_set() -> Symbol {
+    symbol_short!("execd")
+}
 
 #[contract]
 pub struct HelPhoneDao;
@@ -176,8 +212,19 @@ impl HelPhoneDao {
         governance_token: Address,
     ) -> Result<(), DaoError> {
         env.storage().instance().set(&key_admin(), &admin);
-        env.storage().instance().set(&key_token(), &governance_token);
+        env.storage()
+            .instance()
+            .set(&key_token(), &governance_token);
         env.storage().instance().set(&key_proposal_count(), &0u64);
+        let mut security_keys = SorobanVec::new(&env);
+        security_keys.push_back(admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::SecurityKeys, &security_keys);
+        env.storage()
+            .instance()
+            .set(&DataKey::SecurityThreshold, &1u32);
+        env.storage().instance().set(&DataKey::SecurityEpoch, &0u32);
         Ok(())
     }
 
@@ -193,7 +240,10 @@ impl HelPhoneDao {
 
     /// Returns the current proposal count.
     pub fn get_proposal_count(env: Env) -> u64 {
-        env.storage().instance().get(&key_proposal_count()).unwrap_or(0u64)
+        env.storage()
+            .instance()
+            .get(&key_proposal_count())
+            .unwrap_or(0u64)
     }
 
     /// Returns governance parameters as a tuple.
@@ -205,6 +255,57 @@ impl HelPhoneDao {
             QUORUM_THRESHOLD_PCT,
             PASS_THRESHOLD_PCT,
         )
+    }
+
+    /// Configure the authorized security signers used for emergency
+    /// cancellation. The admin must provide unique keys and a reachable threshold.
+    pub fn set_security_multisig(
+        env: Env,
+        admin: Address,
+        guardians: SorobanVec<Address>,
+        threshold: u32,
+    ) -> Result<(), DaoError> {
+        admin.require_auth();
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&key_admin())
+            .ok_or(DaoError::NotAdmin)?;
+        if admin != stored_admin {
+            return Err(DaoError::NotAdmin);
+        }
+        if guardians.is_empty()
+            || guardians.len() > MAX_SECURITY_GUARDIANS
+            || threshold == 0
+            || threshold > guardians.len()
+        {
+            return Err(DaoError::InvalidSecurityThreshold);
+        }
+        for i in 0..guardians.len() {
+            for j in (i + 1)..guardians.len() {
+                if guardians.get(i) == guardians.get(j) {
+                    return Err(DaoError::InvalidSecurityThreshold);
+                }
+            }
+        }
+        let epoch: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SecurityEpoch)
+            .unwrap_or(0);
+        let next_epoch = epoch
+            .checked_add(1)
+            .ok_or(DaoError::SecurityEpochOverflow)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::SecurityKeys, &guardians);
+        env.storage()
+            .instance()
+            .set(&DataKey::SecurityThreshold, &threshold);
+        env.storage()
+            .instance()
+            .set(&DataKey::SecurityEpoch, &next_epoch);
+        Ok(())
     }
 
     /// Create a new proposal.  Snapshots the caller's token balance and
@@ -245,7 +346,9 @@ impl HelPhoneDao {
 
         // Snapshot token total supply for quorum calculation
         let token_addr: Address = env
-            .storage().instance().get(&key_token())
+            .storage()
+            .instance()
+            .get(&key_token())
             .ok_or(DaoError::InvalidProposal)?;
         let token_client = GovTokenClient::new(&env, &token_addr);
         let total_supply = token_client.total_supply();
@@ -255,10 +358,18 @@ impl HelPhoneDao {
             snapshot_ledger: env.ledger().sequence(),
         };
 
-        env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
-        env.storage().persistent().set(&DataKey::TotalSupplyAt(proposal_id), &total_supply);
-        env.storage().persistent().set(&DataKey::TokenSnapshot(proposal_id), &snapshot);
-        env.storage().instance().set(&key_proposal_count(), &proposal_id);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(proposal_id), &proposal);
+        env.storage()
+            .persistent()
+            .set(&DataKey::TotalSupplyAt(proposal_id), &total_supply);
+        env.storage()
+            .persistent()
+            .set(&DataKey::TokenSnapshot(proposal_id), &snapshot);
+        env.storage()
+            .instance()
+            .set(&key_proposal_count(), &proposal_id);
 
         ProposalCreatedEvent {
             proposal_id: &proposal_id,
@@ -281,7 +392,9 @@ impl HelPhoneDao {
         voter.require_auth();
 
         let mut proposal: Proposal = env
-            .storage().persistent().get(&DataKey::Proposal(proposal_id))
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
             .ok_or(DaoError::ProposalNotFound)?;
 
         if proposal.status != ProposalStatus::Active {
@@ -301,13 +414,17 @@ impl HelPhoneDao {
 
         // Get voter's token balance for weight
         let token_addr: Address = env
-            .storage().instance().get(&key_token())
+            .storage()
+            .instance()
+            .get(&key_token())
             .ok_or(DaoError::InvalidProposal)?;
         let token_client = GovTokenClient::new(&env, &token_addr);
 
         // Use the snapshot ledger for historical balance
         let snapshot: TokenSnapshot = env
-            .storage().persistent().get(&DataKey::TokenSnapshot(proposal_id))
+            .storage()
+            .persistent()
+            .get(&DataKey::TokenSnapshot(proposal_id))
             .ok_or(DaoError::InvalidProposal)?;
 
         let weight = token_client.balance(&voter);
@@ -331,7 +448,9 @@ impl HelPhoneDao {
             VoteDirection::Against => proposal.against_votes += weight,
             VoteDirection::Abstain => proposal.abstain_votes += weight,
         }
-        env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(proposal_id), &proposal);
 
         VoteCastEvent {
             proposal_id: &proposal_id,
@@ -346,12 +465,11 @@ impl HelPhoneDao {
 
     /// Finalize a proposal after voting ends.  Checks quorum and pass
     /// threshold, then updates status.
-    pub fn finalize_proposal(
-        env: Env,
-        proposal_id: u64,
-    ) -> Result<ProposalStatus, DaoError> {
+    pub fn finalize_proposal(env: Env, proposal_id: u64) -> Result<ProposalStatus, DaoError> {
         let mut proposal: Proposal = env
-            .storage().persistent().get(&DataKey::Proposal(proposal_id))
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
             .ok_or(DaoError::ProposalNotFound)?;
 
         if proposal.status != ProposalStatus::Active {
@@ -364,7 +482,9 @@ impl HelPhoneDao {
         }
 
         let total_supply: i128 = env
-            .storage().persistent().get(&DataKey::TotalSupplyAt(proposal_id))
+            .storage()
+            .persistent()
+            .get(&DataKey::TotalSupplyAt(proposal_id))
             .unwrap_or(0);
 
         let total_votes = proposal.for_votes + proposal.against_votes + proposal.abstain_votes;
@@ -376,26 +496,29 @@ impl HelPhoneDao {
         } else {
             // Check pass threshold: for_votes must be > pass_pct of non-abstain votes
             let decisive_votes = proposal.for_votes + proposal.against_votes;
-            if decisive_votes > 0 && proposal.for_votes * 100 > decisive_votes * (PASS_THRESHOLD_PCT as i128) {
+            if decisive_votes > 0
+                && proposal.for_votes * 100 > decisive_votes * (PASS_THRESHOLD_PCT as i128)
+            {
                 proposal.status = ProposalStatus::Passed;
             } else {
                 proposal.status = ProposalStatus::Failed;
             }
         }
 
-        env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(proposal_id), &proposal);
         Ok(proposal.status)
     }
 
     /// Execute a passed proposal.  Only callable after the timelock delay.
     /// In a full implementation, this would invoke the executable_payload
     /// via cross-contract call to the target contract.
-    pub fn execute_proposal(
-        env: Env,
-        proposal_id: u64,
-    ) -> Result<(), DaoError> {
+    pub fn execute_proposal(env: Env, proposal_id: u64) -> Result<(), DaoError> {
         let mut proposal: Proposal = env
-            .storage().persistent().get(&DataKey::Proposal(proposal_id))
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
             .ok_or(DaoError::ProposalNotFound)?;
 
         if proposal.status == ProposalStatus::Executed {
@@ -419,21 +542,37 @@ impl HelPhoneDao {
             return Err(DaoError::NotPassed);
         }
 
-        // Check timelock
+        if proposal.status == ProposalStatus::Passed {
+            return Err(DaoError::QueueRequired);
+        }
+        if proposal.status != ProposalStatus::Queued {
+            return Err(DaoError::NotPassed);
+        }
+
+        // The queue time is recorded explicitly, so no execution can happen
+        // until the complete 48-hour delay has elapsed.
         let now = env.ledger().timestamp();
-        let earliest_execution = proposal.voting_ends + EXECUTION_DELAY_SECS;
-        if now < earliest_execution {
+        let timelock: TimelockState = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Timelock(proposal_id))
+            .ok_or(DaoError::QueueRequired)?;
+        if now < timelock.execute_after {
             return Err(DaoError::TimelockNotExpired);
         }
 
         // Mark executed
         proposal.status = ProposalStatus::Executed;
-        env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(proposal_id), &proposal);
 
         // Track executed set
-        let mut executed: Vec<u64> = env
-            .storage().instance().get(&key_executed_set())
-            .unwrap_or(Vec::new(&env));
+        let mut executed: SorobanVec<u64> = env
+            .storage()
+            .instance()
+            .get(&key_executed_set())
+            .unwrap_or(SorobanVec::new(&env));
         executed.push_back(proposal_id);
         env.storage().instance().set(&key_executed_set(), &executed);
 
@@ -446,16 +585,182 @@ impl HelPhoneDao {
         Ok(())
     }
 
-    /// Cancel a proposal.  Only the proposer or admin can cancel.
-    pub fn cancel_proposal(
+    /// Start the mandatory timelock after a proposal has passed.
+    pub fn queue_proposal(env: Env, proposal_id: u64) -> Result<TimelockState, DaoError> {
+        let mut proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .ok_or(DaoError::ProposalNotFound)?;
+        if proposal.status == ProposalStatus::Active {
+            proposal.status = Self::finalize_proposal(&env, proposal_id)?;
+        }
+        if proposal.status != ProposalStatus::Passed {
+            return Err(DaoError::NotPassed);
+        }
+        let now = env.ledger().timestamp();
+        let execute_after = now
+            .checked_add(EXECUTION_DELAY_SECS)
+            .ok_or(DaoError::TimelockOverflow)?;
+        let state = TimelockState {
+            queued_at: now,
+            execute_after,
+        };
+        proposal.status = ProposalStatus::Queued;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Timelock(proposal_id), &state);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(proposal_id), &proposal);
+        ProposalQueuedEvent {
+            proposal_id: &proposal_id,
+            execute_after: &execute_after,
+        }
+        .publish(&env);
+        Ok(state)
+    }
+
+    pub fn get_timelock(env: Env, proposal_id: u64) -> Option<TimelockState> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Timelock(proposal_id))
+    }
+
+    pub fn get_security_multisig(env: Env) -> (SorobanVec<Address>, u32) {
+        let keys = env
+            .storage()
+            .instance()
+            .get(&DataKey::SecurityKeys)
+            .unwrap_or(SorobanVec::new(&env));
+        let threshold = env
+            .storage()
+            .instance()
+            .get(&DataKey::SecurityThreshold)
+            .unwrap_or(1);
+        (keys, threshold)
+    }
+
+    /// Record one authorized guardian's cancellation approval. Each guardian
+    /// can approve a given queued proposal only once.
+    pub fn approve_cancellation(
         env: Env,
-        canceller: Address,
+        guardian: Address,
         proposal_id: u64,
-    ) -> Result<(), DaoError> {
+    ) -> Result<u32, DaoError> {
+        guardian.require_auth();
+        let proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .ok_or(DaoError::ProposalNotFound)?;
+        if proposal.status != ProposalStatus::Queued {
+            return Err(DaoError::ProposalNotQueued);
+        }
+        let timelock: TimelockState = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Timelock(proposal_id))
+            .ok_or(DaoError::ProposalNotQueued)?;
+        if env.ledger().timestamp() >= timelock.execute_after {
+            return Err(DaoError::TimelockExpired);
+        }
+        let guardians: SorobanVec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::SecurityKeys)
+            .unwrap_or(SorobanVec::new(&env));
+        if !guardians.contains(&guardian) {
+            return Err(DaoError::NotSecurityGuardian);
+        }
+        let epoch: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SecurityEpoch)
+            .unwrap_or(0);
+        let key = DataKey::SecurityApproval(proposal_id, epoch, guardian);
+        if env.storage().persistent().has(&key) {
+            return Ok(Self::get_cancellation_approval_count(&env, proposal_id));
+        }
+        env.storage().persistent().set(&key, &true);
+        Ok(Self::get_cancellation_approval_count(&env, proposal_id))
+    }
+
+    pub fn get_cancellation_approval_count(env: Env, proposal_id: u64) -> u32 {
+        let guardians: SorobanVec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::SecurityKeys)
+            .unwrap_or(SorobanVec::new(&env));
+        let epoch: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SecurityEpoch)
+            .unwrap_or(0);
+        let mut count = 0u32;
+        for guardian in guardians {
+            if env.storage().persistent().has(&DataKey::SecurityApproval(
+                proposal_id,
+                epoch,
+                guardian,
+            )) {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// Anyone may finalize cancellation once the security multisig threshold
+    /// has approved it; this keeps the final cancellation call permissionless.
+    pub fn cancel_queued_proposal(env: Env, proposal_id: u64) -> Result<(), DaoError> {
+        let mut proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .ok_or(DaoError::ProposalNotFound)?;
+        if proposal.status != ProposalStatus::Queued {
+            return Err(DaoError::ProposalNotQueued);
+        }
+        let timelock: TimelockState = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Timelock(proposal_id))
+            .ok_or(DaoError::ProposalNotQueued)?;
+        if env.ledger().timestamp() >= timelock.execute_after {
+            return Err(DaoError::TimelockExpired);
+        }
+        let approvals = Self::get_cancellation_approval_count(&env, proposal_id);
+        let threshold: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SecurityThreshold)
+            .unwrap_or(1);
+        if approvals < threshold {
+            return Err(DaoError::InsufficientSecurityApprovals);
+        }
+        proposal.status = ProposalStatus::Cancelled;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(proposal_id), &proposal);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Timelock(proposal_id));
+        ProposalCancelledEvent {
+            proposal_id: &proposal_id,
+            approvals: &approvals,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Cancel a proposal.  Only the proposer or admin can cancel.
+    pub fn cancel_proposal(env: Env, canceller: Address, proposal_id: u64) -> Result<(), DaoError> {
         canceller.require_auth();
 
         let mut proposal: Proposal = env
-            .storage().persistent().get(&DataKey::Proposal(proposal_id))
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
             .ok_or(DaoError::ProposalNotFound)?;
 
         if proposal.status != ProposalStatus::Active {
@@ -468,28 +773,40 @@ impl HelPhoneDao {
         }
 
         proposal.status = ProposalStatus::Cancelled;
-        env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(proposal_id), &proposal);
         Ok(())
     }
 
     /// Read: get a proposal by ID.
     pub fn get_proposal(env: Env, proposal_id: u64) -> Option<Proposal> {
-        env.storage().persistent().get(&DataKey::Proposal(proposal_id))
+        env.storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
     }
 
     /// Read: get a voter's record for a proposal.
     pub fn get_vote(env: Env, proposal_id: u64, voter: Address) -> Option<VoteRecord> {
-        env.storage().persistent().get(&DataKey::Vote(proposal_id, voter))
+        env.storage()
+            .persistent()
+            .get(&DataKey::Vote(proposal_id, voter))
     }
 
     /// Read: get the total token supply snapshot at proposal creation.
     pub fn get_total_supply_at(env: Env, proposal_id: u64) -> i128 {
-        env.storage().persistent().get(&DataKey::TotalSupplyAt(proposal_id)).unwrap_or(0)
+        env.storage()
+            .persistent()
+            .get(&DataKey::TotalSupplyAt(proposal_id))
+            .unwrap_or(0)
     }
 
     /// Read: get list of executed proposal IDs.
-    pub fn get_executed_proposals(env: Env) -> Vec<u64> {
-        env.storage().instance().get(&key_executed_set()).unwrap_or(Vec::new(&env))
+    pub fn get_executed_proposals(env: Env) -> SorobanVec<u64> {
+        env.storage()
+            .instance()
+            .get(&key_executed_set())
+            .unwrap_or(SorobanVec::new(&env))
     }
 
     /// Admin: update the governance token address.
@@ -499,7 +816,9 @@ impl HelPhoneDao {
         new_token: Address,
     ) -> Result<(), DaoError> {
         let stored_admin: Address = env
-            .storage().instance().get(&key_admin())
+            .storage()
+            .instance()
+            .get(&key_admin())
             .ok_or(DaoError::NotAdmin)?;
         if admin != stored_admin {
             return Err(DaoError::NotAdmin);
@@ -595,7 +914,9 @@ impl HelPhoneDao {
     ) -> Result<(), DaoError> {
         current_admin.require_auth();
         let stored_admin: Address = env
-            .storage().instance().get(&key_admin())
+            .storage()
+            .instance()
+            .get(&key_admin())
             .ok_or(DaoError::NotAdmin)?;
         if current_admin != stored_admin {
             return Err(DaoError::NotAdmin);

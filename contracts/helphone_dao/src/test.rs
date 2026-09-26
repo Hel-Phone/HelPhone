@@ -1,8 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{contract, contractimpl, contracttype, token::StellarAssetClient, token::TokenClient, Bytes, Env, String};
+use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec as SorobanVec};
 
 const T0: u64 = 1_000_000;
 
@@ -246,24 +245,100 @@ fn quote_requires_an_oracle() {
     assert_eq!(c.dao.try_quote_conversion(&a, &b, &100), Err(Ok(DaoError::OracleNotSet)));
 }
 
-#[test]
-fn converts_xlm_to_usdc_and_back_at_live_rates() {
-    let o = oracle();
-    // 1_000 XLM (7dp) → 120 USDC
-    assert_eq!(o.c.dao.quote_conversion(&o.xlm, &o.usdc, &10_000_000_000), 1_200_000_000);
-    // 120 USDC → 1_000 XLM
-    assert_eq!(o.c.dao.quote_conversion(&o.usdc, &o.xlm, &1_200_000_000), 10_000_000_000);
-    // Rounds down: 1 stroop of XLM is worth 0.12 stroop of USDC.
-    assert_eq!(o.c.dao.quote_conversion(&o.xlm, &o.usdc, &1), 0);
+    assert_eq!(voting_period, 3 * 24 * 60 * 60); // 3 days
+    assert_eq!(execution_delay, 48 * 60 * 60);
+    assert_eq!(quorum, 20); // 20%
+    assert_eq!(pass_threshold, 50); // 50%
 }
 
 #[test]
-fn same_asset_needs_no_price_and_bad_amounts_are_rejected() {
-    let o = oracle();
-    let unpriced = Address::generate(&o.c.env);
-    assert_eq!(o.c.dao.quote_conversion(&unpriced, &unpriced, &55), 55);
-    assert_eq!(o.c.dao.try_quote_conversion(&o.xlm, &o.usdc, &0), Err(Ok(DaoError::InvalidAmount)));
-    assert_eq!(o.c.dao.try_quote_conversion(&o.xlm, &o.usdc, &-1), Err(Ok(DaoError::InvalidAmount)));
+fn proposal_status_values() {
+    assert_eq!(ProposalStatus::Active, ProposalStatus::Active);
+    assert_eq!(ProposalStatus::Passed, ProposalStatus::Passed);
+    assert_eq!(ProposalStatus::Failed, ProposalStatus::Failed);
+    assert_eq!(ProposalStatus::Executed, ProposalStatus::Executed);
+    assert_eq!(ProposalStatus::Cancelled, ProposalStatus::Cancelled);
+    assert_eq!(ProposalStatus::Queued, ProposalStatus::Queued);
+}
+
+#[test]
+fn queued_proposal_requires_security_threshold_to_cancel() {
+    let (env, admin, token) = create_test_env();
+    env.mock_all_auths();
+    HelPhoneDao::__constructor(env.clone(), admin.clone(), token).unwrap();
+
+    let guardian_a = Address::generate(&env);
+    let guardian_b = Address::generate(&env);
+    let mut guardians = SorobanVec::new(&env);
+    guardians.push_back(guardian_a.clone());
+    guardians.push_back(guardian_b.clone());
+    HelPhoneDao::set_security_multisig(env.clone(), admin, guardians, 2).unwrap();
+
+    let proposal_id = 7;
+    let proposal = Proposal {
+        id: proposal_id,
+        proposer: guardian_a.clone(),
+        title: String::from_str(&env, "upgrade"),
+        description: String::from_str(&env, "test proposal"),
+        proposal_type: ProposalType::General,
+        status: ProposalStatus::Queued,
+        created_at: 0,
+        voting_starts: 0,
+        voting_ends: 0,
+        for_votes: 1,
+        against_votes: 0,
+        abstain_votes: 0,
+        executable_payload: soroban_sdk::Bytes::new(&env),
+    };
+    env.storage()
+        .persistent()
+        .set(&DataKey::Proposal(proposal_id), &proposal);
+    env.storage().persistent().set(
+        &DataKey::Timelock(proposal_id),
+        &TimelockState {
+            queued_at: 0,
+            execute_after: EXECUTION_DELAY_SECS,
+        },
+    );
+
+    HelPhoneDao::approve_cancellation(env.clone(), guardian_a, proposal_id).unwrap();
+    assert_eq!(
+        HelPhoneDao::get_cancellation_approval_count(env.clone(), proposal_id),
+        1
+    );
+    assert_eq!(
+        HelPhoneDao::cancel_queued_proposal(env.clone(), proposal_id),
+        Err(DaoError::InsufficientSecurityApprovals),
+    );
+
+    HelPhoneDao::approve_cancellation(env.clone(), guardian_b, proposal_id).unwrap();
+    HelPhoneDao::cancel_queued_proposal(env.clone(), proposal_id).unwrap();
+    assert_eq!(
+        HelPhoneDao::get_proposal(env, proposal_id).unwrap().status,
+        ProposalStatus::Cancelled,
+    );
+}
+
+#[test]
+fn security_multisig_rejects_duplicate_guardians_and_unreachable_threshold() {
+    let (env, admin, token) = create_test_env();
+    env.mock_all_auths();
+    HelPhoneDao::__constructor(env.clone(), admin.clone(), token).unwrap();
+    let guardian = Address::generate(&env);
+
+    let mut duplicate = SorobanVec::new(&env);
+    duplicate.push_back(guardian.clone());
+    duplicate.push_back(guardian);
+    assert_eq!(
+        HelPhoneDao::set_security_multisig(env.clone(), admin.clone(), duplicate, 1),
+        Err(DaoError::InvalidSecurityThreshold),
+    );
+
+    let one_key = SorobanVec::from_array(&env, [Address::generate(&env)]);
+    assert_eq!(
+        HelPhoneDao::set_security_multisig(env, admin, one_key, 2),
+        Err(DaoError::InvalidSecurityThreshold),
+    );
 }
 
 #[test]

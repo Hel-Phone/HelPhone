@@ -24,6 +24,12 @@ services:
       # are stored in Redis and managed via /admin/whitelist (see docs/security-runbook.md).
       - key: REDIS_URL
         sync: false
+      # Set OTEL_EXPORTER_OTLP_ENDPOINT to an OTLP/HTTP collector to export traces.
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false
+      # Protect GET /metrics when the backend is exposed to the public internet.
+      - key: METRICS_BEARER_TOKEN
+        sync: false
       - key: WHITELIST_ADMIN_TOKEN
         sync: false
       # Number of proxy hops in front of the app so req.ip is the real client.
