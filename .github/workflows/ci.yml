@@ -160,6 +160,13 @@ jobs:
       - name: Audit dependencies
         run: node scripts/audit-deps.js --check
 
+  # Build-pipeline network egress monitor: every outbound connection made
+  # while dependencies are fetched and while `npm run build` runs is captured
+  # (tcpdump) and classified against the allowlist in
+  # scripts/monitor-build-egress.sh. Unauthorized destinations fail the job
+  # and the audit logs are uploaded for security review.
+  build-egress-monitor:
+    name: Build Egress Monitor & Data Exfiltration Gate
   # #541 / #543 — Soroban contract unit tests (aegis_vault treasury, DAO oracle).
   contracts:
     name: Soroban Contract Tests
@@ -168,6 +175,77 @@ jobs:
       - name: Checkout Codebase
         uses: actions/checkout@v4
 
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install packet capture tooling
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq tcpdump
+
+      - name: Install dependencies inside the egress monitor (strict gate)
+        run: >
+          bash scripts/monitor-build-egress.sh --strict
+          --log-dir artifacts/build-egress/install
+          -- npm ci --ignore-scripts
+
+      - name: Run production build inside the egress monitor (egress gate)
+        # This job owns the network verdict only: the app build's own exit
+        # code is recorded in the summary artifact but does not fail the job
+        # (compilation errors belong to the build, see docs/security-runbook.md).
+        run: >
+          bash scripts/monitor-build-egress.sh --strict --ignore-command-exit
+          --log-dir artifacts/build-egress/build
+          -- npm run build
+
+      - name: Upload build egress audit logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-egress-audit
+          path: artifacts/build-egress/
+          if-no-files-found: warn
+
+  # Automated dependency version drift & breaking API change analyzer: the
+  # exported TypeScript surface of every protected package (functions, class
+  # members, call signatures) is extracted from its .d.ts entry point with the
+  # TypeScript Compiler API and compared against the reviewed baseline
+  # committed in package.json -> apiDrift.baseline.
+  #
+  # Version pinning guard: a semver-compatible (minor/patch) upgrade that
+  # drops or re-types a public signature fails this job; major upgrades are
+  # reported as warnings and need a re-baseline. The Rust half checks that
+  # Cargo.toml carries [workspace.metadata.api-drift].
+  api-drift-guard:
+    name: Dependency API Drift & Version Pinning Guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install Dependencies (no lifecycle scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Check app dependencies against the committed API baseline
+        run: npm run security:api-drift | tee api-drift-report.txt
+
+      - name: Check server dependencies against the committed API baseline
+        run: npm run security:api-drift:server | tee -a api-drift-report.txt
+
+      - name: Publish drift report artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-drift-report
+          path: api-drift-report.txt
+          if-no-files-found: ignore
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 

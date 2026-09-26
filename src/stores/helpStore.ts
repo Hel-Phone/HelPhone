@@ -1,8 +1,6 @@
 import { LwwElementSet, LwwOperation } from '../lib/crdt'
 import { swChannel, postToServiceWorker, getInstanceId } from '../lib/swChannel'
 
-import { LwwElementSet } from '../lib/crdt'
-import type { LwwOperation } from '../lib/crdt'
 import type { SecureStorage } from '../lib/secureStorage'
 export interface OfflineHelpRecord { status: string; lat: number; lng: number; updatedAt: number }
 
@@ -55,8 +53,6 @@ function subscribeToServiceWorkerMessages(handler: (message: any) => void): () =
   navigator.serviceWorker.addEventListener('message', listener)
   return () => navigator.serviceWorker.removeEventListener('message', listener)
 }
-export const upsertOfflineHelp = (id: string, value: OfflineHelpRecord) => helpStore.set(id, value, value.updatedAt)
-export const removeOfflineHelp = (id: string, updatedAt = Date.now()) => helpStore.delete(id, updatedAt)
 
 const PERSIST_KEY = 'help-store'
 
