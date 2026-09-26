@@ -57,6 +57,7 @@ async function loadOrCreateResponderKey(wallet: string): Promise<ResponderKeySta
   void api.registerDispatchKey(wallet, publicKey)
   return { publicKey, privateKey: pair.privateKey }
 }
+import { emergencyAudioAlert } from '../lib/audioAlert.js'
 
 export default function Help() {
   const passkeyAuthEnabled = useFeatureFlag('passkey_authentication')
@@ -168,6 +169,14 @@ export default function Help() {
     JSON.stringify({ contact, medicalNotes, nickname: '' })
   ).length
   const overBudget = plaintextBytes > MAX_PAYLOAD_PLAINTEXT_BYTES
+  const handleTestSiren = async () => {
+    try {
+      await emergencyAudioAlert.play()
+      setStatusMessage('Emergency siren preview played.')
+    } catch (err: any) {
+      setStatusMessage(err.message || 'Unable to play the emergency siren.')
+    }
+  }
 
   return (
     <div style={{ background: '#1c2c24', color: '#ECE0CC', minHeight: '100vh', padding: '2rem' }}>
@@ -191,6 +200,23 @@ export default function Help() {
         <p style={{ color: '#a2a586' }}>
           Broadcast encrypted location and incident report to nearby community responders.
         </p>
+        <button
+          type="button"
+          onClick={handleTestSiren}
+          aria-label="Play emergency siren preview"
+          style={{
+            background: '#FF7A6B',
+            color: '#1c2c24',
+            border: 'none',
+            padding: '0.65rem 1rem',
+            borderRadius: '0.5rem',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            marginBottom: '1rem',
+          }}
+        >
+          Test emergency siren
+        </button>
 
         {/* Location search — hybrid Mapbox → offline geocoder (#518). Works with
             no access token and while offline, using the bundled city dataset. */}
