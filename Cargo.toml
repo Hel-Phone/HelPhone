@@ -17,6 +17,12 @@ exclude = [
 # Member crates declare this same release profile; it is mirrored here because
 # Cargo only honours `[profile]` tables at the workspace root, so building from
 # the repo root must produce the same wasm artifact as building in a crate dir.
+[workspace]
+resolver = "2"
+members = ["contracts/aegis_vault", "contracts/helphone_dao"]
+# Standalone crates that keep their own lockfiles / workspaces.
+exclude = ["contract", "contracts/emergency_vault", "contracts/maintainer_vault"]
+
 [profile.release]
 opt-level = "z"
 lto = true

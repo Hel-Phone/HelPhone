@@ -167,6 +167,9 @@ jobs:
   # and the audit logs are uploaded for security review.
   build-egress-monitor:
     name: Build Egress Monitor & Data Exfiltration Gate
+  # #541 / #543 — Soroban contract unit tests (aegis_vault treasury, DAO oracle).
+  contracts:
+    name: Soroban Contract Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Codebase
@@ -243,3 +246,11 @@ jobs:
           name: api-drift-report
           path: api-drift-report.txt
           if-no-files-found: ignore
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run contract tests
+        run: cargo test --workspace --locked

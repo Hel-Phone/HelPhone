@@ -269,6 +269,56 @@ export interface WatermarkVerification {
 }
 
 
+// --- Zone differential privacy (aegis_vault privacy.rs, #529) ---
+/** Mirrors the vault's `PrivacyParams`. Numbers are stored-coordinate units. */
+export interface ZonePrivacyParams {
+  enabled: boolean
+  /** epsilon x 1000 (1000 = epsilon of 1.0). */
+  epsilonMilli: number
+  sensitivity: number
+  /** The `t` in the Laplace tail bound `b * t`. */
+  tailMult: number
+  /** Cell size that zone edges must align to. */
+  grid: number
+  /** Minimum grid cells any overlap of two zones must still cover. */
+  kCells: number
+}
+
+export type ZonePrivacyViolation =
+  | 'invalid_params'
+  | 'malformed'
+  | 'not_on_grid'
+  | 'too_small'
+  | 'overlap_too_small'
+
+// --- Multi-Asset Treasury (#541) & Price Oracle (#543) ---
+export interface TreasuryAssetRow {
+  asset: string
+  reserve: number
+  /** Infinity when no cap is configured (i128::MAX on-chain). */
+  dailyLimit: number
+  spentToday: number
+  remainingToday: number
+  targetWeightBps: number
+}
+
+export interface DisbursementUsage {
+  unlimited: boolean
+  /** 0-100, capped. */
+  pct: number
+  remaining: number
+  exhausted: boolean
+}
+
+export interface OracleQuote {
+  fromToken: string
+  toToken: string
+  amountIn: number
+  amountOut: number
+}
+
+export type OracleErrorKind = 'stale' | 'unavailable' | 'invalid' | 'not-configured' | 'unknown'
+
 // --- Bounded Expert Verification History (contract ring buffer, #531) ---
 /**
  * A wallet's verification history is a fixed-capacity ring buffer. Entries have
