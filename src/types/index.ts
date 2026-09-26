@@ -287,3 +287,29 @@ export interface ExpertVerificationWindow {
   /** Entries that have been evicted (`oldest`). */
   evicted: number
 }
+
+// --- Worker Sandbox Isolation (untrusted Web Worker scripts) ---
+/**
+ * The sandbox lives next to the code that enforces it
+ * (`src/lib/workerSandbox.ts`) so the runtime and the types can never drift;
+ * this section re-exports the public surface for app-level imports.
+ *
+ * - `WorkerSandboxViolation` — one rejected payload or degradation event
+ * - `WorkerSandboxOptions` — per-launch knobs (origin mode, test seams, …)
+ * - `WorkerSandboxViolationCode` — stable codes: `inbound-schema`,
+ *   `outbound-schema`, `boot-failure`, `frame-timeout`, `queue-overflow`,
+ *   `transport-error`
+ * - `WorkerLockdownReport` — what the in-worker lockdown revoked
+ * - `WorkerOriginMode` — `'opaque'` (null origin) or `'same-origin'`
+ */
+export type {
+  SandboxTransport,
+  SandboxFrame,
+  SandboxViolationCode,
+  WorkerLockdownReport,
+  WorkerOriginMode,
+  WorkerSandboxOptions,
+  WorkerSandboxSupport,
+  WorkerSandboxViolation,
+  WorkerSchemas,
+} from '../lib/workerSandbox'
