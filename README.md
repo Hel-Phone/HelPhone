@@ -52,6 +52,15 @@ HelPhone is a React + Vite community emergency response application built on Ste
 - **Runbook**: [docs/security-runbook.md](docs/security-runbook.md).
 - **Tests**: `test/egress-detector.test.js`.
 
+### 8. Automated Dependency Version Drift & Breaking API Change Analyzer
+- **Analyzer**: `scripts/detect-api-drift.js` extracts the exported type surface of every protected package — functions, interfaces, class members, call signatures and `export =` modules — from its `.d.ts` entry point with the TypeScript Compiler API, then diffs the installed surface against the reviewed baseline committed in `package.json` → `apiDrift.baseline`. Signatures are normalized (whitespace, `import("…")` specifiers rewritten to their `node_modules/` form) so the same package produces byte-identical baselines on CI runners and developer machines.
+- **Version Pinning Guard**: dropped or re-typed signatures are *breaking*, new exports are *additive*. A breaking diff inside a semver-compatible (same/minor/patch) upgrade fails with exit 1 and names the version to pin; a breaking diff in a major upgrade is reported as a warning and needs a re-baseline. When a package does not bundle its own declarations the drift is classified with the `@types/<pkg>` version, so an `@types` minor bump that breaks call sites is caught too.
+- **Exact Pin Opt-In**: `npm run security:api-drift:pin` (`--require-exact-pin`) additionally fails protected dependencies declared as `^` / `~` / `>=` instead of an exact `1.2.3`.
+- **Rust half**: `Cargo.toml` → `[workspace.metadata.api-drift]` (`require-exact-pin`, `protected-crates`) is validated against `[workspace.dependencies]`, `[dependencies]` and `[dev-dependencies]`, where only `=1.2.3` counts as pinned (a bare `1.2.3` means `^1.2.3`).
+- **Baselines**: `npm run security:api-drift:update` re-extracts and merges into `package.json` (root: cors, express, express-rate-limit, fuse.js, graphql, pg, react-dom; `server/package.json`: @stellar/stellar-sdk, @aztec/bb.js, @noir-lang/noir_js). Extraction options live in `tsconfig.json` → `apiDrift.compilerOptions`, deliberately outside `compilerOptions` so `tsc --noEmit` ignores them.
+- **CI Gate**: the `api-drift-guard` job in `.github/workflows/ci.yml` installs with `npm ci --ignore-scripts`, runs `npm run security:api-drift` and `security:api-drift:server`, and uploads the drift report when it fails.
+- **Tests**: `test/api-drift.test.js`.
+
 ---
 
 ## Quick Start
