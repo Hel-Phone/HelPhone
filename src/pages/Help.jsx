@@ -44,6 +44,15 @@ import {
   startAutoSave,
   clearDraft as clearCrashDraft,
 } from "../lib/crashRecovery.ts";
+import {
+  buildResponderKeyRecords,
+  encryptEmergencyPayload,
+  exportPrivateKeyJwk,
+  exportPublicKeyHex,
+  generateEncryptionKeyPair,
+  importPrivateKeyJwk,
+} from "../lib/crypto";
+import { api } from "../services/api";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -190,6 +199,92 @@ function loadProfile() {
   } catch {
     return {};
   }
+}
+
+// ── End-to-end encrypted emergency details ──────────────────────────
+//
+// The contact number and medical notes are sealed on-device for the requester
+// plus every registered responder before anything is submitted. `createRequest`
+// refuses a plaintext payload, so there is no code path that can put a phone
+// number or a medical note in a ledger entry or in a relay store.
+//
+// See src/lib/crypto.ts for the envelope format and docs/security-architecture.md
+// for the threat model. The responder private key never leaves the browser.
+
+const RESPONDER_KEY_PREFIX = "hp_responder_e2ee_v1:";
+
+/** Load this wallet's responder key pair, minting and publishing one if needed. */
+async function loadOrCreateResponderKey(wallet) {
+  const storageKey = `${RESPONDER_KEY_PREFIX}${wallet}`;
+  const stored = sessionStorage.getItem(storageKey);
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      return {
+        publicKey: parsed.publicKey,
+        privateKey: await importPrivateKeyJwk(parsed.jwk),
+      };
+    } catch {
+      sessionStorage.removeItem(storageKey);
+    }
+  }
+  const pair = await generateEncryptionKeyPair();
+  const publicKey = await exportPublicKeyHex(pair.publicKey);
+  const jwk = await exportPrivateKeyJwk(pair.privateKey);
+  // sessionStorage, not localStorage: the private key is wiped when the tab
+  // closes. A production build should move this into the encrypted
+  // SecureStorage (src/lib/secureStorage.ts) to survive restarts.
+  sessionStorage.setItem(storageKey, JSON.stringify({ jwk, publicKey }));
+  // Publishing is best-effort: failing to register only costs dispatch offers.
+  api.registerDispatchKey(wallet, publicKey).catch(() => {});
+  return { publicKey, privateKey: pair.privateKey };
+}
+
+/**
+ * Build the plaintext payload and the recipient key list for a submission.
+ * Returns the envelope already sealed against a fresh submission id, plus the
+ * inputs needed to re-seal against the on-chain request id once it is known.
+ */
+async function sealRequestPayload({ requester, profile }) {
+  const payload = {
+    contact: (profile?.contact || "").trim(),
+    medicalNotes: (profile?.notes || profile?.medicalNotes || "").trim(),
+    nickname: (profile?.nickname || "").trim(),
+  };
+  // An entirely empty payload is not worth a transaction; seal a marker so the
+  // contract's "payload required" rule is satisfied without leaking anything.
+  if (!payload.contact && !payload.medicalNotes && !payload.nickname) {
+    payload.medicalNotes = "No details supplied.";
+  }
+
+  const own = await loadOrCreateResponderKey(requester);
+  const registry = await api.getDispatchRecipientKeys();
+  const registered = registry.success && Array.isArray(registry.keys) ? registry.keys : [];
+
+  // Always include the requester so they can re-read what they submitted.
+  const recipients = await buildResponderKeyRecords([
+    { wallet: requester, publicKey: own.publicKey },
+    ...registered.map((k) => ({ wallet: k.wallet, publicKey: k.publicKey })),
+  ]);
+  const recipientKeys = recipients.map((r) => r.publicKey);
+
+  // The on-chain request id is assigned by the contract, so it cannot be part
+  // of the pre-signature binding. Use a client-generated submission id instead
+  // and record it in the envelope (tamper-evident, not secret).
+  const submissionId = newSubmissionId();
+  const envelope = await encryptEmergencyPayload(payload, recipientKeys, submissionId);
+  return { envelope, payload, recipientKeys, submissionId };
+}
+
+/** Unpredictable, collision-resistant id used as the payload's binding context. */
+function newSubmissionId() {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  if (c && typeof c.getRandomValues === "function") {
+    const bytes = c.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  return `sub-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 const DEFAULT_CENTER = [20, 0];
@@ -1668,15 +1763,27 @@ export default function Help() {
         radiusMeters: 3000,
       });
       const publicLocation = anonymizeLocation(location);
+      // Seal the sensitive half of the request (contact number, medical notes)
+      // to this requester plus every registered responder *before* it touches
+      // the ledger. `createRequest` refuses a plaintext payload, so there is
+      // no path here that can put a phone number in a ledger entry.
+      const sealed = await sealRequestPayload({ requester: address, profile });
       const { requestId: id, hash } = await createRequest(
         address,
         publicLocation[0],
         publicLocation[1],
         emergencyType,
-        "",
-        "",
+        sealed.envelope,
         StellarWalletsKit,
       );
+      // Best-effort relay copy, indexed by the submission id the envelope is
+      // bound to and by the ledger request id so responders can find it from
+      // either. The on-chain copy stays authoritative if the relay is down.
+      const relayCopies = [api.storeDispatchEnvelope(sealed.submissionId, sealed.envelope)];
+      if (id !== undefined && id !== null) {
+        relayCopies.push(api.storeDispatchEnvelope(String(id), sealed.envelope));
+      }
+      await Promise.all(relayCopies.map((p) => p.catch(() => {})));
       setRequestId(id);
       setRequestStatus("Pending");
       saveMyRequestId(id);

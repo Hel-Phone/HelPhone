@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
-    Env, String,
+    Bytes, Env, String,
 };
 
 mod multisig;
@@ -24,7 +24,7 @@ pub use multisig::{Proposal, ProposalAction};
 //   ("active", u32) → u64        active request IDs by slot index
 //
 // Persistent (pay-to-live):
-//   ("req", u64) → HelpRequest
+//   ("req", u64) → HelpRequest   (includes the sealed, responder-only payload)
 //   ("rcount", request_id) → u32   responder count per request
 //   ("resp", request_id, idx) → ResponderRecord
 //   ("evcount", wallet) → u32      verifications ever recorded per wallet (write cursor)
@@ -75,6 +75,12 @@ pub enum Error {
     DuplicateApproval = 9,
     ThresholdNotMet = 10,
     ProposalExecuted = 11,
+    /// `create_request` was called without an encrypted payload.
+    PayloadEmpty = 12,
+    /// The encrypted payload exceeds `MAX_ENCRYPTED_PAYLOAD_BYTES`.
+    PayloadTooLarge = 13,
+    /// `emergency_type` is empty or longer than `MAX_EMERGENCY_TYPE_BYTES`.
+    EmergencyTypeInvalid = 14,
 }
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -87,6 +93,37 @@ pub enum Status {
     Cancelled,
 }
 
+/// Upper bound on the opaque encrypted blob, in bytes.
+///
+/// Mirrors `MAX_ENVELOPE_BYTES` in `src/lib/crypto.ts`, which enforces the
+/// same limit client-side so an oversized payload fails locally instead of
+/// reverting a signed transaction. The envelope hex-encodes its ciphertext, so
+/// this is roughly twice the `MAX_PAYLOAD_PLAINTEXT_BYTES` (4 KiB) cap.
+pub const MAX_ENCRYPTED_PAYLOAD_BYTES: u32 = 12288;
+
+/// Upper bound on `emergency_type`, in bytes. Kept short because it is
+/// plaintext and is indexed/filtered on by responders.
+pub const MAX_EMERGENCY_TYPE_BYTES: u32 = 32;
+
+/// A help request as stored on the ledger.
+///
+/// The sensitive half of the request — contact number, medical notes,
+/// allergies — is **not** here in the clear. `encrypted_payload` is a sealed
+/// envelope produced by the client (ECDH P-256 + HKDF-SHA256 + AES-256-GCM,
+/// see `src/lib/crypto.ts`) whose content key is wrapped once per authorized
+/// responder. This contract never holds a decryption key and never parses the
+/// envelope; it stores opaque bytes and bounds their length.
+///
+/// Deliberately left in plaintext, because dispatch is impossible without them:
+///   * `lat` / `lng` — responders must see where. Coarse location privacy is
+///     the separate ZK/Aegis layer's job (circuits/, contracts/aegis_vault).
+///   * `emergency_type` — responders filter on it to send the right aid.
+///
+/// ### Storage-layout note
+/// This replaces the previous `nickname: String` / `contact: String` pair with
+/// a single `Bytes`, which changes the XDR layout of every stored request.
+/// Existing deployments need a state migration before upgrading; see
+/// docs/security-architecture.md → "End-to-End Encrypted Payloads".
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub struct HelpRequest {
@@ -97,8 +134,8 @@ pub struct HelpRequest {
     /// Longitude encoded as integer (degrees × 1_000_000)
     pub lng: i32,
     pub emergency_type: String,
-    pub nickname: String,
-    pub contact: String,
+    /// Opaque, sealed responder-only payload. Never readable by this contract.
+    pub encrypted_payload: Bytes,
     pub status: Status,
     pub created_at: u64,
     pub resolved_at: Option<u64>,
@@ -330,16 +367,40 @@ impl HelPhone {
 
     // ── Emergency Request Lifecycle ─────────────────────────────────
 
+    /// Broadcast a help request.
+    ///
+    /// `encrypted_payload` is an opaque sealed envelope (JSON, hex-encoded
+    /// ciphertext) built client-side. The contract validates only that it is
+    /// present and within `MAX_ENCRYPTED_PAYLOAD_BYTES`; it cannot read it and
+    /// holds no key that could. Responders pull the envelope, then decrypt it
+    /// locally with their own private key.
+    ///
+    /// # Errors
+    /// * `PayloadEmpty` — no payload supplied; plaintext contact details are
+    ///   no longer accepted at all.
+    /// * `PayloadTooLarge` — longer than `MAX_ENCRYPTED_PAYLOAD_BYTES`.
+    /// * `EmergencyTypeInvalid` — empty or over-long dispatch category.
+    #[allow(clippy::too_many_arguments)]
     pub fn create_request(
         env: Env,
         requester: Address,
         lat: i32,
         lng: i32,
         emergency_type: String,
-        nickname: String,
-        contact: String,
-    ) -> u64 {
+        encrypted_payload: Bytes,
+    ) -> Result<u64, Error> {
         requester.require_auth();
+
+        if encrypted_payload.is_empty() {
+            return Err(Error::PayloadEmpty);
+        }
+        if encrypted_payload.len() > MAX_ENCRYPTED_PAYLOAD_BYTES {
+            return Err(Error::PayloadTooLarge);
+        }
+        if emergency_type.is_empty() || emergency_type.len() > MAX_EMERGENCY_TYPE_BYTES {
+            return Err(Error::EmergencyTypeInvalid);
+        }
+
         let count = Self::get_request_count(env.clone()) + 1;
         env.storage().instance().set(&key_req_count(), &count);
         let req = HelpRequest {
@@ -348,8 +409,7 @@ impl HelPhone {
             lat,
             lng,
             emergency_type,
-            nickname,
-            contact,
+            encrypted_payload,
             status: Status::Pending,
             created_at: env.ledger().timestamp(),
             resolved_at: None,
@@ -365,7 +425,7 @@ impl HelPhone {
         env.storage()
             .instance()
             .set(&key_active_count(), &(active_count + 1));
-        count
+        Ok(count)
     }
 
     pub fn accept_request(

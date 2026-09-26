@@ -96,6 +96,173 @@ export interface EncryptedData {
   algorithm: 'AES-GCM'
 }
 
+// --- End-to-End Encrypted Emergency Payloads (E2EE) ---
+//
+// The sensitive half of a help request (contact number, medical notes,
+// allergies) never reaches the ledger or the relay in the clear. It is sealed
+// into an `EncryptedEnvelope` with a one-shot content key, and that content key
+// is wrapped once per authorized recipient with ECDH P-256 + HKDF-SHA256.
+// Only holders of a recipient private key can open it — the relay stores and
+// forwards opaque bytes and never holds a decryption key.
+//
+// Note what is deliberately NOT here: `lat`, `lng` and `emergencyType` stay in
+// plaintext. Responders have to see *where* and *what kind* of emergency it is
+// to be dispatched at all; concealing them would break the product's core
+// function (and location privacy is handled by the separate ZK/Aegis layer).
+// See docs/security-architecture.md → "End-to-End Encrypted Payloads".
+
+/** The plaintext that gets sealed. Field names double as the JSON keys. */
+export interface EmergencyPayload {
+  /** Phone number or handle the requester wants responders to call. */
+  contact: string
+  /** Free-text medical notes (allergies, medications, conditions). */
+  medicalNotes: string
+  /** Display name shown to responders. */
+  nickname: string
+  /** Optional separate allergies field, merged into `medicalNotes` when empty. */
+  allergies?: string
+  /** Unix ms the requester composed the payload. */
+  requestedAt?: number
+}
+
+/** One recipient's copy of the content key, sealed to that recipient's key. */
+export interface WrappedContentKey {
+  /**
+   * SHA-256 of the recipient's uncompressed P-256 public key, first 8 bytes
+   * hex. Lets a client find its own wrap without trial-decrypting the others,
+   * and binds the wrap to the key (it is authenticated as AAD).
+   */
+  keyId: string
+  /** Hex-encoded wrapped content key (32 bytes + 16-byte GCM tag). */
+  wrappedKey: string
+  /** Hex 12-byte IV used only for this wrap. */
+  wrapIv: string
+  /** Hex 16-byte GCM tag over the wrap. */
+  wrapAuthTag: string
+}
+
+/**
+ * Self-describing sealed envelope. Serialized to the ledger as opaque bytes,
+ * so the contract never has to parse or validate the format — it only bounds
+ * the length. `version` lets the layout rotate without a flag day.
+ */
+export interface EncryptedEnvelope {
+  /** Envelope format version. Only `1` is understood today. */
+  version: 1
+  /** Algorithm identifier, checked on decrypt so a downgrade is rejected. */
+  algorithm: 'ECDH-P256-HKDF-SHA256+AES-256-GCM'
+  /**
+   * Public id the payload is bound to, mixed into the AEAD tags. Tamper-evident
+   * (editing it invalidates the tag) but not secret, so a responder can read it
+   * off the envelope without out-of-band coordination.
+   *
+   * Normally a client-generated submission id, because the on-chain request id
+   * is not known until `create_request` has already been signed. Pass the
+   * ledger request id instead when it is known up front.
+   */
+  bindingContext: string
+  /** Hex uncompressed SEC1 P-256 ephemeral public key (65 bytes, `04` prefix). */
+  ephemeralPublicKey: string
+  /** Hex 12-byte IV for the payload. */
+  iv: string
+  /** Hex ciphertext of the canonical payload JSON. */
+  ciphertext: string
+  /** Hex 16-byte GCM tag over the payload. */
+  authTag: string
+  /** One wrap per authorized recipient, including the requester. */
+  wrappedKeys: WrappedContentKey[]
+  /** Unix ms the envelope was produced. */
+  createdAt: number
+}
+
+/** A responder's advertised public key, as held by the relay. */
+export interface ResponderEncryptionKey {
+  /** Stellar account the key is bound to (the on-chain identity). */
+  wallet: string
+  /** Hex uncompressed SEC1 P-256 public key. */
+  publicKey: string
+  /**
+   * SHA-256 prefix of the public key, in lowercase hex. Deterministic, so the
+   * same key always presents the same id and an envelope can be matched to its
+   * `wrappedKeys` entry without trusting registry order.
+   */
+  keyId: string
+  /** Unix ms the key was registered. */
+  registeredAt: number
+}
+
+/** A help request exactly as the ledger holds it, after `mapRequest`. */
+export type RequestStatus = 'Pending' | 'Enroute' | 'Resolved' | 'Cancelled'
+
+/**
+ * A help request as the client sees it.
+ *
+ * `encryptedPayload` is the sealed envelope, still sealed — reading the
+ * contact number or medical notes requires calling `decryptEmergencyPayload`
+ * with a recipient private key. It is `null` only for a request sealed before
+ * E2EE existed, which the contract can no longer represent; treat it as
+ * "no responder-only details available" rather than "no details".
+ */
+export interface HelpRequest {
+  id: number
+  requester: string
+  /** Degrees. */
+  lat: number
+  /** Degrees. */
+  lng: number
+  emergency_type: string
+  /** Opaque sealed envelope; `null` when absent. */
+  encrypted_payload: EncryptedEnvelope | null
+  status: RequestStatus
+  /** Client-side display only; not a contract field. */
+  priority: 'Low' | 'Medium' | 'High' | 'Critical'
+  created_at: number
+  resolved_at: number | null
+}
+
+/** A help request as the contract stores it — `lat`/`lng` are integers. */
+export interface HelpRequestRecord {
+  id: number
+  requester: string
+  /** Degrees × 1_000_000. */
+  lat: number
+  /** Degrees × 1_000_000. */
+  lng: number
+  emergency_type: string
+  /** Hex-encoded sealed envelope as submitted to `create_request`. */
+  encrypted_payload: string | null
+  status: RequestStatus
+  created_at: number
+  resolved_at: number | null
+}
+
+/** A help request as stored by the relay, keyed by request. */
+export interface DispatchEnvelopeRecord {
+  requestId: string
+  envelope: EncryptedEnvelope
+  storedAt: number
+}
+
+export interface DispatchStoreResponse {
+  success: boolean
+  requestId?: string
+  /** Number of recipient wraps the relay accepted. */
+  recipientCount?: number
+  error?: string
+}
+
+export interface DispatchFetchResponse {
+  success: boolean
+  envelopes?: EncryptedEnvelope[]
+  error?: string
+}
+
+export interface DispatchRecipientResponse {
+  success: boolean
+  keys?: ResponderEncryptionKey[]
+  error?: string
+}
+
 // --- Wallet & State Context ---
 export interface WalletState {
   address: string | null

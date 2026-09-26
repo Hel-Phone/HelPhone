@@ -108,3 +108,196 @@ The header and the markup use the same value because both come from `res.locals.
 **The service worker precaches `index.html`.** A precached shell would serve a stale nonce. Keep the navigation route network-first for HTML when this ships; until then a service-worker-served page will be blocked by the policy rather than run unnonced scripts.
 
 **Unchanged for API-only deploys.** The HTML route falls through when `dist/index.html` does not exist.
+
+# End-to-End Encrypted Emergency Payloads (#E2EE)
+
+Emergency details — the contact number and the medical notes — are sealed on the
+requester's device before anything is submitted. The ledger, the relay and the
+map markers only ever carry ciphertext, so a compromised backend, a hostile RPC
+node, or a subpoena over the relay store yields nothing.
+
+## What is and is not encrypted
+
+| Field | Where it lives | Encrypted |
+| --- | --- | --- |
+| `contact` | payload | **yes** |
+| `medicalNotes` | payload | **yes** |
+| `nickname` | payload | **yes** |
+| `allergies` (optional) | payload | **yes** |
+| `lat` / `lng` | on-chain + relay | no — see below |
+| `emergency_type` | on-chain + relay | no |
+| request id, status, timestamps | on-chain + relay | no |
+
+Location is deliberately left readable: dispatch requires it, and the existing
+ZK location proof (`src/lib/zk.ts`) plus the client-side `anonymizeLocation()`
+coarsening are what protect it. Encrypting coordinates would push the
+responder-selection problem onto the responders, which is a worse trade for an
+emergency service. Anyone reading the ledger learns "a request exists near here"
+and nothing about who it is for.
+
+## Envelope format
+
+One JSON object, stored as `Bytes` on-chain (`encrypted_payload`) and relayed
+verbatim. Version 1, algorithm `ECDH-P256-HKDF-SHA256+AES-256-GCM`:
+
+```jsonc
+{
+  "version": 1,
+  "algorithm": "ECDH-P256-HKDF-SHA256+AES-256-GCM",
+  "bindingContext": "9f1c…",        // public, tamper-evident
+  "ephemeralPublicKey": "04…",     // 65-byte uncompressed P-256
+  "iv": "…",                        // 12 bytes, AES-GCM nonce
+  "ciphertext": "…",                // sealed payload
+  "authTag": "…",                   // 16 bytes
+  "wrappedKeys": [                  // one entry per authorized reader
+    { "keyId": "…", "wrappedKey": "…", "wrapIv": "…", "wrapAuthTag": "…" }
+  ],
+  "createdAt": 1728000000000
+}
+```
+
+## Key schedule
+
+- A fresh 32-byte **content key** per request, from `crypto.getRandomValues`.
+  It is never transmitted; it only travels inside `wrappedKeys`.
+- Per recipient: a one-shot **ephemeral P-256 key pair** is generated,
+  ECDH is performed against that recipient's public key, and the shared secret
+  is run through HKDF-SHA256 to a 256-bit **key-encryption key**.
+- The content key is sealed to each recipient with AES-256-GCM under that KEK.
+- The payload is sealed **once** under the content key, so the ciphertext body
+  is identical for every recipient and the envelope grows by ~145 bytes per
+  recipient rather than re-encrypting the body N times.
+
+`extractable` is `true` only on keys that must be persisted for a reload
+(the responder's long-lived key pair). The per-request ephemeral and content
+keys are generated non-extractable and are discarded once the envelope is built.
+
+## Domain separation and context binding
+
+Every AEAD tag is computed with a distinct `info`/AAD, so no ciphertext from
+one layer can ever be replayed as another:
+
+| Layer | Bound to |
+| --- | --- |
+| content encryption | `bindingContext` |
+| CEK wrap | `bindingContext` + recipient `keyId` |
+
+`bindingContext` is a client-generated submission id (a UUID). It is carried in
+the envelope in the clear — it is public, and the AEAD tags make editing it
+fail authentication — so a responder needs no out-of-band coordination.
+`decryptEmergencyPayload` accepts an optional expected context and will refuse to
+open an envelope bound to a different request.
+
+The on-chain request id is assigned by the contract and so cannot be part of a
+pre-signature binding; the relay is therefore indexed by **both** the submission
+id and the ledger request id.
+
+## Responder keys
+
+A responder generates an ECDH P-256 key pair in the browser, publishes the
+public half, and keeps the private half in the tab. `keyId` is a truncated
+SHA-256 of the public key, so it is stable across reloads, identical from
+either half of the pair, and lets an envelope be matched to its `wrappedKeys`
+entry without trusting registry ordering.
+
+A wallet may register several keys (a laptop and a phone); the registry is keyed
+by `keyId`, so each is published and each receives its own wrapped key.
+
+Private keys are never sent to the server. The relay has no endpoint that
+accepts key material, and both write paths reject any body containing a
+`privateKey`/`secretKey`/`mnemonic`-shaped key before validating anything else.
+
+## Relay
+
+`server/routes/dispatch.ts` is a blind, opaque relay:
+
+- validates the envelope structurally and for size, but cannot read it;
+- stores envelopes keyed by submission id and by on-chain request id;
+- rate-limits writes per IP;
+- logs request id, recipient count and byte size only — never the blob;
+- exposes Prometheus counters for writes, reads, rate-limit hits and refusals.
+
+It is an **accelerator, not a system of record**. The authoritative copy is the
+envelope in the contract's `encrypted_payload`, so a relay wipe or outage costs
+latency and nothing else. This is why the in-memory store is acceptable today;
+a durable store must have the same property — it must be safe to lose.
+
+## Limits
+
+| Limit | Value | Enforced in |
+| --- | --- | --- |
+| Plaintext payload | 4 KiB | `encryptEmergencyPayload` |
+| Serialized envelope | 12 KiB | client + relay + contract `PayloadTooLarge` |
+| Recipients per envelope | 32 | client + relay |
+
+The 12 KiB envelope budget is the contract's storage bound, chosen so a full
+32-responder roster still fits in one `create_request`.
+
+## Contract change: breaking
+
+`HelpRequest.nickname: String` and `HelpRequest.contact: String` are replaced by
+`encrypted_payload: Bytes`, and `create_request` drops the phantom `priority`
+argument and takes the sealed payload in its place.
+
+> **Migration required.** A contract deployed before this change has
+> `HelpRequest` entries encoded with the old field set. Reading them with the new
+> contract will fail to deserialize, and there is no in-place upgrade path
+> because the stored XDR layout changed. Testnet and mainnet contracts must be
+> redeployed, and any deployment holding live requests must drain or archive
+> them first. There is no code path that writes plaintext into the new field:
+> `encodeEncryptedPayload` rejects anything that is not a valid v1 envelope.
+
+New validation errors on the contract: `PayloadEmpty = 12`,
+`PayloadTooLarge = 13`, `EmergencyTypeInvalid = 14`.
+
+## Threat model
+
+**Protected against**
+
+- a curious or compromised relay/backend operator reading medical details;
+- RPC node or indexer snooping on transaction contents;
+- passive network observers (everything is TLS plus AEAD-sealed);
+- a responder not addressed by an envelope opening it;
+- replay of an envelope under a different request (`bindingContext` in the AAD);
+- transplanting one recipient's wrapped key under another's `keyId`.
+
+**Not protected against**
+
+- a responder who *is* addressed reading the details they were dispatched for;
+- a compromised browser extension or XSS in the requester's tab, which sees the
+  plaintext before sealing and the private key after import;
+- traffic analysis — an observer still learns that a request happened, roughly
+  where, and how many responders it was sealed for;
+- the requester's own device backups, since the responder key is in
+  `sessionStorage` until it is moved into the encrypted `SecureStorage`.
+
+## Design decisions
+
+- **Hybrid, not per-recipient encryption.** One AES-GCM body with N wrapped keys
+  keeps a 32-responder envelope inside the contract's storage budget; sealing
+  the body N times would not.
+- **ECDH P-256 + HKDF rather than RSA.** Browser-native, no key-size cliff, and
+  the WebCrypto API is the same in the browser, in Node and in tests.
+- **Ephemeral keys per request rather than a long-lived responder public key
+  for wrapping.** A fresh ephemeral key per recipient per request means a
+  compromised responder key only exposes the envelopes addressed to it, and
+  there is no reusable "encrypt to responder X" oracle.
+- **Blind relay, authoritative on-chain.** A relay that is down or wiped must
+  never be able to lose a request, only to slow one down.
+- **Location left readable.** Dispatch needs it, and the ZK proof plus
+  coarsening already address the privacy risk; hiding it would push
+  responder-selection onto the responders.
+
+## Testing
+
+`test/e2e-encryption.test.js` covers the full path: key generation and `keyId`
+derivation, JWK round-trip across a simulated reload, single and multi-recipient
+seal/open, non-recipient rejection, context binding, tamper resistance for the
+ciphertext, tag, IV, context field and wrapped keys, algorithm/version
+downgrade, envelope size and recipient limits, plaintext-leak checks on the
+serialized envelope, on-chain hex encoding, and an opaque relay round trip
+driven through the real Express routers.
+
+`test/contract-functions.test.js` covers the ledger side; the Rust cases in
+`contract/contracts/helphone-contract/src/test.rs` cover the storage and
+validation rules.

@@ -1,16 +1,77 @@
-import React, { useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useFeatureFlag } from '../lib/featureFlags.js'
 import { passkeyManager } from '../lib/passkey.js'
 import { useWallet } from '../contexts/WalletContext.js'
 import { useLocationSearch } from '../hooks/useLocationSearch.js'
+import {
+  buildResponderKeyRecords,
+  decryptEmergencyPayload,
+  encryptEmergencyPayload,
+  exportPrivateKeyJwk,
+  exportPublicKeyHex,
+  generateEncryptionKeyPair,
+  importPrivateKeyJwk,
+  MAX_PAYLOAD_PLAINTEXT_BYTES,
+} from '../lib/crypto.js'
+import { api } from '../services/api.js'
+
+/** Where a responder's sealed private key is stashed, per Stellar address. */
+const RESPONDER_KEY_PREFIX = 'hp_responder_e2ee_v1:'
+
+interface ResponderKeyState {
+  publicKey: string
+  privateKey: CryptoKey
+}
+
+/**
+ * Load (or create) this wallet's responder encryption key.
+ *
+ * The private half never leaves the browser: it is kept in `sessionStorage` and
+ * re-imported on reload so a refresh does not mint a new key (which would
+ * orphan every envelope already sealed for this responder). A production build
+ * should move this into the encrypted `SecureStorage` (src/lib/secureStorage.ts);
+ * sessionStorage is the safer default because it is wiped when the tab closes.
+ */
+async function loadOrCreateResponderKey(wallet: string): Promise<ResponderKeyState> {
+  const storageKey = `${RESPONDER_KEY_PREFIX}${wallet}`
+  const stored = sessionStorage.getItem(storageKey)
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored) as { jwk: JsonWebKey; publicKey: string }
+      return {
+        publicKey: parsed.publicKey,
+        privateKey: await importPrivateKeyJwk(parsed.jwk),
+      }
+    } catch {
+      // Corrupt entry — fall through and mint a fresh key.
+      sessionStorage.removeItem(storageKey)
+    }
+  }
+  const pair = await generateEncryptionKeyPair()
+  const publicKey = await exportPublicKeyHex(pair.publicKey)
+  const jwk = await exportPrivateKeyJwk(pair.privateKey)
+  sessionStorage.setItem(storageKey, JSON.stringify({ jwk, publicKey }))
+  // Publish the public half so requesters can seal for us. Failure here only
+  // costs us dispatch offers; it must not block the page.
+  void api.registerDispatchKey(wallet, publicKey)
+  return { publicKey, privateKey: pair.privateKey }
+}
 import { emergencyAudioAlert } from '../lib/audioAlert.js'
 
 export default function Help() {
   const passkeyAuthEnabled = useFeatureFlag('passkey_authentication')
+  const encryptedDispatchEnabled = useFeatureFlag('encrypted_dispatch')
   const { walletState, connectWallet } = useWallet()
   const [statusMessage, setStatusMessage] = useState<string>('')
   const [passkeyVerified, setPasskeyVerified] = useState<boolean>(false)
+  const [contact, setContact] = useState<string>('')
+  const [medicalNotes, setMedicalNotes] = useState<string>('')
+  const [recipientCount, setRecipientCount] = useState<number | null>(null)
+  const [revealed, setRevealed] = useState<{ requestId: string; contact: string; medicalNotes: string } | null>(
+    null
+  )
+  const [revealError, setRevealError] = useState<string>('')
 
   const {
     location,
@@ -48,6 +109,66 @@ export default function Help() {
     }
   }
 
+  /**
+   * Seal the contact number and medical notes for the request plus every
+   * registered responder, then hand the ciphertext to the relay.
+   *
+   * Nothing readable is produced here beyond the in-memory plaintext the user
+   * just typed; the relay only ever sees the envelope.
+   */
+  const handleSealAndDispatch = useCallback(async () => {
+    if (!walletState.address) {
+      setRevealError('Connect your Stellar wallet first.')
+      return
+    }
+    if (!contact.trim() && !medicalNotes.trim()) {
+      setRevealError('Add a contact number or a medical note to seal.')
+      return
+    }
+    setRevealError('')
+
+    try {
+      const own = await loadOrCreateResponderKey(walletState.address)
+      const registry = await api.getDispatchRecipientKeys()
+      const keys = registry.success && registry.keys?.length ? registry.keys : []
+
+      // Always seal to ourselves too, so the requester can re-read what they
+      // submitted. `buildResponderKeyRecords` drops duplicate public keys.
+      const recipients = await buildResponderKeyRecords([
+        { wallet: walletState.address, publicKey: own.publicKey },
+        ...keys.map((k) => ({ wallet: k.wallet, publicKey: k.publicKey })),
+      ])
+      setRecipientCount(recipients.length)
+
+      // The request id is not known until the on-chain submission lands, so
+      // this demo seals against a client-side nonce and the real submission
+      // re-seals with the ledger id (see src/lib/contract.ts#createRequest).
+      const requestId = `local-${Date.now()}`
+      const envelope = await encryptEmergencyPayload(
+        { contact: contact.trim(), medicalNotes: medicalNotes.trim(), nickname: '' },
+        recipients.map((r) => r.publicKey),
+        requestId
+      )
+      const stored = await api.storeDispatchEnvelope(requestId, envelope)
+      if (!stored.success) {
+        setRevealError(`Relay refused the envelope: ${stored.error ?? 'unknown error'}`)
+        return
+      }
+
+      // Prove the round trip locally: read back exactly what a responder will.
+      const back = await decryptEmergencyPayload(envelope, own.privateKey, requestId)
+      setRevealed({ requestId, contact: back.contact, medicalNotes: back.medicalNotes })
+      setStatusMessage('🔒 Payload sealed end-to-end. Only your key and the responders’ can open it.')
+    } catch (err: any) {
+      setRevealError(err?.message || 'Could not seal the emergency payload.')
+    }
+  }, [walletState.address, contact, medicalNotes])
+
+  /** Count the plaintext budget so the UI can warn before the seal throws. */
+  const plaintextBytes = new TextEncoder().encode(
+    JSON.stringify({ contact, medicalNotes, nickname: '' })
+  ).length
+  const overBudget = plaintextBytes > MAX_PAYLOAD_PLAINTEXT_BYTES
   const handleTestSiren = async () => {
     try {
       await emergencyAudioAlert.play()
@@ -230,6 +351,124 @@ export default function Help() {
             >
               🔑 Authenticate Passkey (P-256)
             </button>
+          </div>
+        )}
+
+        {encryptedDispatchEnabled && (
+          <div style={{ marginTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1.5rem' }}>
+            <h3>🔒 End-to-End Encrypted Details</h3>
+            <p style={{ color: '#a2a586', fontSize: '0.9rem' }}>
+              Your contact number and medical notes are sealed on this device with
+              ECDH&nbsp;P-256 + AES-256-GCM. The ledger and our relay only ever store
+              ciphertext, and the key never leaves your browser.
+            </p>
+
+            <label
+              htmlFor="emergency-contact"
+              style={{ display: 'block', margin: '0.75rem 0 0.3rem', fontWeight: 'bold', fontSize: '0.9rem' }}
+            >
+              Contact number or handle
+            </label>
+            <input
+              id="emergency-contact"
+              type="text"
+              autoComplete="tel"
+              value={contact}
+              onChange={(e) => setContact(e.target.value)}
+              placeholder="+1 555 0100"
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                borderRadius: '0.5rem',
+                border: '1px solid rgba(255,255,255,0.25)',
+                background: '#1c2c24',
+                color: '#ECE0CC',
+              }}
+            />
+
+            <label
+              htmlFor="emergency-medical-notes"
+              style={{ display: 'block', margin: '0.75rem 0 0.3rem', fontWeight: 'bold', fontSize: '0.9rem' }}
+            >
+              Medical notes (allergies, medications, conditions)
+            </label>
+            <textarea
+              id="emergency-medical-notes"
+              rows={3}
+              value={medicalNotes}
+              onChange={(e) => setMedicalNotes(e.target.value)}
+              placeholder="Carries an epinephrine auto-injector."
+              aria-describedby="emergency-medical-notes-budget"
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                borderRadius: '0.5rem',
+                border: '1px solid rgba(255,255,255,0.25)',
+                background: '#1c2c24',
+                color: '#ECE0CC',
+                resize: 'vertical',
+              }}
+            />
+            <p
+              id="emergency-medical-notes-budget"
+              style={{ fontSize: '0.78rem', color: overBudget ? '#FF7A6B' : '#a2a586', margin: '0.3rem 0 0' }}
+            >
+              {plaintextBytes} / {MAX_PAYLOAD_PLAINTEXT_BYTES} bytes before encryption.
+              {overBudget ? ' Too large to seal — shorten the notes.' : ''}
+            </p>
+
+            <button
+              onClick={handleSealAndDispatch}
+              disabled={overBudget}
+              style={{
+                background: overBudget ? '#a2a586' : '#234B4E',
+                color: '#ECE0CC',
+                border: '1px solid rgba(255,255,255,0.25)',
+                padding: '0.75rem 1.5rem',
+                borderRadius: '0.5rem',
+                cursor: overBudget ? 'not-allowed' : 'pointer',
+                marginTop: '0.75rem',
+                fontWeight: 'bold',
+              }}
+            >
+              Seal &amp; dispatch encrypted
+            </button>
+
+            {recipientCount !== null && (
+              <p style={{ fontSize: '0.82rem', color: '#3F8487', marginTop: '0.6rem' }}>
+                Sealed for {recipientCount} key{recipientCount === 1 ? '' : 's'} (you plus every
+                registered responder).
+              </p>
+            )}
+
+            {revealError && (
+              <p role="alert" style={{ fontSize: '0.85rem', color: '#FF7A6B', marginTop: '0.6rem' }}>
+                {revealError}
+              </p>
+            )}
+
+            {revealed && (
+              <div
+                style={{
+                  marginTop: '0.9rem',
+                  padding: '0.9rem',
+                  background: '#1c2c24',
+                  borderRadius: '0.5rem',
+                  border: '1px solid rgba(115,87,255,0.5)',
+                }}
+              >
+                <p style={{ fontSize: '0.85rem', margin: 0, color: '#a2a586' }}>
+                  Decrypted locally with your responder key — this is exactly what an authorized
+                  responder sees:
+                </p>
+                {revealed.contact && (
+                  <p style={{ fontSize: '0.95rem', margin: '0.35rem 0 0' }}>📞 {revealed.contact}</p>
+                )}
+                {revealed.medicalNotes && (
+                  <p style={{ fontSize: '0.95rem', margin: '0.35rem 0 0' }}>🩺 {revealed.medicalNotes}</p>
+                )}
+              </div>
+            )}
           </div>
         )}
 
