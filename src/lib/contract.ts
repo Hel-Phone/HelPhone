@@ -18,6 +18,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { parseEndpointList } from "./networkEstimator";
 import { initRpcHealth, reportRpcFailure } from "./rpcHealth";
+import { toAssetRow, toAmount, classifyOracleError, ORACLE_ERROR_MESSAGES } from "./treasury";
 import type {
   HelpRequest,
   Responder,
@@ -29,6 +30,7 @@ import {
   buildSorobanTransaction,
   summarizeFootprint,
 } from "./footprint";
+import { verificationWindow } from "./ringBuffer";
 
 /** Validate a Stellar Soroban contract ID (strkey 'C...' with CRC16 checksum).
  *  Throws immediately with a clear message instead of letting a malformed ID
@@ -165,6 +167,12 @@ const CONTRACT_ID = assertValidContractId(
   ACTIVE_NETWORK.contractId,
   "CONTRACT_ID",
 );
+const DAO_CONTRACT_ID = import.meta.env?.VITE_HELPHONE_DAO_CONTRACT_ID;
+
+function getDaoContractId() {
+  if (!DAO_CONTRACT_ID) throw new Error("VITE_HELPHONE_DAO_CONTRACT_ID is not configured");
+  return assertValidContractId(DAO_CONTRACT_ID, "VITE_HELPHONE_DAO_CONTRACT_ID");
+}
 const RPC_URL = ACTIVE_NETWORK.rpcUrl;
 const FRIENDBOT_URL = ACTIVE_NETWORK.friendbotUrl;
 const NETWORK = ACTIVE_NETWORK.networkPassphrase;
@@ -596,6 +604,32 @@ export async function getExpertVerifications(walletAddress, limit = 10) {
   );
 }
 
+/** Which verification indexes are still readable for a wallet. The contract
+ *  keeps only the newest `capacity` entries per wallet (#531); older ones read
+ *  back as missing, so callers should page within `[oldest, total)`. */
+export async function getExpertVerificationWindow(walletAddress) {
+  if (!walletAddress) return null;
+  return _withCache(
+    "getExpertVerificationWindow",
+    [walletAddress],
+    CACHE_TTL.short,
+    async () => {
+      const readCount = async (method, ...args) => {
+        const sim = await simulateRead(contract.call(method, ...args));
+        return sim.result ? safeToNumber(scValToNative(sim.result.retval)) : 0;
+      };
+      const [total, capacity] = await Promise.all([
+        readCount(
+          "get_expert_verification_count",
+          scv(walletAddress, { type: "address" }),
+        ),
+        readCount("get_expert_verification_capacity"),
+      ]);
+      return verificationWindow(total, capacity);
+    },
+  );
+}
+
 // ── Contract event stream (issue #177) ─────────────────────────
 // Server-Sent Events from the local prover/events server, which itself
 // polls Soroban RPC once and fans out to every connected browser (see
@@ -604,30 +638,85 @@ export async function getExpertVerifications(walletAddress, limit = 10) {
 // depending on whether this connects.
 const EVENTS_URL =
   import.meta.env?.VITE_EVENTS_URL || "http://localhost:3001/events/stream";
+const EVENTS_WS_URL = import.meta.env?.VITE_EVENTS_WS_URL ||
+  `${EVENTS_URL.replace(/^http/, "ws").replace(/\/events\/stream(?:\?.*)?$/, "/events/ws")}`;
 
 /** Subscribe to contract lifecycle events. `onEvent` is called with
  *  `{ topic, ledger, id }` for each event. Returns an unsubscribe function.
  *  Never throws — a construction failure (e.g. no EventSource support)
  *  just means the caller's polling fallback keeps doing all the work. */
 export function subscribeToContractEvents(onEvent) {
-  let es;
-  try {
-    es = new EventSource(EVENTS_URL);
-  } catch {
-    return () => {};
-  }
-  es.onmessage = (msg) => {
+  let es = null;
+  let ws = null;
+  let reconnectTimer = null;
+  let reconnectAttempt = 0;
+  let stopped = false;
+  const recentIds = new Set();
+  const deliver = (raw) => {
     try {
-      onEvent(JSON.parse(msg.data));
+      const decoded = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const event = decoded?.type === "contract-event" ? decoded : decoded;
+      if (decoded?.type && decoded.type !== "contract-event") return;
+      if (!event || typeof event.topic !== "string" || typeof event.id !== "string" || !Number.isSafeInteger(event.ledger)) return;
+      if (recentIds.has(event.id)) return;
+      recentIds.add(event.id);
+      if (recentIds.size > 512) recentIds.delete(recentIds.values().next().value);
+      onEvent(event);
     } catch {
-      // malformed event payload — ignore, don't crash the subscriber
+      // Malformed event payloads are ignored; polling remains the backstop.
     }
   };
-  es.onerror = () => {
-    // EventSource auto-reconnects on transient errors; nothing to do here.
-    // The caller's polling fallback continues covering us regardless.
+
+  const openSseFallback = () => {
+    if (stopped || es || typeof EventSource === "undefined") return;
+    try {
+      es = new EventSource(EVENTS_URL);
+      es.onmessage = (message) => deliver(message.data);
+      es.onerror = () => {
+        // EventSource performs its own retry; the contract polling loop is a backstop.
+      };
+    } catch {
+      es = null;
+    }
   };
-  return () => es.close();
+
+  const connectWebSocket = () => {
+    if (stopped || typeof WebSocket === "undefined") {
+      openSseFallback();
+      return;
+    }
+    try {
+      const url = new URL(EVENTS_WS_URL, window.location.href);
+      const tenant = import.meta.env?.VITE_TENANT_ID;
+      if (tenant) url.searchParams.set("tenant", tenant);
+      ws = new WebSocket(url.toString());
+      ws.onopen = () => {
+        reconnectAttempt = 0;
+        es?.close();
+        es = null;
+        ws?.send(JSON.stringify({ type: "subscribe", topics: ["RqCreated", "RqAcptd", "LocUpd", "Arrived", "Resolved", "Cancelled"] }));
+      };
+      ws.onmessage = (message) => deliver(message.data);
+      ws.onerror = () => openSseFallback();
+      ws.onclose = () => {
+        ws = null;
+        openSseFallback();
+        if (stopped) return;
+        const delay = Math.min(30_000, 500 * 2 ** reconnectAttempt++);
+        reconnectTimer = window.setTimeout(connectWebSocket, delay);
+      };
+    } catch {
+      openSseFallback();
+    }
+  };
+
+  connectWebSocket();
+  return () => {
+    stopped = true;
+    if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+    es?.close();
+    ws?.close(1000, "Unsubscribed");
+  };
 }
 
 export async function getWalletBalances(address) {
@@ -923,10 +1012,10 @@ const SAFE_FOOTPRINT_FUNCTIONS = new Set([
 /** Build a contract invocation, baking a cached/verified footprint in when one
  *  is already resident. Cache misses degrade gracefully to the footprint-free
  *  envelope (pre-sign simulation derives the keys as it always has). */
-async function buildInvocation({ account, functionName, args, timeoutSeconds = 30 }) {
+async function buildInvocation({ account, functionName, args, timeoutSeconds = 30, contractId = CONTRACT_ID }) {
   let template;
   if (SAFE_FOOTPRINT_FUNCTIONS.has(functionName)) {
-    template = getCachedFootprintTemplate(CONTRACT_ID, functionName, args);
+    template = getCachedFootprintTemplate(contractId, functionName, args);
     if (template) {
       const summary = summarizeFootprint(template);
       console.debug(
@@ -936,7 +1025,7 @@ async function buildInvocation({ account, functionName, args, timeoutSeconds = 3
   }
   const { transaction } = buildSorobanTransaction({
     account,
-    contractId: CONTRACT_ID,
+    contractId,
     functionName,
     args,
     template,
@@ -1176,6 +1265,33 @@ export async function getAegisPayoutAmount() {
   return safeToNumber(scValToNative(sim.result.retval));
 }
 
+/** The vault's zone differential-privacy policy (#529): the parameters plus
+ *  the smallest box side they currently allow. Null when no vault is
+ *  configured. While `enabled` is false the vault checks nothing. */
+export async function getZonePrivacyPolicy() {
+  if (!AEGIS_VAULT_ID) return null;
+  const vault = new Contract(
+    assertValidContractId(AEGIS_VAULT_ID, "VITE_AEGIS_VAULT_ID"),
+  );
+  return _withCache("getZonePrivacyPolicy", [AEGIS_VAULT_ID], CACHE_TTL.long, async () => {
+    const [params, min] = await Promise.all([
+      simulateRead(vault.call("privacy_params")),
+      simulateRead(vault.call("min_box_dimension")),
+    ]);
+    if (!params.result) return null;
+    const raw = scValToNative(params.result.retval);
+    return {
+      enabled: !!raw.enabled,
+      epsilonMilli: safeToNumber(raw.epsilon_milli),
+      sensitivity: safeToNumber(raw.sensitivity),
+      tailMult: safeToNumber(raw.tail_mult),
+      grid: safeToNumber(raw.grid),
+      kCells: safeToNumber(raw.k_cells),
+      minBoxDimension: min.result ? safeToNumber(scValToNative(min.result.retval)) : 0,
+    };
+  });
+}
+
 export async function setAegisPayoutAmount(admin, amount, wallet) {
   if (!AEGIS_VAULT_ID) throw new Error("VITE_AEGIS_VAULT_ID not configured");
   const signerAddress = await resolveWalletAddress(wallet);
@@ -1239,6 +1355,106 @@ export async function upgradeAegisVault(newWasmHash, wallet) {
     .setTimeout(30)
     .build();
   return await sendWrite(tx, wallet, "upgrade");
+}
+
+// ── Multi-asset treasury (Aegis Vault, #541) ───────────────────
+function aegisCall(fn, ...args) {
+  return new Contract(AEGIS_VAULT_ID).call(fn, ...args);
+}
+
+async function readNative(call, fallback) {
+  const sim = await simulateRead(call);
+  if (!sim?.result) return fallback;
+  return scValToNative(sim.result.retval);
+}
+
+/** Per-asset reserve, daily cap usage and target weight for every treasury asset. */
+export async function getTreasurySnapshot() {
+  if (!AEGIS_VAULT_ID) return [];
+  const assets = (await readNative(aegisCall("treasury_assets"), [])) || [];
+  return Promise.all(
+    assets.map(async (asset) => {
+      const arg = scv(asset, { type: "address" });
+      const [reserve, limit, spent, remaining, weight] = await Promise.all([
+        readNative(aegisCall("treasury_reserve", arg), 0n),
+        readNative(aegisCall("daily_limit", arg), 0n),
+        readNative(aegisCall("spent_today", arg), 0n),
+        readNative(aegisCall("remaining_today", arg), 0n),
+        readNative(aegisCall("target_weight", arg), 0),
+      ]);
+      return toAssetRow(asset, { reserve, limit, spent, remaining, weight });
+    }),
+  );
+}
+
+/** Signed buy(+)/sell(-) amounts per treasury asset to reach target weights.
+ *  `prices` follows the order of `treasury_assets`. */
+export async function getTreasuryRebalancePlan(prices) {
+  if (!AEGIS_VAULT_ID) return [];
+  const arg = nativeToScVal(
+    prices.map((p) => BigInt(p)),
+    { type: "i128" },
+  );
+  const plan = await readNative(aegisCall("rebalance_plan", arg), []);
+  return (plan || []).map(toAmount);
+}
+
+export async function setTreasuryDailyLimit(asset, limit, wallet) {
+  if (!AEGIS_VAULT_ID) throw new Error("VITE_AEGIS_VAULT_ID not configured");
+  const signerAddress = await resolveWalletAddress(wallet);
+  if (!signerAddress) throw new Error("Wallet address is not available yet");
+  await ensureAccountFunded(signerAddress);
+  const account = await server.getAccount(signerAddress);
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK,
+  })
+    .addOperation(
+      Operation.invokeContractFunction({
+        contract: AEGIS_VAULT_ID,
+        function: "set_daily_limit",
+        args: [
+          scv(signerAddress, { type: "address" }),
+          scv(asset, { type: "address" }),
+          scv(BigInt(limit), { type: "i128" }),
+        ],
+      }),
+    )
+    .setTimeout(30)
+    .build();
+  return await sendWrite(tx, wallet, "set_daily_limit");
+}
+
+// ── Price oracle conversions (HelPhone DAO, #543) ──────────────
+const DAO_CONTRACT_ID = import.meta.env?.VITE_HELPHONE_DAO_ID || "";
+
+/** Live token conversion via the DAO's oracle adapter (e.g. XLM -> USDC).
+ *  Throws an Error with a user-facing message; a feed older than 1 hour
+ *  surfaces as the "stale" message. */
+export async function getOracleQuote(fromToken, toToken, amount) {
+  if (!DAO_CONTRACT_ID) throw new Error("VITE_HELPHONE_DAO_ID not configured");
+  const call = new Contract(DAO_CONTRACT_ID).call(
+    "quote_conversion",
+    scv(fromToken, { type: "address" }),
+    scv(toToken, { type: "address" }),
+    scv(BigInt(amount), { type: "i128" }),
+  );
+  let sim;
+  try {
+    sim = await simulateRead(call);
+  } catch (err) {
+    throw new Error(ORACLE_ERROR_MESSAGES[classifyOracleError(err)]);
+  }
+  if (sim?.error) {
+    throw new Error(ORACLE_ERROR_MESSAGES[classifyOracleError(sim.error)]);
+  }
+  if (!sim?.result) throw new Error(ORACLE_ERROR_MESSAGES.unknown);
+  return {
+    fromToken,
+    toToken,
+    amountIn: Number(amount),
+    amountOut: toAmount(scValToNative(sim.result.retval)),
+  };
 }
 
 export async function withdrawProtocolFees(
@@ -1517,4 +1733,62 @@ export async function executeAdminProposal(id, signer, wallet) {
 export async function getAdminProposal(id) {
   const sim = await simulateRead(contract.call("get_admin_proposal", scv(BigInt(id), { type: "u64" })));
   return sim.result ? scValToNative(sim.result.retval) : null;
+}
+
+async function sendDaoCall(signerAddress, functionName, args, wallet) {
+  const signer = await resolveWalletAddress(wallet, signerAddress);
+  if (!signer) throw new Error("Wallet address is not available yet");
+  const contractId = getDaoContractId();
+  await ensureAccountFunded(signer);
+  const account = await server.getAccount(signer);
+  const tx = await buildInvocation({ account, functionName, args, contractId });
+  return sendWrite(tx, wallet, functionName);
+}
+
+async function simulateDaoRead(functionName, args) {
+  const dao = new Contract(getDaoContractId());
+  const sim = await simulateRead(dao.call(functionName, ...args));
+  return sim.result ? scValToNative(sim.result.retval) : null;
+}
+
+export async function getDaoProposal(id) {
+  const proposalId = BigInt(id);
+  const [proposal, timelock, cancellationApprovals, securityMultisig] = await Promise.all([
+    simulateDaoRead("get_proposal", [scv(proposalId, { type: "u64" })]),
+    simulateDaoRead("get_timelock", [scv(proposalId, { type: "u64" })]),
+    simulateDaoRead("get_cancellation_approval_count", [scv(proposalId, { type: "u64" })]),
+    simulateDaoRead("get_security_multisig", []),
+  ]);
+  return proposal ? {
+    ...proposal,
+    timelock,
+    cancellationApprovals: Number(cancellationApprovals || 0),
+    cancellationThreshold: Number(Array.isArray(securityMultisig) ? securityMultisig[1] : 1),
+  } : null;
+}
+
+export function queueDaoProposal(id, signer, wallet) {
+  return sendDaoCall(signer, "queue_proposal", [scv(BigInt(id), { type: "u64" })], wallet);
+}
+
+export function executeDaoProposal(id, signer, wallet) {
+  return sendDaoCall(signer, "execute_proposal", [scv(BigInt(id), { type: "u64" })], wallet);
+}
+
+export function approveDaoCancellation(id, guardian, wallet) {
+  return sendDaoCall(guardian, "approve_cancellation", [
+    scv(guardian, { type: "address" }), scv(BigInt(id), { type: "u64" }),
+  ], wallet);
+}
+
+export function cancelQueuedDaoProposal(id, signer, wallet) {
+  return sendDaoCall(signer, "cancel_queued_proposal", [scv(BigInt(id), { type: "u64" })], wallet);
+}
+
+export function configureDaoSecurityMultisig(admin, guardianAddresses, threshold, wallet) {
+  return sendDaoCall(admin, "set_security_multisig", [
+    scv(admin, { type: "address" }),
+    scv(guardianAddresses, { type: "vec", elementType: "address" }),
+    scv(Number(threshold), { type: "u32" }),
+  ], wallet);
 }

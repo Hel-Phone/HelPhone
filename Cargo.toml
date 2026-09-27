@@ -1,1 +1,3 @@
-// Implementation added
+[workspace]
+resolver = "2"
+members = ["contracts/*"]

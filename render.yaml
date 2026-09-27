@@ -4,7 +4,7 @@ services:
     name: helphone-backend-server
     runtime: node
     plan: starter
-    buildCommand: npm install
+    buildCommand: npm ci --ignore-scripts
     startCommand: npm run server
     healthCheckPath: /health
     autoDeploy: true
@@ -23,6 +23,12 @@ services:
       # Rate-limit whitelist (#536): verified emergency-service subnets / API keys
       # are stored in Redis and managed via /admin/whitelist (see docs/security-runbook.md).
       - key: REDIS_URL
+        sync: false
+      # Set OTEL_EXPORTER_OTLP_ENDPOINT to an OTLP/HTTP collector to export traces.
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false
+      # Protect GET /metrics when the backend is exposed to the public internet.
+      - key: METRICS_BEARER_TOKEN
         sync: false
       - key: WHITELIST_ADMIN_TOKEN
         sync: false
@@ -51,7 +57,7 @@ services:
     name: soroban-daily-state-exporter
     runtime: node
     schedule: "0 0 * * *"
-    buildCommand: npm install
+    buildCommand: npm ci --ignore-scripts
     startCommand: bash scripts/export-contract-state.sh
     envVars:
       - key: DATABASE_URL

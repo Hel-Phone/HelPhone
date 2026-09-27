@@ -133,5 +133,3 @@ if (process.env.NODE_ENV !== 'test') {
   })
   applyKeepAliveTuning(server)
 }
-
-export { app, stateExporter }

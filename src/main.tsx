@@ -9,6 +9,11 @@ import { initThemeEngine } from "./styles/themeEngine";
 import { bootstrapMultiTabSync } from "./lib/swChannel";
 import { initHelpStoreChannelSync } from "./stores/helpStore";
 import { scheduleKeyDerivationBenchmark } from "./lib/pbkdf2Key";
+import {
+  initResourceHints,
+  registerRouteLoaders,
+  attachIntentPrefetch,
+} from "./lib/resourceHints";
 import App from "./App";
 import "./App.css";
 import "./styles/theme.css";
@@ -16,9 +21,12 @@ import "./styles/theme.css";
 // Heavy routes (Mapbox GL, ZK/WASM prover, Stellar RPC) are code-split so they
 // are only fetched when the user actually navigates to them, keeping the
 // initial bundle and Time-To-Interactive low.
-const Help = lazy(() => import("./pages/Help"));
-const Ranking = lazy(() => import("./pages/Ranking"));
-const Admin = lazy(() => import("./pages/Admin"));
+const loadHelp = () => import("./pages/Help");
+const loadRanking = () => import("./pages/Ranking");
+const loadAdmin = () => import("./pages/Admin");
+const Help = lazy(loadHelp);
+const Ranking = lazy(loadRanking);
+const Admin = lazy(loadAdmin);
 // #608 spike: WebGPU spatial-clustering prototype + benchmark harness (ADR-008).
 const ClusterLab = lazy(() => import("./components/WebGPUMap"));
 // Binary telemetry protocol spike: decode/GC benchmark harness (ADR-014).
@@ -47,6 +55,17 @@ function RouteFallback() {
 initThemeEngine();
 // Measure PBKDF2 latency off the critical path so a slow device is surfaced early.
 scheduleKeyDerivationBenchmark();
+
+// #542: runtime resource hints + hover/focus/touch intent prefetching of the
+// code-split route chunks (same loaders as the lazy() routes above, so the
+// chunk is fetched exactly once).
+initResourceHints();
+registerRouteLoaders({
+  "/help": loadHelp,
+  "/ranking": loadRanking,
+  "/admin": loadAdmin,
+});
+attachIntentPrefetch();
 
 function render() {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

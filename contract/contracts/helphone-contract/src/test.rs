@@ -1,7 +1,10 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use soroban_sdk::{
+    testutils::{storage::Persistent as _, Address as _, Events as _},
+    Address, Env, Event as _, String,
+};
 
 // ── Emergency request lifecycle ────────────────────────────────────
 
@@ -79,6 +82,212 @@ fn records_expert_verification_history() {
     assert_eq!(record.action, String::from_str(&env, "request_created"));
     assert_eq!(record.tx_hash, String::from_str(&env, "tx-abc123"));
     assert_eq!(record.proof_fingerprint, String::from_str(&env, "nullifier-xyz"));
+}
+
+// ── Bounded verification history (ring buffer, #531) ───────────────
+
+const CAP: u32 = VERIFICATION_CAPACITY;
+
+fn setup() -> (Env, Address, HelPhoneClient<'static>) {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let contract_id = env.register(HelPhone, (admin,));
+    let client = HelPhoneClient::new(&env, &contract_id);
+    (env, contract_id, client)
+}
+
+/// Decimal digits of `n` (no_std has no `to_string`).
+fn tx_of(env: &Env, n: u32) -> String {
+    let mut tag = [0u8; 10];
+    let mut len = 0;
+    let mut v = n;
+    loop {
+        tag[len] = b'0' + (v % 10) as u8;
+        len += 1;
+        v /= 10;
+        if v == 0 {
+            break;
+        }
+    }
+    tag[..len].reverse();
+    String::from_bytes(env, &tag[..len])
+}
+
+/// Record verification number `n`, tagging it so it can be identified later.
+fn record(env: &Env, client: &HelPhoneClient, wallet: &Address, n: u32) -> u32 {
+    client.record_expert_verification(
+        wallet,
+        &String::from_str(env, "action"),
+        &tx_of(env, n),
+        &String::from_str(env, "fp"),
+    )
+}
+
+#[test]
+fn capacity_is_500() {
+    let (_env, _id, client) = setup();
+    assert_eq!(VERIFICATION_CAPACITY, 500);
+    assert_eq!(client.get_expert_verification_capacity(), 500);
+}
+
+#[test]
+fn nothing_is_evicted_up_to_capacity() {
+    let (env, _id, client) = setup();
+    let wallet = Address::generate(&env);
+
+    for n in 0..CAP {
+        assert_eq!(record(&env, &client, &wallet, n), n + 1);
+    }
+    assert!(
+        env.events().all().events().is_empty(),
+        "filling the buffer to capacity must not evict anything"
+    );
+
+    assert_eq!(client.get_expert_verification_count(&wallet), CAP);
+    assert_eq!(client.get_expert_verification_oldest(&wallet), 0);
+    assert_eq!(client.get_expert_verification(&wallet, &0).unwrap().tx_hash, tx_of(&env, 0));
+    assert_eq!(
+        client.get_expert_verification(&wallet, &(CAP - 1)).unwrap().tx_hash,
+        tx_of(&env, CAP - 1)
+    );
+    assert!(client.get_expert_verification(&wallet, &CAP).is_none());
+}
+
+#[test]
+fn the_501st_entry_evicts_the_oldest_and_emits_an_event() {
+    let (env, contract_id, client) = setup();
+    let wallet = Address::generate(&env);
+    for n in 0..CAP {
+        record(&env, &client, &wallet, n);
+    }
+    let oldest = client.get_expert_verification(&wallet, &0).unwrap();
+
+    // The event comes from the call that overflows the buffer.
+    assert_eq!(record(&env, &client, &wallet, CAP), CAP + 1);
+
+    assert_eq!(
+        env.events().all(),
+        [
+            Evicted {
+                wallet: wallet.clone(),
+                index: 0,
+                record: oldest,
+            }
+            .to_xdr(&env, &contract_id)
+        ]
+    );
+    assert_eq!(client.get_expert_verification_count(&wallet), CAP + 1);
+    assert_eq!(client.get_expert_verification_oldest(&wallet), 1);
+    assert!(client.get_expert_verification(&wallet, &0).is_none(), "index 0 is evicted");
+    assert_eq!(client.get_expert_verification(&wallet, &1).unwrap().tx_hash, tx_of(&env, 1));
+    assert_eq!(
+        client.get_expert_verification(&wallet, &CAP).unwrap().tx_hash,
+        tx_of(&env, CAP),
+        "the new entry landed in the freed slot"
+    );
+}
+
+#[test]
+fn each_eviction_event_names_the_entry_it_displaced() {
+    let (env, contract_id, client) = setup();
+    let wallet = Address::generate(&env);
+    for n in 0..CAP {
+        record(&env, &client, &wallet, n);
+    }
+
+    for extra in 0..3u32 {
+        let displaced = client.get_expert_verification(&wallet, &extra).unwrap();
+        record(&env, &client, &wallet, CAP + extra);
+        assert_eq!(
+            env.events().all(),
+            [
+                Evicted {
+                    wallet: wallet.clone(),
+                    index: extra,
+                    record: displaced,
+                }
+                .to_xdr(&env, &contract_id)
+            ],
+            "eviction #{extra}"
+        );
+    }
+}
+
+#[test]
+fn wallets_have_independent_buffers() {
+    let (env, _id, client) = setup();
+    let busy = Address::generate(&env);
+    let quiet = Address::generate(&env);
+
+    record(&env, &client, &quiet, 7);
+    for n in 0..CAP + 10 {
+        record(&env, &client, &busy, n);
+    }
+
+    assert_eq!(client.get_expert_verification_oldest(&busy), 10);
+    assert_eq!(client.get_expert_verification_count(&quiet), 1);
+    assert_eq!(client.get_expert_verification_oldest(&quiet), 0);
+    assert_eq!(client.get_expert_verification(&quiet, &0).unwrap().tx_hash, tx_of(&env, 7));
+}
+
+#[test]
+fn verification_listing_is_capped_by_what_is_retained() {
+    let (env, _id, client) = setup();
+    let wallet = Address::generate(&env);
+    for n in 0..CAP + 25 {
+        record(&env, &client, &wallet, n);
+    }
+
+    // Lifetime total is 525, but only 500 can be read back.
+    assert_eq!(client.get_expert_verification_count(&wallet), CAP + 25);
+    assert_eq!(client.get_expert_verifications(&wallet, &10_000), CAP);
+    assert_eq!(client.get_expert_verifications(&wallet, &10), 10);
+}
+
+#[test]
+fn history_written_before_the_ring_buffer_still_reads_back() {
+    let (env, contract_id, client) = setup();
+    let wallet = Address::generate(&env);
+
+    // Lay down entries exactly as the old unbounded code did.
+    env.as_contract(&contract_id, || {
+        for n in 0..3u32 {
+            let ev = ExpertVerification {
+                wallet: wallet.clone(),
+                action: String::from_str(&env, "legacy"),
+                tx_hash: tx_of(&env, n),
+                proof_fingerprint: String::from_str(&env, "fp"),
+                recorded_at: 1,
+            };
+            env.storage()
+                .persistent()
+                .set(&(symbol_short!("ev"), wallet.clone(), n), &ev);
+        }
+        env.storage()
+            .persistent()
+            .set(&(symbol_short!("evcount"), wallet.clone()), &3u32);
+    });
+
+    assert_eq!(client.get_expert_verification_count(&wallet), 3);
+    assert_eq!(client.get_expert_verification(&wallet, &2).unwrap().tx_hash, tx_of(&env, 2));
+    assert_eq!(record(&env, &client, &wallet, 99), 4);
+    assert_eq!(client.get_expert_verification(&wallet, &3).unwrap().tx_hash, tx_of(&env, 99));
+}
+
+#[test]
+fn recording_extends_the_rent_of_what_it_touches() {
+    let (env, contract_id, client) = setup();
+    let wallet = Address::generate(&env);
+    record(&env, &client, &wallet, 0);
+
+    env.as_contract(&contract_id, || {
+        let storage = env.storage().persistent();
+        let slot = (symbol_short!("ev"), wallet.clone(), 0u32);
+        let count = (symbol_short!("evcount"), wallet.clone());
+        assert!(storage.get_ttl(&slot) >= crate::ring_buffer::TTL_EXTEND_TO);
+        assert!(storage.get_ttl(&count) >= crate::ring_buffer::TTL_EXTEND_TO);
+    });
 }
 
 // ── Two-step ownership transfer ────────────────────────────────────
