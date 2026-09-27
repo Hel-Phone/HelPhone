@@ -24,11 +24,7 @@ import {
 } from "./middleware/whitelist.js";
 import { startMaintenanceScheduler } from "./db/maintenance.js";
 import { getMaintenanceConfig } from "./env.js";
-import { telemetryErrorHandler, traceIdFromRequest, shutdownTelemetry } from "./telemetry.js";
-import { requestMetrics, renderMetrics, observeDuration } from "./middleware/metrics.js";
-import { connectEventBus, publishContractEvent, closeEventBus } from "./lib/redisPubSub.js";
-import { attachWebSocketRelay } from "./routes/wsCluster.js";
-import { createHealthRouter } from "./routes/health.js";
+import { createPasskeyAuthRouter } from "./routes/passkey-auth.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -177,6 +173,7 @@ if (process.env.NODE_ENV !== "test") {
   const rateLimiter = createRateLimiter();
   app.use(rateLimiter);
 }
+app.use("/api/auth/passkey", createPasskeyAuthRouter());
 
 // ── Contract event bridge ────────────────────────────────────────
 // Issue #177: the frontend used to poll the contract directly on a timer

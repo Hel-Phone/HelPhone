@@ -37,3 +37,7 @@ tests/integration/.local-deployment.json
 
 # WASM spike reader build output (ADR-014)
 src/wasm/**/target/
+
+# Python tooling cache
+__pycache__/
+*.py[cod]
