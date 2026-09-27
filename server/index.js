@@ -1,4 +1,6 @@
+import "./telemetryBootstrap.js";
 import cluster from "node:cluster";
+import { createServer } from "node:http";
 import express from "express";
 import compression from "compression";
 import { readFileSync } from "fs";
@@ -22,6 +24,11 @@ import {
 } from "./middleware/whitelist.js";
 import { startMaintenanceScheduler } from "./db/maintenance.js";
 import { getMaintenanceConfig } from "./env.js";
+import { telemetryErrorHandler, traceIdFromRequest, shutdownTelemetry } from "./telemetry.js";
+import { requestMetrics, renderMetrics, observeDuration } from "./middleware/metrics.js";
+import { connectEventBus, publishContractEvent, closeEventBus } from "./lib/redisPubSub.js";
+import { attachWebSocketRelay } from "./routes/wsCluster.js";
+import { createHealthRouter } from "./routes/health.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -128,6 +135,21 @@ app.use(poolMonitorMiddleware);
 app.use(createCorsMiddleware());
 app.use(compression());
 app.use(express.json({ limit: "1mb" }));
+app.use(requestMetrics);
+app.use((req, res, next) => {
+  const traceId = traceIdFromRequest(req);
+  if (traceId) res.setHeader("x-trace-id", traceId);
+  next();
+});
+app.use("/health", createHealthRouter({ readiness: () => _ready }));
+app.get("/metrics", (req, res) => {
+  const token = process.env.METRICS_BEARER_TOKEN;
+  if (token && req.get("authorization") !== `Bearer ${token}`) {
+    return res.status(401).end();
+  }
+  res.type("text/plain; version=0.0.4; charset=utf-8").send(renderMetrics());
+});
+app.post("/api/telemetry/errors", (req, res) => telemetryErrorHandler(req, res));
 
 // Behind a proxy (Render), req.ip is the proxy unless TRUST_PROXY is set to the
 // number of hops (e.g. "1"); whitelist matching and rate limiting both use it.
@@ -194,6 +216,7 @@ function decodeTopicSymbol(topicScVal) {
 }
 
 function broadcast(event) {
+  void publishContractEvent(event).catch((err) => console.error("[events] relay publish failed:", err.message || err));
   const payload = `data: ${JSON.stringify(event)}\n\n`;
   for (const res of sseClients) {
     res.write(payload);
@@ -208,6 +231,7 @@ async function seedCursor() {
 }
 
 async function pollContractEvents() {
+  const startedAt = process.hrtime.bigint();
   try {
     if (eventCursor === null) {
       eventCursor = await seedCursor();
@@ -230,6 +254,9 @@ async function pollContractEvents() {
     // A single failed poll must not kill the loop or drop the cursor —
     // just retry next tick. Log so operators can notice sustained failure.
     console.error("[events] poll failed:", err.message || err);
+  } finally {
+    observeDuration("helphone_soroban_rpc_duration_seconds", { operation: "get_events" },
+      Number(process.hrtime.bigint() - startedAt) / 1e9);
   }
 }
 
@@ -307,6 +334,8 @@ app.get("/health/pool", (req, res) => {
 });
 
 app.post("/zk/prove", async (req, res) => {
+  const startedAt = process.hrtime.bigint();
+  let outcome = "success";
   try {
     const { inputs } = req.body;
     if (!inputs) {
@@ -333,8 +362,12 @@ app.post("/zk/prove", async (req, res) => {
       nullifier,
     });
   } catch (err) {
+    outcome = "error";
     console.error("[prover] Error:", err);
     res.status(500).json({ success: false, error: err.message });
+  } finally {
+    observeDuration("helphone_zk_proof_duration_seconds", { outcome },
+      Number(process.hrtime.bigint() - startedAt) / 1e9);
   }
 });
 
@@ -571,14 +604,24 @@ export function startServer() {
     .then(({ runMigrationsAtStartup }) => runMigrationsAtStartup())
     .catch((err) => console.error("[migrate] startup failure:", err));
 
-  return app.listen(PORT, () => {
-  const server = app.listen(PORT, () => {
+  void connectEventBus().catch((err) => console.error("[events] Redis relay unavailable:", err.message));
+  const server = createServer(app);
+  const relay = attachWebSocketRelay(server);
+  server.listen(PORT, () => {
     // Off-peak VACUUM ANALYZE / REINDEX CONCURRENTLY (opt-in: DB_MAINTENANCE_ENABLED=true)
     if (getMaintenanceConfig().enabled) startMaintenanceScheduler();
     console.log(`ZK Prover worker ${process.pid} on http://localhost:${PORT}`);
     ensureProver().catch((err) => console.error("[prover] Init failed:", err));
   });
   applyKeepAliveTuning(server);
+  const shutdown = () => {
+    relay.close().catch((err) => console.error("[events] WebSocket shutdown failed:", err.message));
+    closeEventBus().catch((err) => console.error("[events] Redis shutdown failed:", err.message));
+    shutdownTelemetry().catch((err) => console.error("[telemetry] shutdown failed:", err.message));
+    server.close();
+  };
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
   return server;
 }
 
