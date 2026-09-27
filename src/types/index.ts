@@ -74,10 +74,13 @@ export interface PasskeyCredential {
   id: string
   rawId: string
   type: 'public-key'
+  challenge?: string
   response: {
-    clientDataJSON: string
-    authenticatorData: string
-    signature: string
+    clientDataJSON?: string
+    authenticatorData?: string
+    signature?: string
+    attestationObject?: string
+    transports?: string[]
     userHandle?: string
   }
 }
@@ -191,29 +194,6 @@ export interface OverlayRenderStats {
   fps: number
   frames: number
   windowMs: number
-}
-
-// --- Client routing / compact spatial graph (#582) ---
-export interface SpatialGraph {
-  nodeCount: number
-  offsets: Uint32Array
-  targets: Uint32Array
-  weights: Float32Array
-}
-
-export interface RoadNetworkDocument {
-  format: 'helphone-csr-v1'
-  nodeCount: number
-  offsets: number[]
-  targets: number[]
-  weights: number[]
-  metadata?: Record<string, string>
-}
-
-export interface RouteResult {
-  distanceKm: number
-  path: number[]
-  visitedNodes: number
 }
 
 // ── RPC health (network estimator, #539) ─────────────────────────────────────
