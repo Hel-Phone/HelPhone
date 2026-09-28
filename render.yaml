@@ -61,6 +61,22 @@ services:
       # Set to "true" to roll the policy out in report-only mode first.
       - key: CSP_REPORT_ONLY
         value: "false"
+      # HTTP/2 push / preload manifest (server/middleware/http2Push.ts): the
+      # server reads dist/.vite/manifest.json (emitted by `vite build`) and
+      # stamps `Link: <...>; rel=preload` on HTML responses, re-reading the
+      # manifest whenever a release changes the asset hashes. No-ops when the
+      # build output is absent (API-only deploy).
+      - key: HTTP2_PUSH_ENABLED
+        value: "true"
+      # Emit a 103 Early Hints `Link` ahead of the document on HTTP/1.1.
+      - key: HTTP2_PUSH_EARLY_HINTS
+        value: "true"
+      # Native `pushStream` when the origin terminates HTTP/2 itself.
+      - key: HTTP2_PUSH_NATIVE
+        value: "true"
+      # Drop assets missing on disk from the push list (guards mid-release).
+      - key: HTTP2_PUSH_VERIFY_FILES
+        value: "false"
 
   - type: cron
     name: soroban-daily-state-exporter

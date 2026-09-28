@@ -142,6 +142,49 @@ jobs:
           name: throttling-${{ matrix.profile }}
           path: test-results/
 
+  # Multi-resolution visual layout matrix (tests/e2e/layout.spec.ts): one leg
+  # per device profile so a pull request names the exact resolution whose
+  # layout regressed. Each leg gates horizontal scrolling, viewport clipping
+  # and the committed layout baselines.
+  e2e-layout-matrix:
+    name: E2E layout matrix (${{ matrix.device }})
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iphone-se, iphone-14, pixel-7, ipad, laptop, display-4k]
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run layout matrix leg
+        # Called directly instead of through `npm run test:layout` so the leg
+        # runs exactly one resolution (Playwright unions repeated --project).
+        run: npx playwright test --project=layout-${{ matrix.device }} --reporter=line
+
+      - name: Upload layout diff artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: layout-${{ matrix.device }}
+          path: |
+            test-results/
+            tests/e2e/layout.spec.ts-snapshots/
+          if-no-files-found: ignore
+
   # Closes #540 — license gate (fails on GPL/unauthorized copyleft),
   # install-script allowlist, registry/integrity hijack checks, and a
   # committed licenses.json freshness check. Zero dependencies: no install.

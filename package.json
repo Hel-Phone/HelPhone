@@ -17,6 +17,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "benchmark:routing": "vitest run test/routing-benchmark-spike.test.js --reporter=verbose",
+    "test:http2-manifest": "vitest run test/http2-manifest.test.js",
     "security:lockfiles": "node scripts/verify-lockfile-hashes.js",
     "security:lockfiles:offline": "node scripts/verify-lockfile-hashes.js --offline",
     "security:install": "bash scripts/sandbox-install.sh",
@@ -33,7 +34,10 @@
     "test:ws-cluster": "node server/tests/ws-cluster.js",
     "zk:shard": "python circuits/scripts/shard-aegis.py circuits/target/aegis.json public/zk-assets",
     "test:watch": "vitest",
+    "test:update-snapshots": "vitest run test/snapshots.test.jsx -u",
     "test:e2e:throttling": "playwright test --project=throttling",
+    "test:layout": "playwright test --project=\"layout-*\"",
+    "test:layout:generate": "playwright test --project=\"layout-*\" --update-snapshots",
     "lint": "eslint .",
     "security:audit-deps": "node scripts/audit-deps.js",
     "security:audit-deps:check": "node scripts/audit-deps.js --check",
@@ -104,6 +108,8 @@
     "react-i18next": "^16.5.4",
     "react-map-gl": "^8.1.1",
     "react-router-dom": "^7.18.0",
+    "workbox-range-requests": "^7.4.1",
+    "ws": "^8.18.3",
     "zod": "^3.25.76"
   },
   "apiDrift": {
@@ -2497,6 +2503,5 @@
         }
       }
     }
-    "workbox-range-requests": "^7.4.1"
   }
 }
