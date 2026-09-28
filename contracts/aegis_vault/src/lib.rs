@@ -50,6 +50,7 @@ pub enum VaultError {
     BoxNotOnGrid = 15,
     BoxTooSmall = 16,
     ZoneOverlapTooSmall = 17,
+    ReentrantCall = 18,
 }
 
 #[derive(Clone)]
@@ -63,6 +64,7 @@ enum DataKey {
     Claimed(BytesN<32>),
     Privacy,
     TrackedZones,
+    ReentrancyLock,
 }
 
 fn get<T: soroban_sdk::TryFromVal<Env, soroban_sdk::Val>>(
@@ -82,6 +84,33 @@ fn require_admin(env: &Env, admin: &Address) -> Result<(), VaultError> {
     }
     admin.require_auth();
     Ok(())
+}
+
+fn enter_reentrancy_guard(env: &Env) -> Result<(), VaultError> {
+    if env
+        .storage()
+        .instance()
+        .get::<_, bool>(&DataKey::ReentrancyLock)
+        .unwrap_or(false)
+    {
+        return Err(VaultError::ReentrantCall);
+    }
+    env.storage().instance().set(&DataKey::ReentrancyLock, &true);
+    Ok(())
+}
+
+fn exit_reentrancy_guard(env: &Env) {
+    env.storage().instance().remove(&DataKey::ReentrancyLock);
+}
+
+fn with_reentrancy_guard<T>(
+    env: &Env,
+    f: impl FnOnce() -> Result<T, VaultError>,
+) -> Result<T, VaultError> {
+    enter_reentrancy_guard(env)?;
+    let result = f();
+    exit_reentrancy_guard(env);
+    result
 }
 
 /// Keep tracked zones alive: bump when under ~30 days, to ~90 (5 s ledgers).
@@ -267,30 +296,32 @@ impl AegisVault {
         public_inputs_prefix: Bytes,
         amount: i128,
     ) -> Result<(), VaultError> {
-        funder.require_auth();
-        if amount <= 0 {
-            return Err(VaultError::InvalidAmount);
-        }
-        if public_inputs_prefix.len() as usize != CAMPAIGN_INPUTS_LEN {
-            return Err(VaultError::InvalidPublicInputs);
-        }
-        let campaign_id: BytesN<32> = public_inputs_prefix.slice(128..160).try_into().unwrap();
-        // Differential-privacy checks run before any token moves (#529).
-        let tracked = check_zone_privacy(&env, &campaign_id, &public_inputs_prefix)?;
-        let asset: Address = get(&env, &DataKey::Token)?;
-        token::Client::new(&env, &asset).transfer(
-            &funder,
-            &env.current_contract_address(),
-            &amount,
-        );
-        if let Some(bbox) = tracked {
-            track_zone(&env, &campaign_id, bbox);
-        }
-        let key = DataKey::Campaign(campaign_id);
-        let cur: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        let next = cur.checked_add(amount).ok_or(VaultError::Overflow)?;
-        env.storage().persistent().set(&key, &next);
-        treasury::credit(&env, &asset, amount)
+        with_reentrancy_guard(&env, || {
+            funder.require_auth();
+            if amount <= 0 {
+                return Err(VaultError::InvalidAmount);
+            }
+            if public_inputs_prefix.len() as usize != CAMPAIGN_INPUTS_LEN {
+                return Err(VaultError::InvalidPublicInputs);
+            }
+            let campaign_id: BytesN<32> = public_inputs_prefix.slice(128..160).try_into().unwrap();
+            // Differential-privacy checks run before any token moves (#529).
+            let tracked = check_zone_privacy(&env, &campaign_id, &public_inputs_prefix)?;
+            let asset: Address = get(&env, &DataKey::Token)?;
+            token::Client::new(&env, &asset).transfer(
+                &funder,
+                &env.current_contract_address(),
+                &amount,
+            );
+            if let Some(bbox) = tracked {
+                track_zone(&env, &campaign_id, bbox);
+            }
+            let key = DataKey::Campaign(campaign_id);
+            let cur: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+            let next = cur.checked_add(amount).ok_or(VaultError::Overflow)?;
+            env.storage().persistent().set(&key, &next);
+            treasury::credit(&env, &asset, amount)
+        })
     }
 
     pub fn claim_aid(
@@ -299,46 +330,48 @@ impl AegisVault {
         public_inputs: Bytes,
         proof_bytes: Bytes,
     ) -> Result<(), VaultError> {
-        recipient.require_auth();
-        if public_inputs.len() as usize != PUBLIC_INPUTS_LEN {
-            return Err(VaultError::InvalidPublicInputs);
-        }
-        let nullifier: BytesN<32> = public_inputs.slice(192..224).try_into().unwrap();
-        let campaign_id: BytesN<32> = public_inputs.slice(128..160).try_into().unwrap();
+        with_reentrancy_guard(&env, || {
+            recipient.require_auth();
+            if public_inputs.len() as usize != PUBLIC_INPUTS_LEN {
+                return Err(VaultError::InvalidPublicInputs);
+            }
+            let nullifier: BytesN<32> = public_inputs.slice(192..224).try_into().unwrap();
+            let campaign_id: BytesN<32> = public_inputs.slice(128..160).try_into().unwrap();
 
-        let claimed_key = DataKey::Claimed(nullifier);
-        if env.storage().persistent().has(&claimed_key) {
-            return Err(VaultError::AlreadyClaimed);
-        }
+            let claimed_key = DataKey::Claimed(nullifier);
+            if env.storage().persistent().has(&claimed_key) {
+                return Err(VaultError::AlreadyClaimed);
+            }
 
-        let verifier: Address = get(&env, &DataKey::Verifier)?;
-        let ok: bool = env.invoke_contract(
-            &verifier,
-            &Symbol::new(&env, "verify_proof"),
-            vec![&env, public_inputs.into_val(&env), proof_bytes.into_val(&env)],
-        );
-        if !ok {
-            return Err(VaultError::VerificationFailed);
-        }
+            let verifier: Address = get(&env, &DataKey::Verifier)?;
+            let ok: bool = env.invoke_contract(
+                &verifier,
+                &Symbol::new(&env, "verify_proof"),
+                vec![&env, public_inputs.into_val(&env), proof_bytes.into_val(&env)],
+            );
+            if !ok {
+                return Err(VaultError::VerificationFailed);
+            }
 
-        let payout = Self::payout_amount(env.clone());
-        let asset: Address = get(&env, &DataKey::Token)?;
-        let campaign_key = DataKey::Campaign(campaign_id);
-        let balance: i128 = env.storage().persistent().get(&campaign_key).unwrap_or(0);
-        if balance < payout {
-            return Err(VaultError::InsufficientFunds);
-        }
+            let payout = Self::payout_amount(env.clone());
+            let asset: Address = get(&env, &DataKey::Token)?;
+            let campaign_key = DataKey::Campaign(campaign_id);
+            let balance: i128 = env.storage().persistent().get(&campaign_key).unwrap_or(0);
+            if balance < payout {
+                return Err(VaultError::InsufficientFunds);
+            }
 
-        // Daily cap first: a rejected claim leaves nullifier + balances untouched.
-        treasury::debit_disbursement(&env, &asset, payout)?;
-        env.storage().persistent().set(&campaign_key, &(balance - payout));
-        env.storage().persistent().set(&claimed_key, &true);
-        token::Client::new(&env, &asset).transfer(
-            &env.current_contract_address(),
-            &recipient,
-            &payout,
-        );
-        Ok(())
+            // Daily cap first: a rejected claim leaves nullifier + balances untouched.
+            treasury::debit_disbursement(&env, &asset, payout)?;
+            env.storage().persistent().set(&campaign_key, &(balance - payout));
+            env.storage().persistent().set(&claimed_key, &true);
+            token::Client::new(&env, &asset).transfer(
+                &env.current_contract_address(),
+                &recipient,
+                &payout,
+            );
+            Ok(())
+        })
     }
 
     // ── Treasury (multi-asset reserves) ────────────────────────────
@@ -364,15 +397,17 @@ impl AegisVault {
         asset: Address,
         amount: i128,
     ) -> Result<(), VaultError> {
-        from.require_auth();
-        if amount <= 0 {
-            return Err(VaultError::InvalidAmount);
-        }
-        if !treasury::is_registered(&env, &asset) {
-            return Err(VaultError::UnknownAsset);
-        }
-        token::Client::new(&env, &asset).transfer(&from, &env.current_contract_address(), &amount);
-        treasury::credit(&env, &asset, amount)
+        with_reentrancy_guard(&env, || {
+            from.require_auth();
+            if amount <= 0 {
+                return Err(VaultError::InvalidAmount);
+            }
+            if !treasury::is_registered(&env, &asset) {
+                return Err(VaultError::UnknownAsset);
+            }
+            token::Client::new(&env, &asset).transfer(&from, &env.current_contract_address(), &amount);
+            treasury::credit(&env, &asset, amount)
+        })
     }
 
     /// Admin withdrawal from the treasury; counts against the daily cap.
@@ -383,13 +418,15 @@ impl AegisVault {
         to: Address,
         amount: i128,
     ) -> Result<(), VaultError> {
-        require_admin(&env, &admin)?;
-        if amount <= 0 {
-            return Err(VaultError::InvalidAmount);
-        }
-        treasury::debit_disbursement(&env, &asset, amount)?;
-        token::Client::new(&env, &asset).transfer(&env.current_contract_address(), &to, &amount);
-        Ok(())
+        with_reentrancy_guard(&env, || {
+            require_admin(&env, &admin)?;
+            if amount <= 0 {
+                return Err(VaultError::InvalidAmount);
+            }
+            treasury::debit_disbursement(&env, &asset, amount)?;
+            token::Client::new(&env, &asset).transfer(&env.current_contract_address(), &to, &amount);
+            Ok(())
+        })
     }
 
     /// Sets the max amount of `asset` that may leave the vault per UTC day.
