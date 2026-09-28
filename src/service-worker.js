@@ -1,8 +1,5 @@
 import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
-import { registerRoute } from 'workbox-routing';
-import { CacheFirst, StaleWhileRevalidate } from 'workbox-strategies';
-import { ExpirationPlugin } from 'workbox-expiration';
-import { CacheableResponsePlugin } from 'workbox-cacheable-response';
+import { createPartialResponse } from 'workbox-range-requests';
 
 cleanupOutdatedCaches();
 
@@ -24,7 +21,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
+          if (cacheName !== CACHE_NAME && cacheName !== 'helphone-zk-assets-v1') {
             return caches.delete(cacheName);
           }
         })
@@ -38,6 +35,26 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  if (request.method === 'GET' && url.origin === self.location.origin && /\/zk-assets\/aegis\.chunk\d{4}$/.test(url.pathname)) {
+    event.respondWith((async () => {
+      const cache = await caches.open('helphone-zk-assets-v1');
+      const key = new Request(url.href, { method: 'GET' });
+      let full = await cache.match(key);
+      if (!full) {
+        full = await fetch(key);
+        if (full.ok) await cache.put(key, full.clone());
+      }
+      if (!request.headers.has('range') || !full.ok) return full;
+      try {
+        return await createPartialResponse(request, full);
+      } catch {
+        return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${full.headers.get('content-length') || 0}` } });
+      }
+    })());
+    return;
+  }
+
 
   if (url.pathname === '/') {
     event.respondWith(

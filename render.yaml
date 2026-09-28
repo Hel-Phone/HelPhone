@@ -4,13 +4,22 @@ services:
     name: helphone-backend-server
     runtime: node
     plan: starter
-    buildCommand: npm ci --ignore-scripts
+    # The build runs inside the egress monitor (docs/security-runbook.md):
+    # it audits outbound connections during the install/build phase and fails
+    # on unauthorized destinations. Render build containers have no
+    # CAP_NET_RAW, so --allow-no-capture keeps the deploy working; CI runs the
+    # strict, packet-capturing gate (.github/workflows/ci.yml).
+    buildCommand: bash scripts/monitor-build-egress.sh --allow-no-capture --log-dir /tmp/build-egress -- npm ci --ignore-scripts
     startCommand: npm run server
     healthCheckPath: /health
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
         value: "22"
+      # Extra build-egress allowlist entries (comma separated hostnames or
+      # CIDRs) for build-time vendors not in the built-in policy.
+      - key: EGRESS_ALLOWLIST
+        value: ""
       # Postgres connection. Migrations apply automatically at server startup
       # (see server/db/migrator.ts), so the schema always stays in sync.
       - key: DATABASE_URL

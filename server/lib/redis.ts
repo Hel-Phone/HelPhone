@@ -11,6 +11,8 @@ export interface RedisHashClient {
   hget(key: string, field: string): Promise<string | null>
   hdel(key: string, ...fields: string[]): Promise<number>
   hgetall(key: string): Promise<Record<string, string>>
+  set?(key: string, value: string, mode: 'EX', seconds: number): Promise<unknown>
+  getdel?(key: string): Promise<string | null>
 }
 
 let client: RedisHashClient | null | undefined

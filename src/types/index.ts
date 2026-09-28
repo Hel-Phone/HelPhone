@@ -74,10 +74,13 @@ export interface PasskeyCredential {
   id: string
   rawId: string
   type: 'public-key'
+  challenge?: string
   response: {
-    clientDataJSON: string
-    authenticatorData: string
-    signature: string
+    clientDataJSON?: string
+    authenticatorData?: string
+    signature?: string
+    attestationObject?: string
+    transports?: string[]
     userHandle?: string
   }
 }
@@ -360,29 +363,6 @@ export interface OverlayRenderStats {
   windowMs: number
 }
 
-// --- Client routing / compact spatial graph (#582) ---
-export interface SpatialGraph {
-  nodeCount: number
-  offsets: Uint32Array
-  targets: Uint32Array
-  weights: Float32Array
-}
-
-export interface RoadNetworkDocument {
-  format: 'helphone-csr-v1'
-  nodeCount: number
-  offsets: number[]
-  targets: number[]
-  weights: number[]
-  metadata?: Record<string, string>
-}
-
-export interface RouteResult {
-  distanceKm: number
-  path: number[]
-  visitedNodes: number
-}
-
 // ── RPC health (network estimator, #539) ─────────────────────────────────────
 /** 'unknown' = no estimator registered yet. */
 export type NetworkQuality = 'good' | 'degraded' | 'offline' | 'unknown';
@@ -519,3 +499,29 @@ export interface ExpertVerificationWindow {
   /** Entries that have been evicted (`oldest`). */
   evicted: number
 }
+
+// --- Worker Sandbox Isolation (untrusted Web Worker scripts) ---
+/**
+ * The sandbox lives next to the code that enforces it
+ * (`src/lib/workerSandbox.ts`) so the runtime and the types can never drift;
+ * this section re-exports the public surface for app-level imports.
+ *
+ * - `WorkerSandboxViolation` — one rejected payload or degradation event
+ * - `WorkerSandboxOptions` — per-launch knobs (origin mode, test seams, …)
+ * - `WorkerSandboxViolationCode` — stable codes: `inbound-schema`,
+ *   `outbound-schema`, `boot-failure`, `frame-timeout`, `queue-overflow`,
+ *   `transport-error`
+ * - `WorkerLockdownReport` — what the in-worker lockdown revoked
+ * - `WorkerOriginMode` — `'opaque'` (null origin) or `'same-origin'`
+ */
+export type {
+  SandboxTransport,
+  SandboxFrame,
+  SandboxViolationCode,
+  WorkerLockdownReport,
+  WorkerOriginMode,
+  WorkerSandboxOptions,
+  WorkerSandboxSupport,
+  WorkerSandboxViolation,
+  WorkerSchemas,
+} from '../lib/workerSandbox'
