@@ -5,6 +5,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import { visualizer } from "rollup-plugin-visualizer";
 import { envFirewallVitePlugin } from "./scripts/security/env_firewall.js";
 import deadcodePruner from "./plugins/vite-plugin-deadcode-pruner.js";
+import { workerSandboxVitePlugin } from "./plugins/vite-plugin-worker-sandbox.js";
 
 export default defineConfig(({ mode }) => ({
   html: {
@@ -24,6 +25,9 @@ export default defineConfig(({ mode }) => ({
     // #626: fails the build if static output contains leaked secrets.
     envFirewallVitePlugin(),
     deadcodePruner(),
+    // #worker-sandbox: launch every Web Worker from a sandboxed (null-origin)
+    // blob URL; runs after vite:worker-import-meta-url (enforce: 'post').
+    workerSandboxVitePlugin(),
     visualizer({
       open: false,
       filename: 'dist/stats.html',
@@ -158,6 +162,10 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
+    // Emit `dist/.vite/manifest.json` (entry chunk + hashed static imports) so
+    // server/middleware/http2Push.ts can build `Link: …; rel=preload` headers
+    // from the assets this release actually shipped.
+    manifest: true,
     chunkSizeWarningLimit: 500,
     // #542 FCP: keep heavy, route-specific chunks (Mapbox GL, ZK/WASM prover)
     // out of the entry HTML's modulepreload list; they are fetched on intent

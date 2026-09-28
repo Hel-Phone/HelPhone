@@ -86,3 +86,58 @@ revoked immediately.
   from a clean checkout and diff.
 - **STALE** — `licenses.json` no longer matches the lockfiles; run
   `npm run security:audit-deps` and commit.
+
+## Build pipeline egress monitor
+
+Detects and blocks malicious network egress (data exfiltration) while the
+build pipeline runs: dependency installation and `npm run build`.
+
+- Script: `scripts/monitor-build-egress.sh [options] [--] <command>` — starts
+  a capture, runs the command, then classifies every captured destination.
+  `--classify [file]` re-audits an existing capture log (this is what the
+  tests exercise).
+- Backends (`--backend auto|tcpdump|iptables|none`):
+  - **tcpdump** — `tcpdump -i any -nn -l -Q out 'ip or ip6'`; uses `sudo -n`
+    when not root. This is the CI backend.
+  - **iptables** — root only. Installs an `EGRESS-MONITOR` chain on `OUTPUT`
+    that RETURNs loopback/established/allowlisted destinations, LOGs the rest
+    with the `EGRESS-DENY: ` prefix, and with `--enforce` REJECTs them so the
+    build is blocked at the socket level. The chain is removed on exit.
+  - **none** — no capture. `--strict` fails the run; otherwise the build
+    continues with a warning (Render uses this: no `CAP_NET_RAW`).
+- Classification rules, in order:
+  1. deny list wins — `169.254.169.254` and friends plus
+     `metadata.google.internal` / `instance-data` are always unauthorized;
+  2. an allowlisted hostname in the same line legitimises the flow (DNS query
+     or SNI), so CDN IPs are accepted without pinning them;
+  3. destination IP inside an allowlisted CIDR → allowed;
+  4. anything else → `UNAUTHORIZED` (reason `ip-not-allowlisted` /
+     `domain-not-allowlisted`) and exit 1.
+- Built-in allowlist: loopback, `10/8`, `172.16/12`, `192.168/16`, CGNAT
+  `100.64/10`, ULA/link-local IPv6, `/etc/resolv.conf` nameservers, and
+  registry/documentation hosts (npm, GitHub, PyPI, crates.io, nodejs.org).
+  Allowlisted domains are resolved up-front (parallel, 3 s bound per lookup)
+  so their current IPs are covered too.
+- Extending the policy: `EGRESS_ALLOWLIST` (comma separated), an
+  `EGRESS_ALLOWLIST_FILE` / `--allowlist-file` (one entry per line, `#`
+  comments), or the `EGRESS_ALLOWLIST` env var Render exposes. Never widen a
+  broad CIDR (e.g. all of `0.0.0.0/0`) to silence a finding — investigate
+  first.
+- Artifacts (uploaded by CI as `build-egress-audit`):
+  `artifacts/build-egress/<step>/egress-capture.log` (raw),
+  `egress-audit.log` (one verdict per line) and `egress-summary.log`
+  (counts, allowlist size, build exit code, verdict).
+- Gates:
+  - `npm run security:egress` — run `npm run build` under the monitor;
+  - `npm run security:egress:strict` — also fail when capture is unavailable;
+  - `npm run security:egress:audit` — re-classify a saved capture;
+  - CI job `build-egress-monitor` — strict install gate, then the production
+    build with `--ignore-command-exit` so this job owns the *network* verdict
+    (the app build's own exit code is recorded in the summary only);
+  - `render.yaml` `buildCommand` — the deploy build runs with
+    `--allow-no-capture` because Render build containers cannot capture.
+- Triage of a finding: open `egress-audit.log`, take the `dst=`/`domain=`
+  fields. If it is a legitimate build vendor, add it to the allowlist with a
+  reason in the same PR. If it is not explainable, treat the dependency as
+  compromised: do not publish the artifact, pin the previous version, rotate
+  any secrets present in the build environment, and report upstream.

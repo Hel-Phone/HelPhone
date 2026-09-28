@@ -1,7 +1,7 @@
-import { LwwElementSet } from '../lib/crdt'
-import type { LwwOperation } from '../lib/crdt'
-import type { SecureStorage } from '../lib/secureStorage'
+import { LwwElementSet, LwwOperation } from '../lib/crdt'
 import { swChannel, postToServiceWorker, getInstanceId } from '../lib/swChannel'
+
+import type { SecureStorage } from '../lib/secureStorage'
 
 export interface OfflineHelpRecord {
   status: string
