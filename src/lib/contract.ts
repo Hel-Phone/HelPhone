@@ -1426,14 +1426,14 @@ export async function setTreasuryDailyLimit(asset, limit, wallet) {
 }
 
 // ── Price oracle conversions (HelPhone DAO, #543) ──────────────
-const DAO_CONTRACT_ID = import.meta.env?.VITE_HELPHONE_DAO_ID || "";
+const DAO_ORACLE_CONTRACT_ID = import.meta.env?.VITE_HELPHONE_DAO_ID || "";
 
 /** Live token conversion via the DAO's oracle adapter (e.g. XLM -> USDC).
  *  Throws an Error with a user-facing message; a feed older than 1 hour
  *  surfaces as the "stale" message. */
 export async function getOracleQuote(fromToken, toToken, amount) {
-  if (!DAO_CONTRACT_ID) throw new Error("VITE_HELPHONE_DAO_ID not configured");
-  const call = new Contract(DAO_CONTRACT_ID).call(
+  if (!DAO_ORACLE_CONTRACT_ID) throw new Error("VITE_HELPHONE_DAO_ID not configured");
+  const call = new Contract(DAO_ORACLE_CONTRACT_ID).call(
     "quote_conversion",
     scv(fromToken, { type: "address" }),
     scv(toToken, { type: "address" }),

@@ -18,7 +18,7 @@ HelPhone is a React + Vite community emergency response application built on Ste
   - `npm run lint` (`eslint .`) - Code style & quality checks.
   - `npm run typecheck` (`tsc --noEmit`) - Strict TypeScript validation without building output.
   - `npm test` - Vitest test suite execution.
-- **GitHub Actions CI**: `.github/workflows/ci.yml` enforces quality, linting, type-checking, state export verification, and crypto matrix tests on all pull requests and pushes.
+- **GitHub Actions CI**: `.github/workflows/ci.yml` enforces quality, linting, type-checking, state export verification, crypto matrix tests, and the multi-resolution layout matrix on pull requests.
 
 ### 3. Dynamic Feature Canary Rollouts & State Evaluation
 - **Feature Flag Engine**: `src/lib/featureFlags.ts` evaluates feature flag toggles dynamically.
@@ -34,6 +34,7 @@ HelPhone is a React + Vite community emergency response application built on Ste
 
 ### 5. Performance, Storage Security & Network Resilience
 - **HTTP Keep-Alive**: `server/middleware/keepAlive.ts` holds sockets open for 65 s (above the balancer's 60 s idle timeout) so sequential API and WebSocket traffic reuses one TCP connection. See [`docs/performance-optimization.md`](docs/performance-optimization.md).
+- **HTTP/2 Push / Preload Manifest**: `server/middleware/http2Push.ts` reads Vite's `dist/.vite/manifest.json` at startup, walks the entry chunk graph and stamps `Link: </assets/index-Abc123.js>; rel=preload; as=script; type=module; crossorigin` on HTML responses (plus 103 Early Hints and, on HTTP/2, `pushStream`). The manifest is re-read when a release changes the asset hashes, so the header always matches what was deployed. See [`docs/performance-optimization.md`](docs/performance-optimization.md).
 - **Map Overlay Rendering**: `src/lib/offscreenCanvas.ts` + `src/workers/canvas-worker.js` animate map markers in a Web Worker via OffscreenCanvas, with a main-thread fallback and measured FPS. See [`docs/performance-optimization.md`](docs/performance-optimization.md).
 - **Client Storage Encryption**: `src/lib/pbkdf2Key.ts` + `src/lib/secureStorage.ts` derive an AES-256-GCM key via PBKDF2 (100k iterations, per-device salt in IndexedDB) to encrypt local data. See [`docs/security-architecture.md`](docs/security-architecture.md).
 - **Network Resilience Testing**: `tests/e2e/throttling.spec.ts` emulates 2G, 3G, a 500 kbps cap, and offline via CDP, with a CI matrix leg per profile. See [`docs/network-resilience.md`](docs/network-resilience.md).
@@ -63,6 +64,15 @@ HelPhone is a React + Vite community emergency response application built on Ste
 
 ---
 
+### 9. Multi-Resolution Visual Layout Matrix
+- **Spec**: [`tests/e2e/layout.spec.ts`](tests/e2e/layout.spec.ts) replays the same layout gates over `/`, `/help` and `/ranking` on six device resolutions: iPhone SE (375×667), iPhone 14 (390×844), Pixel 7 (412×915), iPad (768×1024), Laptop (1366×768) and a 4K display (2560×1440).
+- **Overflow Detection**: each leg fails when `document.documentElement.scrollWidth` exceeds `window.innerWidth` — horizontal DOM scrolling on a phone cannot be panned back — and when a visible element is clipped by the right edge of the viewport (this is what catches a fixed header bar whose links run past 375 px). Landmark geometry (nav, primary heading) is additionally asserted to stay inside the viewport.
+- **Visual Baselines**: viewport screenshots live in [`tests/e2e/layout.spec.ts-snapshots/`](tests/e2e/layout.spec.ts-snapshots) with a 5 % pixel tolerance; non-replayable surfaces (Mapbox canvas, live RPC latency pill, video frames) are frozen or masked before capture so the shot records layout, not fresh data. Regenerate deliberately with `npm run test:layout:generate`.
+- **Resolution Projects**: every device is its own Playwright project (`layout-iphone-se` … `layout-display-4k`) declared in `playwright.config.js`, so a failure names its resolution. `npm run test:layout` runs the whole matrix; `npx playwright test --project=layout-iphone-se` runs one leg.
+- **CI Matrix**: the `e2e-layout-matrix` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) fans out one leg per resolution on pull requests (`fail-fast: false`) and uploads `test-results/` plus the baselines when a leg fails.
+
+---
+
 ## Quick Start
 
 ```bash
@@ -78,6 +88,9 @@ npm run typecheck
 
 # Run complete Vitest test suite
 npm test
+
+# Run the multi-resolution Playwright layout matrix (6 device profiles)
+npm run test:layout
 
 # Export Soroban contract storage state manually
 npm run export:state

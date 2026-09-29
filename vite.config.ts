@@ -162,6 +162,10 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
+    // Emit `dist/.vite/manifest.json` (entry chunk + hashed static imports) so
+    // server/middleware/http2Push.ts can build `Link: …; rel=preload` headers
+    // from the assets this release actually shipped.
+    manifest: true,
     chunkSizeWarningLimit: 500,
     // #542 FCP: keep heavy, route-specific chunks (Mapbox GL, ZK/WASM prover)
     // out of the entry HTML's modulepreload list; they are fetched on intent

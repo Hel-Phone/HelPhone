@@ -2,7 +2,6 @@ import { LwwElementSet, LwwOperation } from '../lib/crdt'
 import { swChannel, postToServiceWorker, getInstanceId } from '../lib/swChannel'
 
 import type { SecureStorage } from '../lib/secureStorage'
-import { swChannel, postToServiceWorker, getInstanceId } from '../lib/swChannel'
 
 export interface OfflineHelpRecord {
   status: string
@@ -98,8 +97,6 @@ function subscribeToServiceWorkerMessages(handler: (message: any) => void): () =
   navigator.serviceWorker.addEventListener('message', listener)
   return () => navigator.serviceWorker.removeEventListener('message', listener)
 }
-
-const PERSIST_KEY = 'help-store'
 
 export async function persistHelpStore(storage: SecureStorage, store = helpStore) {
   const { operations, entries } = store.snapshot()
