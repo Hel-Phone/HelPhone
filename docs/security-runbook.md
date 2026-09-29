@@ -124,3 +124,116 @@ Covers the typosquatting gate (#588) and the transitive vulnerability scanner (#
      `--json` output).
   3. Rebuild and re-sign them with a fresh key.
   4. Rotate `trustedKeys` / `dependencies[]`.
+## Rate-limit whitelist for emergency services (#536)
+
+Verified emergency-service callers bypass the API rate limiter. Entries live in
+Redis (`REDIS_URL`) so they change at runtime with no redeploy; without
+`REDIS_URL` an in-process store is used (single instance, lost on restart —
+dev/test only).
+
+- Code: `server/middleware/whitelist.ts` (matching + admin API),
+  `server/lib/redis.ts` (optional client), limiter hook in
+  `server/middleware/rateLimiter.ts` and `createRateLimiter` in `server/index.js`.
+- Match rules: request IP inside a whitelisted IPv4/IPv6 CIDR, **or** an
+  `X-API-Key` header whose SHA-256 is registered. Match sets
+  `req.bypassRateLimit`; nothing else is relaxed (CORS, auth and body limits
+  still apply).
+- **Set `TRUST_PROXY`** (`1` on Render) so `req.ip` is the real client. If it is
+  wrong, either every caller looks like the proxy or `X-Forwarded-For` can be
+  spoofed to fake a whitelisted IP.
+- Fail closed: if Redis is unreachable the normal limit applies. Subnet lists
+  are cached ~5 s per worker, so changes on other workers take up to that long.
+
+### Admin API
+
+Requires `Authorization: Bearer $WHITELIST_ADMIN_TOKEN`; returns 503 if the
+token is unset and 401 on a bad token.
+
+| Method & path | Body | Effect |
+| --- | --- | --- |
+| `GET /admin/whitelist` | – | List subnets and API-key metadata |
+| `POST /admin/whitelist/subnets` | `{ "cidr": "203.0.113.0/24", "label": "County 911" }` | Add a subnet |
+| `DELETE /admin/whitelist/subnets` | `{ "cidr": "203.0.113.0/24" }` | Remove a subnet |
+| `POST /admin/whitelist/api-keys` | `{ "label": "Dispatch CAD" }` | Create a key; **the plaintext is returned once** and only its hash is stored |
+| `DELETE /admin/whitelist/api-keys/:id` | – | Revoke a key by id |
+
+Rotate `WHITELIST_ADMIN_TOKEN` like any other secret; treat a leaked API key as
+revoked immediately.
+
+## Dependency & license auditor (#540)
+
+- Script: `scripts/audit-deps.js` — reads `package-lock.json` and
+  `server/package-lock.json`; shares its license matrix with
+  `scripts/security/license_compliance.js` (`license_policy.js`). Writes a
+  deterministic `licenses.json` (no timestamps).
+- Gate: `npm run security:audit-deps:check` (CI `supply-chain` job). Exit 1 =
+  PR blocked. Server-only run: `npm run audit:deps --workspace server`.
+- **DENIED** — GPL/AGPL/SSPL/EUPL/OSL/CPAL/RPL. Replace the dependency; only
+  add to `EXCEPTIONS` in `license_policy.js` after legal review. Weak copyleft
+  (LGPL/MPL/...) is a REVIEW warning; `--strict` promotes it to a failure.
+- **INSTALL-SCRIPT** — a package gained a lifecycle script. Read the script
+  (`npm view <pkg>@<ver> scripts`); if legitimate, add it to
+  `INSTALL_SCRIPT_ALLOWLIST` with a reason. `suspicious-install-script` means
+  the installed body matched curl|sh, eval, base64, remote URL or env-exfil
+  patterns — treat as a possible compromise: do not install, pin the previous
+  version and report upstream.
+- **SOURCE** — resolved tarball is off the trusted registries (or http/git),
+  or integrity is missing/weak. Usually a tampered lockfile: regenerate it
+  from a clean checkout and diff.
+- **STALE** — `licenses.json` no longer matches the lockfiles; run
+  `npm run security:audit-deps` and commit.
+
+## Build pipeline egress monitor
+
+Detects and blocks malicious network egress (data exfiltration) while the
+build pipeline runs: dependency installation and `npm run build`.
+
+- Script: `scripts/monitor-build-egress.sh [options] [--] <command>` — starts
+  a capture, runs the command, then classifies every captured destination.
+  `--classify [file]` re-audits an existing capture log (this is what the
+  tests exercise).
+- Backends (`--backend auto|tcpdump|iptables|none`):
+  - **tcpdump** — `tcpdump -i any -nn -l -Q out 'ip or ip6'`; uses `sudo -n`
+    when not root. This is the CI backend.
+  - **iptables** — root only. Installs an `EGRESS-MONITOR` chain on `OUTPUT`
+    that RETURNs loopback/established/allowlisted destinations, LOGs the rest
+    with the `EGRESS-DENY: ` prefix, and with `--enforce` REJECTs them so the
+    build is blocked at the socket level. The chain is removed on exit.
+  - **none** — no capture. `--strict` fails the run; otherwise the build
+    continues with a warning (Render uses this: no `CAP_NET_RAW`).
+- Classification rules, in order:
+  1. deny list wins — `169.254.169.254` and friends plus
+     `metadata.google.internal` / `instance-data` are always unauthorized;
+  2. an allowlisted hostname in the same line legitimises the flow (DNS query
+     or SNI), so CDN IPs are accepted without pinning them;
+  3. destination IP inside an allowlisted CIDR → allowed;
+  4. anything else → `UNAUTHORIZED` (reason `ip-not-allowlisted` /
+     `domain-not-allowlisted`) and exit 1.
+- Built-in allowlist: loopback, `10/8`, `172.16/12`, `192.168/16`, CGNAT
+  `100.64/10`, ULA/link-local IPv6, `/etc/resolv.conf` nameservers, and
+  registry/documentation hosts (npm, GitHub, PyPI, crates.io, nodejs.org).
+  Allowlisted domains are resolved up-front (parallel, 3 s bound per lookup)
+  so their current IPs are covered too.
+- Extending the policy: `EGRESS_ALLOWLIST` (comma separated), an
+  `EGRESS_ALLOWLIST_FILE` / `--allowlist-file` (one entry per line, `#`
+  comments), or the `EGRESS_ALLOWLIST` env var Render exposes. Never widen a
+  broad CIDR (e.g. all of `0.0.0.0/0`) to silence a finding — investigate
+  first.
+- Artifacts (uploaded by CI as `build-egress-audit`):
+  `artifacts/build-egress/<step>/egress-capture.log` (raw),
+  `egress-audit.log` (one verdict per line) and `egress-summary.log`
+  (counts, allowlist size, build exit code, verdict).
+- Gates:
+  - `npm run security:egress` — run `npm run build` under the monitor;
+  - `npm run security:egress:strict` — also fail when capture is unavailable;
+  - `npm run security:egress:audit` — re-classify a saved capture;
+  - CI job `build-egress-monitor` — strict install gate, then the production
+    build with `--ignore-command-exit` so this job owns the *network* verdict
+    (the app build's own exit code is recorded in the summary only);
+  - `render.yaml` `buildCommand` — the deploy build runs with
+    `--allow-no-capture` because Render build containers cannot capture.
+- Triage of a finding: open `egress-audit.log`, take the `dst=`/`domain=`
+  fields. If it is a legitimate build vendor, add it to the allowlist with a
+  reason in the same PR. If it is not explainable, treat the dependency as
+  compromised: do not publish the artifact, pin the previous version, rotate
+  any secrets present in the build environment, and report upstream.
