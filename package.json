@@ -43,6 +43,7 @@
     "security:audit-deps:check": "node scripts/audit-deps.js --check",
     "typecheck": "tsc --noEmit",
     "export:state": "bash scripts/export-contract-state.sh",
+    "bindings:soroban": "node scripts/generate-soroban-bindings.js",
     "prepare": "husky",
     "db:migrate": "tsx server/db/migrator.ts"
   },
