@@ -2,6 +2,18 @@
 
 HelPhone is a React + Vite community emergency response application built on Stellar. It combines wallet-gated help requests, Soroban smart contracts, local ZK privacy proofs, WebAuthn Passkeys, and automated contract storage state backups.
 
+## The 3-minute story
+
+Someone is in trouble and needs help from nearby people — but broadcasting "I'm hurt, here is my exact address and my name" to a public blockchain is dangerous. HelPhone fixes that:
+
+1. **Emergency.** A person taps _Get help_ and picks what happened (lost, fallen, medical, danger…).
+2. **Identity protected.** Their name and contact never leave the browser. Only a pseudonymous `Private request #N` is written on-chain.
+3. **Location proven, not revealed.** The exact GPS coordinate is used as a _private witness_. A Noir ZK proof is generated **locally** to prove "I am inside this zone" without disclosing where. Only a coarse ~1 km point and a 3 km proof box go on-chain.
+4. **Stellar verifies.** The proof fingerprint (nullifier) and transaction hash are recorded on Soroban testnet, visible in the live `ZK PRIVACY CHECKPOINT` panel.
+5. **Double-claim blocked.** The nullifier is `Poseidon2(secret_id, campaign_id)` — one claim per user per campaign, so the same proof can't be replayed.
+
+Privacy here is real, not theater: see [`anonymizeLocation`](src/pages/Help.jsx) (coarsens coordinates) and `createRequest(..., '', '', ...)` in [`handleSubmit`](src/pages/Help.jsx) (empty name/contact on-chain).
+
 ---
 
 ## Technical Subsystems & Architecture
@@ -105,6 +117,7 @@ Configure `.env`:
 ```bash
 VITE_MAPBOX_TOKEN=...
 VITE_AEGIS_VAULT_ID=...
+VITE_ZK_PROVER_URL=/zk
 SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
 CONTRACT_ID=CC325F37QW7N2F5M3QGHL4A4O7J2K9L0M1N2O3P4Q5R6S7T8U9V0
 ```

@@ -5,7 +5,11 @@
 
 [workspace]
 resolver = "2"
-members = ["contracts/*"]
+members = [
+  "contracts/aegis_vault",
+  "contracts/helphone_dao",
+  "contracts/maintainer_vault",
+]
 exclude = [
   # Own workspace root.
   "contract",
@@ -14,15 +18,11 @@ exclude = [
   "src/wasm/telemetry_reader",
 ]
 
+# Member crates' [profile.release] sections are ignored inside a workspace;
+# the Soroban size/safety profile has to live at the root.
 # Member crates declare this same release profile; it is mirrored here because
 # Cargo only honours `[profile]` tables at the workspace root, so building from
 # the repo root must produce the same wasm artifact as building in a crate dir.
-[workspace]
-resolver = "2"
-members = ["contracts/aegis_vault", "contracts/helphone_dao"]
-# Standalone crates that keep their own lockfiles / workspaces.
-exclude = ["contract", "contracts/emergency_vault", "contracts/maintainer_vault"]
-
 [profile.release]
 opt-level = "z"
 lto = true
@@ -30,6 +30,14 @@ codegen-units = 1
 panic = "abort"
 strip = true
 overflow-checks = true
+debug-assertions = false
+
+# #586: Cargo licenses are gated with the npm tree by
+# scripts/license-compliance.js (via `cargo metadata --locked`); see
+# docs/legal-compliance.md for the approved/denied policy.
+[workspace.metadata.license-compliance]
+gate = "node scripts/license-compliance.js --no-write"
+manifest = "licenses.json"
 
 # ---------------------------------------------------------------------------
 # Version pinning guard (scripts/detect-api-drift.js) — Rust half.

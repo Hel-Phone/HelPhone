@@ -45,3 +45,8 @@ src/wasm/**/target/
 # Python tooling cache
 __pycache__/
 *.py[cod]
+/target/
+# CVE patch bot scratch output (#599)
+.cve-patch-pr.md
+# maintainer key cache (#619)
+.cache/
