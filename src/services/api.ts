@@ -29,6 +29,10 @@ export interface Interceptor {
   onError?: (error: ApiError) => ApiError | Promise<ApiError>;
 }
 
+function toMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 class ApiService {
   private baseURL: string;
   private defaultOptions: ApiRequestOptions;
@@ -328,6 +332,79 @@ class ApiService {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { success: false, error: message };
+    }
+  }
+
+  // ── Encrypted emergency dispatch relay ───────────────────────────
+  //
+  // These endpoints relay *sealed* envelopes. Nothing here is secret to the
+  // server: it stores and returns ciphertext it cannot open. Errors are
+  // returned rather than thrown, matching fetchFootprint, so a relay outage
+  // degrades to "read it from the ledger instead" instead of breaking the
+  // emergency submission path.
+
+  /** Register this responder's public key so requesters can seal for them. */
+  async registerDispatchKey(
+    wallet: string,
+    publicKey: string
+  ): Promise<import('../types/index.js').DispatchStoreResponse> {
+    try {
+      const response = await this.post<import('../types/index.js').DispatchStoreResponse>(
+        '/api/dispatch/keys',
+        { wallet, publicKey }
+      );
+      return response.data;
+    } catch (error) {
+      return { success: false, error: toMessage(error) };
+    }
+  }
+
+  /**
+   * Public keys a payload may be sealed to. The relay stores public keys only;
+   * private keys are never transmitted.
+   */
+  async getDispatchRecipientKeys(): Promise<import('../types/index.js').DispatchRecipientResponse> {
+    try {
+      const response = await this.get<import('../types/index.js').DispatchRecipientResponse>(
+        '/api/dispatch/keys'
+      );
+      return response.data;
+    } catch (error) {
+      return { success: false, error: toMessage(error) };
+    }
+  }
+
+  /** Hand a sealed envelope to the relay. */
+  async storeDispatchEnvelope(
+    requestId: string | number,
+    envelope: import('../types/index.js').EncryptedEnvelope
+  ): Promise<import('../types/index.js').DispatchStoreResponse> {
+    try {
+      const response = await this.post<import('../types/index.js').DispatchStoreResponse>(
+        `/api/dispatch/payload/${encodeURIComponent(String(requestId))}`,
+        { envelope }
+      );
+      return response.data;
+    } catch (error) {
+      return { success: false, error: toMessage(error) };
+    }
+  }
+
+  /**
+   * Fetch the sealed envelopes for a request. Returns `envelopes: []` on a
+   * cache miss, which is normal — the authoritative copy lives on-chain in the
+   * request's `encrypted_payload`.
+   */
+  async fetchDispatchEnvelopes(
+    requestId: string | number
+  ): Promise<import('../types/index.js').DispatchFetchResponse> {
+    try {
+      const response = await this.get<import('../types/index.js').DispatchFetchResponse>(
+        `/api/dispatch/payload/${encodeURIComponent(String(requestId))}`
+      );
+      return response.data;
+    } catch (error) {
+      return { success: false, error: toMessage(error) };
     }
   }
 }
