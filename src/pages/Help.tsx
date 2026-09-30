@@ -178,20 +178,33 @@ export default function Help() {
   }
 
   return (
-    <div style={{ background: '#1c2c24', color: '#ECE0CC', minHeight: '100vh', padding: '2rem' }}>
+    <div
+      style={{
+        background: '#1c2c24',
+        color: '#ECE0CC',
+        minHeight: '100vh',
+        padding: 'clamp(1rem, 4vw, 2rem)',
+        boxSizing: 'border-box',
+        overflowX: 'hidden',
+      }}
+    >
       <header style={{ marginBottom: '2rem' }}>
         <Link to="/" style={{ color: '#FF7A6B', textDecoration: 'none', fontWeight: 'bold' }}>
           ← Back to HelPhone Home
         </Link>
-        <h1 style={{ fontSize: '2.5rem', marginTop: '1rem' }}>Emergency Dispatch Request</h1>
+        <h1 style={{ fontSize: 'clamp(1.5rem, 6vw, 2.5rem)', marginTop: '1rem' }}>
+          Emergency Dispatch Request
+        </h1>
       </header>
 
       <div
         style={{
           background: '#234B4E',
-          padding: '2rem',
+          padding: 'clamp(1.25rem, 5vw, 2rem)',
           borderRadius: '1rem',
           maxWidth: '600px',
+          width: '100%',
+          boxSizing: 'border-box',
           boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
         }}
       >

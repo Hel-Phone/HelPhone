@@ -87,3 +87,70 @@ registerRouteLoaders({ "/thing": loadThing });
   `resourceHints`) before the click; the landing page's initial requests no
   longer include the `mapbox` / `zk` chunks.
 - Lighthouse (mobile, throttled): compare FCP before/after on `/`, `/help`, `/ranking`.
+
+## HTTP/2 push & preload manifest (`server/middleware/http2Push.ts`)
+
+Goal: get the entry page's compiled chunks into the browser's preload scanner
+before the HTML has been parsed, using the asset hashes this release actually
+shipped — with no hand-maintained list to drift.
+
+### Layers
+
+| Layer | Where | What |
+| --- | --- | --- |
+| Manifest emission | `vite.config.ts` → `build.manifest: true` | Every `vite build` writes `dist/.vite/manifest.json`: entry chunk, its static `imports`, and per-chunk `css`, all under fingerprinted names. |
+| Manifest reader | `createManifestStore()` | Reads the manifest once at startup (not on first request), caches the parsed asset list, and re-checks the file's mtime/size on a throttled interval (`refreshIntervalMs`, default 5 s; `0` = every request). A changed manifest is re-parsed, so a new deploy's hashes replace the old ones without a restart. |
+| Entry graph | `collectEntryAssets()` | Depth-first over `index.html` → `isEntry` chunks → `imports` → their `css`, deduplicated. `dynamicImports` are **not** walked: Mapbox / ZK / WASM chunks stay on-intent, matching the `modulePreload.resolveDependencies` filter in `vite.config.ts` (they are additionally dropped by `HEAVY_CHUNK_RE`). |
+| Push header | `buildLinkHeader()` | `Link: </assets/index-Abc123.js>; rel=preload; as=script; type=module; crossorigin, </assets/index-XyZ987.css>; rel=preload; as=style; type=text/css` — capped at `maxAssets` (default 16) so the header stays under proxy header limits. |
+| Middleware | `createHttp2PushMiddleware()` | Attached in `server/index.ts` before the static/HTML handlers. Applies to HTML document navigations only (never `/api`, `/zk`, `/metrics`, `/health`, assets with extensions, non-`GET`/`HEAD`, or `sec-fetch-dest` other than a document). Appends to any existing `Link` instead of overwriting it. |
+| Early Hints | HTTP/1.1 | When the runtime exposes `res.writeEarlyHints`, the same list is sent as `103 Early Hints` before the document, then repeated in the final `Link` header. Best-effort: wrapped in `try/catch`, never fails a response. |
+| Native push | HTTP/2 | If the origin really terminates HTTP/2 (`req.httpVersionMajor === 2` and `res.stream.pushStream` exists), each entry asset is pushed on its own stream from `dist/`, with `cache-control: public, max-age=31536000, immutable` (fingerprinted URLs). A missing file answers `404` on the pushed stream; a rejected push never throws. |
+
+### Asset hash sync across releases
+
+1. Startup load — the manifest is read when the middleware is constructed.
+2. Throttled re-check — mtime/size comparison; only a *changed* manifest is re-parsed.
+3. Forced re-read — `store.reload()` (deploy hook, tests) bypasses both caches and
+   re-runs file verification.
+4. Optional `verifyFiles` (`HTTP2_PUSH_VERIFY_FILES=true`) drops assets whose file
+   is no longer on disk, so a header can never point at a pruned build.
+5. Missing manifest = empty snapshot: API-only deploys and pre-build boots are
+   a no-op, and the header starts working as soon as `vite build` lands.
+
+### Configuration
+
+| Env var | Default | Notes |
+| --- | --- | --- |
+| `HTTP2_PUSH_ENABLED` | `true` | Master switch. |
+| `HTTP2_PUSH_EARLY_HINTS` | `true` | 103 hints on HTTP/1.1. |
+| `HTTP2_PUSH_NATIVE` | `true` | `pushStream` on HTTP/2 (browsers have mostly withdrawn push support; harmless when unsupported). |
+| `HTTP2_PUSH_VERIFY_FILES` | `false` | Drop assets missing on disk. |
+| `HTTP2_PUSH_INCLUDE_HEAVY` | `false` | Set `true` to push the Mapbox/ZK chunks too (usually a pessimization). |
+| `HTTP2_PUSH_REFRESH_MS` | `5000` | Manifest mtime re-check interval; `0` = every request. |
+| `HTTP2_PUSH_MAX_ASSETS` | `16` | Cap on assets in one `Link` header. |
+| `HTTP2_PUSH_DIST_DIR` | `dist` | Override the build output directory. |
+| `HTTP2_PUSH_MANIFEST` | – | Explicit manifest path (wins over discovery of `.vite/manifest.json` then `manifest.json`). |
+
+`render.yaml` sets `HTTP2_PUSH_ENABLED`, `HTTP2_PUSH_EARLY_HINTS`,
+`HTTP2_PUSH_NATIVE` and `HTTP2_PUSH_VERIFY_FILES`.
+
+### Guard rails
+
+- No header on JSON/API responses, static asset requests, or unsafe methods —
+  preload hints there would only cost bytes.
+- Link parts never carry unquoted `;`: MIME parameters are stripped before the
+  header is assembled (`type=text/css`, not `type="text/css; charset=utf-8"`).
+- A half-written manifest (build in progress) is logged and ignored; the last
+  good snapshot keeps serving.
+- Push and hints are strictly best-effort: every failure path falls through to
+  `next()` with the document served normally.
+
+### Verifying
+
+- Unit tests: `npm run test:http2-manifest` (36 cases: graph walking, header
+  format/caps, hash re-reads, `verifyFiles`, document gating, early hints,
+  HTTP/2 push incl. missing-asset 404, env parsing).
+- `curl -I http://localhost:3001/` → `Link:` lists the current `assets/*.js` /
+  `*.css` fingerprints from `dist/.vite/manifest.json`.
+- Rebuild (`npm run build`) without restarting: the header picks up the new
+  hashes on the next refresh window.

@@ -68,6 +68,12 @@ fn test_vault_error_overflow() {
 }
 
 #[test]
+fn test_vault_error_reentrant_call() {
+    let err = VaultError::ReentrantCall;
+    assert_eq!(err as u32, 18);
+}
+
+#[test]
 fn admin_can_update_payout_amount() {
     let env = Env::default();
     env.mock_all_auths();
@@ -760,6 +766,29 @@ fn treasury_holds_multiple_assets() {
         c.client.try_treasury_deposit(&depositor, &usdc, &0),
         Err(Ok(VaultError::InvalidAmount))
     );
+}
+
+#[test]
+fn reentrancy_lock_blocks_nested_write_and_clears_after_errors() {
+    let c = ctx();
+    let usdc = new_token(&c.env);
+    let depositor = Address::generate(&c.env);
+    StellarAssetClient::new(&c.env, &usdc).mint(&depositor, &1_000);
+    c.client.add_treasury_asset(&c.admin, &usdc);
+
+    c.env.storage().instance().set(&DataKey::ReentrancyLock, &true);
+    assert_eq!(
+        c.client.try_treasury_deposit(&depositor, &usdc, &500),
+        Err(Ok(VaultError::ReentrantCall))
+    );
+    c.env.storage().instance().remove(&DataKey::ReentrancyLock);
+
+    assert_eq!(
+        c.client.try_treasury_deposit(&depositor, &usdc, &0),
+        Err(Ok(VaultError::InvalidAmount))
+    );
+    c.client.treasury_deposit(&depositor, &usdc, &500);
+    assert_eq!(c.client.treasury_reserve(&usdc), 500);
 }
 
 #[test]

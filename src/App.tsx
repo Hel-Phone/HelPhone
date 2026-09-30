@@ -51,8 +51,10 @@ function AppContent() {
 
   return (
     <div style={{ background: '#1c2c24', color: '#ECE0CC', minHeight: '100vh' }}>
-      {/* Header Navigation */}
+      {/* Header Navigation — `hp-app-nav-*` rules in App.css keep the bar
+          usable at phone widths (verified by tests/e2e/layout.spec.ts). */}
       <nav
+        className="hp-app-nav"
         style={{
           position: 'fixed',
           top: 0,
@@ -61,16 +63,16 @@ function AppContent() {
           background: 'rgba(28, 44, 36, 0.92)',
           backdropFilter: 'blur(8px)',
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          padding: '1rem 2rem',
           display: 'flex',
-          justifyContent: 'space-between',
           alignItems: 'center',
+          flexWrap: 'wrap',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div className="hp-app-nav-brand" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#FF7A6B' }}>HelPhone</span>
           {canaryMapClustering && (
             <span
+              className="hp-app-nav-status"
               style={{
                 fontSize: '0.75rem',
                 background: '#7357FF',
@@ -85,7 +87,10 @@ function AppContent() {
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+        <div
+          className="hp-app-nav-links"
+          style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}
+        >
           <Link to="/" style={{ color: '#ECE0CC', textDecoration: 'none' }}>
             Home
           </Link>
@@ -96,7 +101,9 @@ function AppContent() {
             Responders
           </Link>
           {sorobanBackupEnabled && (
-            <span style={{ fontSize: '0.8rem', color: '#3F8487' }}>🛡️ State Backup Active</span>
+            <span className="hp-app-nav-status" style={{ fontSize: '0.8rem', color: '#3F8487' }}>
+              🛡️ State Backup Active
+            </span>
           )}
           <LanguageSwitcher />
         </div>
@@ -104,10 +111,10 @@ function AppContent() {
 
       {/* Hero Section */}
       <section style={{ paddingTop: '6rem', paddingBottom: '4rem', textAlign: 'center' }}>
-        <h1 style={{ fontSize: '3rem', color: '#ECE0CC', marginBottom: '1rem' }}>
+        <h1 style={{ fontSize: 'clamp(2rem, 8vw, 3rem)', color: '#ECE0CC', marginBottom: '1rem' }}>
           Community Emergency Response Web App
         </h1>
-        <p style={{ fontSize: '1.25rem', color: '#a2a586', maxWidth: '700px', margin: '0 auto 2rem' }}>
+        <p style={{ fontSize: '1.25rem', color: '#a2a586', maxWidth: '700px', margin: '0 auto 2rem', padding: '0 1rem' }}>
           Peer-to-peer decentralised emergency dispatch powered by Soroban smart contracts, ZK privacy proofs, and WebAuthn Passkeys.
         </p>
 

@@ -23,7 +23,9 @@ interface LanguageSwitcherProps {
  */
 export default function LanguageSwitcher({ style }: LanguageSwitcherProps) {
   const { i18n } = useTranslation()
-  const currentLang = i18n.resolvedLanguage || i18n.language
+  // i18n resolves asynchronously; fall back to English until it reports a
+  // language so the switcher can render in isolation (SSR, unit tests).
+  const currentLang = i18n.resolvedLanguage || i18n.language || 'en'
 
   return (
     <div

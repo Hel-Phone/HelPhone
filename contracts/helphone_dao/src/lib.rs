@@ -3,9 +3,12 @@
 mod oracle;
 
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address, Env,
-    IntoVal, Symbol, Val, Vec as SorobanVec,
+    contract, contracterror, contractevent, contractimpl, contracttype,
+    symbol_short, Address, Env, IntoVal, Symbol, Val, Vec as SorobanVec,
 };
+
+pub mod sustainability;
+use sustainability::{MaintainerGrant, SustainabilityStats};
 
 pub use oracle::{OracleAsset, PriceData, MAX_PRICE_AGE_SECS};
 
@@ -130,14 +133,19 @@ pub enum DaoError {
     TimelockNotExpired = 10,
     ExecutionFailed = 11,
     ProposalLimitReached = 12,
-    QueueRequired = 13,
-    NotSecurityGuardian = 14,
-    InvalidSecurityThreshold = 15,
-    InsufficientSecurityApprovals = 16,
-    TimelockOverflow = 17,
-    ProposalNotQueued = 18,
-    TimelockExpired = 19,
-    SecurityEpochOverflow = 20,
+    SustainabilityNotConfigured = 13,
+    InvalidAmount = 14,
+    InsufficientReserve = 15,
+    GrantNotFound = 16,
+    GrantAlreadyDisbursed = 17,
+    QueueRequired = 18,
+    NotSecurityGuardian = 19,
+    InvalidSecurityThreshold = 20,
+    InsufficientSecurityApprovals = 21,
+    TimelockOverflow = 22,
+    ProposalNotQueued = 23,
+    TimelockExpired = 24,
+    SecurityEpochOverflow = 25,
 }
 
 // ── Events ─────────────────────────────────────────────────────────
@@ -198,6 +206,21 @@ fn key_proposal_count() -> Symbol {
 }
 fn key_executed_set() -> Symbol {
     symbol_short!("execd")
+fn key_voting_supply() -> Symbol {
+    symbol_short!("vsupply")
+}
+
+fn require_admin(env: &Env, admin: &Address) -> Result<(), DaoError> {
+    let stored_admin: Address = env
+        .storage()
+        .instance()
+        .get(&key_admin())
+        .ok_or(DaoError::NotAdmin)?;
+    if *admin != stored_admin {
+        return Err(DaoError::NotAdmin);
+    }
+    admin.require_auth();
+    Ok(())
 }
 
 #[contract]
@@ -582,6 +605,15 @@ impl HelPhoneDao {
         }
         .publish(&env);
 
+        // Grant proposals pay out immediately when the reserve covers them;
+        // otherwise the grant stays Pending for a later `disburse_grant`.
+        if sustainability::get_grant(&env, proposal_id).is_some() {
+            match sustainability::disburse(&env, proposal_id) {
+                Ok(_) | Err(DaoError::InsufficientReserve) => {}
+                Err(e) => return Err(e),
+            }
+        }
+
         Ok(())
     }
 
@@ -803,10 +835,94 @@ impl HelPhoneDao {
 
     /// Read: get list of executed proposal IDs.
     pub fn get_executed_proposals(env: Env) -> SorobanVec<u64> {
-        env.storage()
-            .instance()
-            .get(&key_executed_set())
-            .unwrap_or(SorobanVec::new(&env))
+        env.storage().instance().get(&key_executed_set()).unwrap_or(SorobanVec::new(&env))
+    }
+
+    /// Read: voting supply used as the quorum denominator for new proposals.
+    pub fn get_voting_supply(env: Env) -> i128 {
+        env.storage().instance().get(&key_voting_supply()).unwrap_or(0)
+    }
+
+    /// Admin: set the governance token voting supply (quorum denominator).
+    pub fn set_voting_supply(env: Env, admin: Address, supply: i128) -> Result<(), DaoError> {
+        require_admin(&env, &admin)?;
+        if supply < 0 {
+            return Err(DaoError::InvalidAmount);
+        }
+        env.storage().instance().set(&key_voting_supply(), &supply);
+        Ok(())
+    }
+
+    // ── Open source sustainability reserve (#587) ──────────────────
+
+    /// Admin: set the SAC token the sustainability reserve is held in.
+    pub fn configure_sustainability(env: Env, admin: Address, reserve_token: Address) -> Result<(), DaoError> {
+        require_admin(&env, &admin)?;
+        sustainability::set_token(&env, &reserve_token);
+        Ok(())
+    }
+
+    /// Route the 1% sustainability fee on `gross_amount` from `payer` into
+    /// the reserve. Returns the fee collected.
+    pub fn collect_sustainability_fee(env: Env, payer: Address, gross_amount: i128) -> Result<i128, DaoError> {
+        payer.require_auth();
+        sustainability::collect_fee(&env, &payer, gross_amount)
+    }
+
+    /// Open a `FundAllocation` proposal granting `amount` of the reserve
+    /// token to the maintainer of `package`. Returns the proposal id.
+    pub fn propose_maintainer_grant(
+        env: Env,
+        proposer: Address,
+        maintainer: Address,
+        package: soroban_sdk::String,
+        amount: i128,
+        title: soroban_sdk::String,
+        description: soroban_sdk::String,
+    ) -> Result<u64, DaoError> {
+        if amount <= 0 {
+            return Err(DaoError::InvalidAmount);
+        }
+        if !sustainability::is_configured(&env) {
+            return Err(DaoError::SustainabilityNotConfigured);
+        }
+        let proposal_id = Self::create_proposal(
+            env.clone(),
+            proposer,
+            title,
+            description,
+            ProposalType::FundAllocation,
+            soroban_sdk::Bytes::new(&env),
+        )?;
+        sustainability::record_grant(&env, proposal_id, maintainer, package, amount)?;
+        Ok(proposal_id)
+    }
+
+    /// Permissionless: pay out a grant whose proposal has been executed but
+    /// was left Pending because the reserve was short at execution time.
+    pub fn disburse_grant(env: Env, proposal_id: u64) -> Result<i128, DaoError> {
+        let proposal: Proposal = env
+            .storage().persistent().get(&DataKey::Proposal(proposal_id))
+            .ok_or(DaoError::ProposalNotFound)?;
+        if proposal.status != ProposalStatus::Executed {
+            return Err(DaoError::NotPassed);
+        }
+        sustainability::disburse(&env, proposal_id)
+    }
+
+    /// Read: grant attached to a proposal, if any.
+    pub fn get_maintainer_grant(env: Env, proposal_id: u64) -> Option<MaintainerGrant> {
+        sustainability::get_grant(&env, proposal_id)
+    }
+
+    /// Read: lifetime grant total received by a maintainer.
+    pub fn get_maintainer_funding(env: Env, maintainer: Address) -> i128 {
+        sustainability::maintainer_total(&env, maintainer)
+    }
+
+    /// Read: reserve and grant statistics for the sustainability dashboard.
+    pub fn get_sustainability_stats(env: Env) -> SustainabilityStats {
+        sustainability::stats(&env)
     }
 
     /// Admin: update the governance token address.

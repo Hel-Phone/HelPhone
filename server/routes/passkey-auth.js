@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import {
   generateAuthenticationOptions,
@@ -7,6 +7,7 @@ import {
   verifyRegistrationResponse,
 } from '@simplewebauthn/server';
 import { getRedis } from '../lib/redis.js';
+import { issueSession, revokeSession, verifySessionToken } from '../lib/session-store.js';
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const challenges = new Map();
@@ -82,16 +83,6 @@ async function listCredentials() {
   return values.map((value) => JSON.parse(value));
 }
 
-function issueSession(userId, username) {
-  const secret = process.env.SESSION_SECRET || '';
-  if (secret.length < 32) throw new Error('SESSION_SECRET must be configured with at least 32 characters');
-  const now = Math.floor(Date.now() / 1000);
-  const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
-  const unsigned = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ sub: userId, username, iat: now, exp: now + 3600 })}`;
-  const signature = createHmac('sha256', secret).update(unsigned).digest('base64url');
-  return `${unsigned}.${signature}`;
-}
-
 function requireSessionSecret() {
   if ((process.env.SESSION_SECRET || '').length < 32) throw new Error('SESSION_SECRET must be configured with at least 32 characters');
 }
@@ -147,7 +138,7 @@ export function createPasskeyAuthRouter() {
         username: state.username,
         transports: req.body?.response?.response?.transports || [],
       });
-      return res.json({ verified: true, sessionToken: issueSession(state.userId, state.username) });
+      return res.json({ verified: true, sessionToken: await issueSession(state.userId, state.username) });
     } catch (error) {
       return res.status(401).json({ error: error instanceof Error ? error.message : 'Passkey verification failed' });
     }
@@ -192,9 +183,32 @@ export function createPasskeyAuthRouter() {
       if (!verification.verified) return res.status(401).json({ error: 'Passkey assertion was not verified' });
       stored.counter = verification.authenticationInfo.newCounter;
       await saveCredential(id, stored);
-      return res.json({ verified: true, sessionToken: issueSession(stored.userId, stored.username) });
+      return res.json({ verified: true, sessionToken: await issueSession(stored.userId, stored.username) });
     } catch (error) {
       return res.status(401).json({ error: error instanceof Error ? error.message : 'Passkey verification failed' });
+    }
+  });
+
+  router.post('/session/refresh', async (req, res) => {
+    try {
+      const token = String(req.body?.sessionToken || '').trim();
+      const claims = await verifySessionToken(token);
+      if (!claims) return res.status(401).json({ error: 'Expired or invalid passkey session' });
+      await revokeSession(claims.jti, claims.exp);
+      return res.json({ sessionToken: await issueSession(claims.sub, claims.username) });
+    } catch (error) {
+      return res.status(401).json({ error: error instanceof Error ? error.message : 'Passkey refresh failed' });
+    }
+  });
+
+  router.post('/session/logout', async (req, res) => {
+    try {
+      const token = String(req.body?.sessionToken || '').trim();
+      const claims = await verifySessionToken(token);
+      if (claims) await revokeSession(claims.jti, claims.exp);
+      return res.json({ revoked: true });
+    } catch (error) {
+      return res.status(401).json({ error: error instanceof Error ? error.message : 'Passkey logout failed' });
     }
   });
   return router;

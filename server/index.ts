@@ -17,6 +17,10 @@ import {
 import { SorobanStateExporter, loadLatestSnapshot } from './indexer/exporter.js'
 import { authMiddleware } from './middleware/auth.js'
 import { createCspMiddleware, createHtmlHandler } from './middleware/csp.js'
+import {
+  createHttp2PushMiddleware,
+  optionsFromEnv as http2PushOptionsFromEnv,
+} from './middleware/http2Push.js'
 import { createPasskeyAuthRouter } from './routes/passkey-auth.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -103,6 +107,12 @@ app.post('/api/protected/action', authMiddleware, (req: Request, res: Response) 
 // Built frontend (nonce-injected HTML). Only active when `vite build` output
 // exists, so an API-only deployment keeps behaving exactly as before.
 const DIST_DIR = join(__dirname, '..', 'dist')
+
+// HTTP/2 push / preload hints for the built entry chunks
+// (see middleware/http2Push.ts). Reads dist/.vite/manifest.json at startup and
+// re-reads it whenever a release changes the asset hashes, so the `Link`
+// header always matches the files that were actually deployed.
+app.use(createHttp2PushMiddleware({ ...http2PushOptionsFromEnv(process.env, { distDir: DIST_DIR }) }))
 app.use(express.static(DIST_DIR, { index: false }))
 app.get(/^\/(?!api\/|zk\/|health$|metrics).*/, createHtmlHandler({ htmlPath: join(DIST_DIR, 'index.html') }))
 
