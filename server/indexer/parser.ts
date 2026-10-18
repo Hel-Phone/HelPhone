@@ -61,7 +61,30 @@ export function classifyEvent(topics: string[]): EventType {
 /**
  * Parse event data into a structured record.
  */
+/** Event payload schema versions this parser can decode. */
+export const SUPPORTED_EVENT_SCHEMA_VERSIONS: ReadonlySet<number> = new Set([1]);
+
+export class UnsupportedSchemaError extends Error {
+  constructor(public readonly schemaVersion: unknown) {
+    super(`Unsupported event schemaVersion ${String(schemaVersion)}; refusing to index (update parser before deploying this contract)`);
+    this.name = 'UnsupportedSchemaError';
+  }
+}
+
+/**
+ * Version gate (#757): an event that declares a schemaVersion this parser does
+ * not support halts indexing instead of silently dropping fields. Events without
+ * a declared version keep the legacy decode path.
+ */
+export function assertSupportedSchema(data: any): void {
+  if (data && typeof data === 'object' && data.schemaVersion !== undefined
+      && !SUPPORTED_EVENT_SCHEMA_VERSIONS.has(Number(data.schemaVersion))) {
+    throw new UnsupportedSchemaError(data.schemaVersion);
+  }
+}
+
 export function parseEvent(topics: string[], data: any): ParsedEvent {
+  assertSupportedSchema(data);
   const eventType = classifyEvent(topics);
 
   const parsed: ParsedEvent = {

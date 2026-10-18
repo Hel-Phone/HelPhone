@@ -179,6 +179,12 @@ for (const route of ROUTES) {
         document.documentElement.dataset.layoutSnapshot = 'true'
       })
 
+      // Live map tiles and canvas pins re-raster on every capture, so they are masked,
+      // and CSS animations (mdpulse/mddash) are frozen for a deterministic layout diff.
+      await page.addStyleTag({
+        content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important}',
+      })
+
       if (route.freezeCss) {
         await page.addStyleTag({ content: route.freezeCss })
         // Give the injected style one frame to repaint before capturing.
@@ -188,8 +194,8 @@ for (const route of ROUTES) {
       await expect(page).toHaveScreenshot(`layout-${route.name}.png`, {
         animations: 'disabled',
         caret: 'hide',
-        // Video frames are the only pixel source that cannot be replayed.
-        mask: [page.locator('video')],
+        // Video frames and live map canvases cannot be replayed deterministically.
+        mask: [page.locator('video'), page.locator('canvas, .mapboxgl-map')],
         maxDiffPixelRatio: 0.05,
       })
     })
