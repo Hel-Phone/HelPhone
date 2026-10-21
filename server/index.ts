@@ -27,6 +27,8 @@ import { createDispatchRouters } from './routes/dispatch.js'
 import { syncRouter } from './routes/sync.js'
 import historyRouter from './routes/history.js'
 
+/* Cross-Origin-Opener-Policy: same-origin */
+/* Cross-Origin-Embedder-Policy: credentialless */
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
 const PORT = process.env.PORT || 3001

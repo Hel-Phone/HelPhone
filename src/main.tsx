@@ -34,7 +34,7 @@ const Admin = lazy(loadAdmin);
 const Kiosk = lazy(loadKiosk);
 // #608 spike: WebGPU spatial-clustering prototype + benchmark harness (ADR-008).
 const ClusterLab = lazy(() => import("./components/WebGPUMap"));
-// Binary telemetry protocol spike: decode/GC benchmark harness (ADR-014).
+// Telemetry lab: backpressure drop ledger & binary decode benchmark (ADR-014 / ISP-032).
 const TelemetryLab = lazy(() => import("./components/TelemetryLab"));
 
 function RouteFallback() {
@@ -100,6 +100,7 @@ function render() {
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/kiosk" element={<Kiosk />} />
                 <Route path="/lab/cluster-bench" element={<ClusterLab />} />
+                <Route path="/lab/telemetry" element={<TelemetryLab />} />
                 <Route path="/lab/telemetry-bench" element={<TelemetryLab />} />
               </Routes>
             </Suspense>

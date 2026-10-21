@@ -315,19 +315,52 @@ function MapController({ center, zoom = 14 }) {
   return null;
 }
 
-function distance(a, b) {
+export function distance(a, b) {
+  if (
+    !Number.isFinite(a?.[0]) ||
+    !Number.isFinite(a?.[1]) ||
+    !Number.isFinite(b?.[0]) ||
+    !Number.isFinite(b?.[1])
+  ) {
+    return null;
+  }
   const R = 6371;
-  const dLat = ((b[0] - a[0]) * Math.PI) / 180;
-  const dLng = ((b[1] - a[1]) * Math.PI) / 180;
+  const DEG2RAD = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * DEG2RAD;
+  const dLng = (b[1] - a[1]) * DEG2RAD;
   const sinLat = Math.sin(dLat / 2);
   const sinLng = Math.sin(dLng / 2);
+
+  if (!Number.isFinite(sinLat) || !Number.isFinite(sinLng)) {
+    return null;
+  }
+
   const h =
     sinLat * sinLat +
     Math.cos((a[0] * Math.PI) / 180) *
       Math.cos((b[0] * Math.PI) / 180) *
       sinLng *
       sinLng;
-  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+
+  if (!Number.isFinite(h)) {
+    return null;
+  }
+
+  const result = R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  return Number.isFinite(result) ? result : null;
+}
+
+export function buildRouteFeature(from, to) {
+  return {
+    type: "Feature",
+    geometry: {
+      type: "LineString",
+      coordinates: [
+        [from[1], from[0]],
+        [to[1], to[0]],
+      ],
+    },
+  };
 }
 
 function RouteLine({ id: routeId, from, to, color = "#7357FF" }) {
@@ -336,16 +369,7 @@ function RouteLine({ id: routeId, from, to, color = "#7357FF" }) {
     <Source
       id={id}
       type="geojson"
-      data={{
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            [from[1], from[0]],
-            [to[1], to[0]],
-          ],
-        },
-      }}
+      data={buildRouteFeature(from, to)}
     >
       <Layer
         id={`${id}-line`}
@@ -361,9 +385,12 @@ function RouteLine({ id: routeId, from, to, color = "#7357FF" }) {
   );
 }
 
-function loadProfile() {
+export function loadProfile() {
   try {
-    return JSON.parse(localStorage.getItem("hp_profile") || "{}");
+    const parsed = JSON.parse(localStorage.getItem("hp_profile") || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
   } catch {
     return {};
   }
@@ -455,41 +482,59 @@ function newSubmissionId() {
   return `sub-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-const DEFAULT_CENTER = [20, 0];
+export const DEFAULT_CENTER = Object.freeze([20, 0]);
 
 const MY_REQUESTS_KEY = "hp_my_requests";
 
-function loadMyRequestIds() {
+export function loadMyRequestIds() {
   try {
-    return JSON.parse(localStorage.getItem(MY_REQUESTS_KEY) || "[]");
+    const parsed = JSON.parse(localStorage.getItem(MY_REQUESTS_KEY) || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id) => Number.isFinite(id));
   } catch {
     return [];
   }
 }
 
-function saveMyRequestId(id) {
+export function saveMyRequestId(id) {
+  if (!Number.isFinite(id)) return;
   const ids = loadMyRequestIds();
   if (!ids.includes(id)) {
     ids.unshift(id);
-    localStorage.setItem(MY_REQUESTS_KEY, JSON.stringify(ids.slice(0, 20)));
+    try {
+      localStorage.setItem(MY_REQUESTS_KEY, JSON.stringify(ids.slice(0, 20)));
+    } catch {
+    }
   }
 }
 
-function anonymizeLocation(location) {
-  if (!location) return location;
+export function anonymizeLocation(location) {
+  if (
+    !Array.isArray(location) ||
+    !Number.isFinite(location[0]) ||
+    !Number.isFinite(location[1])
+  ) {
+    throw new Error("Unable to read your location. Try again.");
+  }
   return [
     Math.round(location[0] * 100) / 100,
     Math.round(location[1] * 100) / 100,
   ];
 }
 
-function privateRequestLabel(id) {
-  return `Private request #${id || "pending"}`;
+export function privateRequestLabel(id) {
+  const safeId =
+    typeof id === "string" || typeof id === "number" ? id : "pending";
+  return `Private request #${safeId || "pending"}`;
 }
 
-function txExplorerUrl(hash) {
-  if (!hash) return null;
-  return `https://stellar.expert/explorer/testnet/tx/${hash}`;
+const TX_HASH_PATTERN = /^[0-9a-f]{16,64}$/i;
+
+export function txExplorerUrl(hash) {
+  if (typeof hash !== "string") return null;
+  const trimmed = hash.trim();
+  if (!TX_HASH_PATTERN.test(trimmed)) return null;
+  return `https://stellar.expert/explorer/testnet/tx/${trimmed}`;
 }
 
 export function ExplorerLink({ label, hash }) {
@@ -1396,6 +1441,243 @@ const ET_ICONS = {
     </svg>
   ),
 };
+
+// ── ZK state reducer ─────────────────────────────────────────────────────────
+
+export const LOG_RING_SIZE = 6;
+export const LOG_MAX_MSG_LENGTH = 200;
+
+export const ZK_INITIAL = Object.freeze({
+  status: "idle",
+  logs: [],
+  proof: null,
+  error: "",
+});
+
+export function zkReducer(state, action) {
+  switch (action.type) {
+    case "RESET":
+      return { ...ZK_INITIAL, logs: [] };
+
+    case "SET_STATUS":
+      if (state.status === action.payload) return state;
+      return { ...state, status: action.payload };
+
+    case "SET_ERROR":
+      if (state.error === action.payload) return state;
+      return { ...state, error: action.payload };
+
+    case "SET_PROOF":
+      return { ...state, proof: action.payload };
+
+    case "PATCH_PROOF":
+      if (!state.proof) return state;
+      return { ...state, proof: { ...state.proof, ...action.payload } };
+
+    case "PUSH_LOG": {
+      const raw = String(action.payload ?? "");
+      const msg =
+        raw.length > LOG_MAX_MSG_LENGTH
+          ? raw.slice(0, LOG_MAX_MSG_LENGTH) + "…"
+          : raw;
+      const prev = state.logs;
+      if (prev.length > 0 && prev[prev.length - 1] === msg) return state;
+      const next =
+        prev.length < LOG_RING_SIZE
+          ? [...prev, msg]
+          : [...prev.slice(-(LOG_RING_SIZE - 1)), msg];
+      return { ...state, logs: next };
+    }
+
+    default:
+      return state;
+  }
+}
+
+export function sanitizeWalletAddress(raw) {
+  if (typeof raw !== "string") return "";
+  const addr = raw.trim();
+  if (!/^G[A-Z2-7]{55}$/.test(addr)) return "";
+  return addr;
+}
+
+const PHONE_REGEX = /^\+?[1-9]\d{1,14}$/;
+const TELEGRAM_REGEX = /^@[A-Za-z0-9_]{5,32}$/;
+const CONTACT_ALLOWLIST = [PHONE_REGEX, TELEGRAM_REGEX];
+
+export function validateContact(value) {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return { valid: true, error: "" };
+  if (trimmed.length > 40) return { valid: false, error: "Contact is too long (max 40 characters)." };
+  const passesAny = CONTACT_ALLOWLIST.some((re) => re.test(trimmed));
+  if (!passesAny) {
+    return {
+      valid: false,
+      error: "Use a phone number (+1234567890) or Telegram handle (@username).",
+    };
+  }
+  return { valid: true, error: "" };
+}
+
+export function computeStep3Done(profile) {
+  if (!profile) return true;
+  return Boolean(profile.nickname || profile.contact || true);
+}
+
+export function computeUserCharacter(selectedChar, profile) {
+  if (selectedChar) return selectedChar;
+  const nickname = profile?.nickname || "me";
+  return pickChar("default", nickname);
+}
+
+export const STATUS_CONFIG = {
+  Pending: {
+    label: "WAITING FOR RESPONDER",
+    color: "#a2a586",
+    bg: "rgba(162,165,134,0.12)",
+    msg: "Your pin is live. Waiting for someone nearby.",
+  },
+  Enroute: {
+    label: "RESPONDER ON THE WAY",
+    color: "#7357FF",
+    bg: "rgba(115,87,255,0.12)",
+    msg: "Stay where you are. Help is coming.",
+  },
+  Resolved: {
+    label: "RESOLVED",
+    color: "#3F8487",
+    bg: "rgba(63,132,135,0.12)",
+    msg: "This request has been resolved.",
+  },
+  Cancelled: {
+    label: "CANCELLED",
+    color: "#a2a586",
+    bg: "rgba(162,165,134,0.12)",
+    msg: "Request cancelled.",
+  },
+};
+
+export const DEFAULT_STATUS_INFO = {
+  label: "UNKNOWN STATUS",
+  color: "#a2a586",
+  bg: "rgba(162,165,134,0.12)",
+  msg: "Status is currently unavailable.",
+};
+
+export function getStatusConfig(requestStatus) {
+  if (typeof requestStatus !== "string") return DEFAULT_STATUS_INFO;
+  return STATUS_CONFIG[requestStatus] || DEFAULT_STATUS_INFO;
+}
+
+export function checkIsGetMode(mode) {
+  if (typeof mode !== "string") return false;
+  return mode.trim().toLowerCase() === "get";
+}
+
+export function getAccentColor(isGetMode) {
+  return isGetMode ? "#FF7A6B" : "#7357FF";
+}
+
+export function createDebouncedSetter(setter, delay = 100) {
+  let latest = "";
+  let timer = null;
+
+  const debouncedSet = (value) => {
+    latest = value;
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      setter(latest);
+    }, delay);
+  };
+
+  const flush = () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+      setter(latest);
+    }
+  };
+
+  const cancel = () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  return { debouncedSet, flush, cancel };
+}
+
+export function computeWalletStatus(address) {
+  const hasAddress = address !== "";
+  const isValid = sanitizeWalletAddress(address) !== "";
+  const isConnected = hasAddress && isValid;
+  const displayAddress = isConnected
+    ? `${address.slice(0, 8)}...${address.slice(-6)}`
+    : "";
+  return { isConnected, displayAddress };
+}
+
+export function cancellationToken() {
+  let cancelled = false;
+
+  function check() {
+    return !cancelled;
+  }
+
+  return {
+    get active() {
+      return check();
+    },
+    cancel() {
+      cancelled = true;
+    },
+    async wrap(promise) {
+      if (cancelled) {
+        promise.catch(() => {});
+        return undefined;
+      }
+      try {
+        const result = await promise;
+        if (cancelled) return undefined;
+        return result;
+      } catch (err) {
+        if (cancelled) return undefined;
+        throw err;
+      }
+    },
+  };
+}
+
+const RETRY_CLS = "hp-mobile-open";
+const RETRY_ID = "helphone-help-sidebar";
+const dlq = Object.create(null);
+
+export function safeToggleClass(
+  element,
+  isOpen,
+  id = RETRY_ID,
+  cls = RETRY_CLS,
+) {
+  if (element) {
+    element.classList.toggle(cls, isOpen);
+    delete dlq[id];
+    return true;
+  }
+
+  if (!dlq[id]) {
+    const raf = requestAnimationFrame(() => {
+      delete dlq[id];
+      const el = document.getElementById(id);
+      if (el) {
+        el.classList.toggle(cls, isOpen);
+      }
+    });
+    dlq[id] = raf;
+  }
+  return false;
+}
 
 export default function Help() {
   const [mode, setMode] = useState("get");
@@ -3952,7 +4234,7 @@ export default function Help() {
           style={{ width: "100%", height: "100%" }}
           mapStyle={MAP_STYLES[mapStyleIndex].url}
           onClick={(e) => {
-            if (isGetMode && requestStatus === "idle") {
+            if (isGetMode && requestStatus === "idle" && e?.lngLat?.lat != null && e?.lngLat?.lng != null) {
               setLocation([e.lngLat.lat, e.lngLat.lng]);
             }
           }}

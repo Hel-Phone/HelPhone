@@ -1,5 +1,7 @@
 import "./telemetryBootstrap.js";
-import { telemetryErrorHandler, shutdownTelemetry } from "./telemetry.js";
+import { telemetryErrorHandler, shutdownTelemetry, traceIdFromRequest, renderTelemetryMetrics, enforceKillSwitch } from "./telemetry.js";
+import { requestMetrics, renderMetrics } from "./middleware/metrics.js";
+import { createHealthRouter } from "./routes/health.js";
 import { clockSyncHandler } from "./lib/clockSync.js";
 import cluster from "node:cluster";
 import { createServer } from "node:http";
