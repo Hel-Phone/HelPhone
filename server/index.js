@@ -12,6 +12,8 @@ import { availableParallelism, cpus } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { rpc } from "@stellar/stellar-sdk";
+import contractManifest from "../contracts/manifest.json" with { type: "json" };
+import { resolveServerDaoContractId } from "./legacyContractEnv.js";
 
 import { normalizeBase64 } from "./base64Utils.js";
 import { compression as brotliCompression } from "./middleware/compression.js";
@@ -238,9 +240,19 @@ app.use("/api/federation", createFederationRouter());
 // push exists at the Soroban RPC layer, so this is the honest mechanism —
 // and re-broadcasts new events to every connected browser over SSE. That
 // turns N client-side polls into 1 server-side poll + fan-out.
-const CONTRACT_ID =
-  process.env.HELPHONE_CONTRACT_ID ||
-  "CDP5XZ7UYCGSQBYRDYM2OEAUQJULBZPULSQXK7LGNAJTRXRG3VHZLSHY";
+const STELLAR_NETWORK = process.env.STELLAR_NETWORK || "testnet";
+const DAO_CONTRACT_ID =
+  resolveServerDaoContractId() ||
+  contractManifest.helphone_dao[STELLAR_NETWORK]?.id;
+if (
+  !["testnet", "mainnet"].includes(STELLAR_NETWORK) ||
+  !/^C[A-Z2-7]{55}$/.test(DAO_CONTRACT_ID || "") ||
+  DAO_CONTRACT_ID !== contractManifest.helphone_dao[STELLAR_NETWORK]?.id
+) {
+  throw new Error(
+    `HELPHONE_DAO_ID is invalid or does not match the ${STELLAR_NETWORK} contract manifest.`,
+  );
+}
 const RPC_URL =
   process.env.SOROBAN_RPC_URL || "https://soroban-testnet.stellar.org";
 const EVENT_POLL_MS = Number(process.env.EVENT_POLL_MS || 2000);
@@ -291,7 +303,7 @@ async function pollContractEvents() {
     }
     const res = await rpcServer.getEvents({
       startLedger: eventCursor,
-      filters: [{ type: "contract", contractIds: [CONTRACT_ID] }],
+      filters: [{ type: "contract", contractIds: [DAO_CONTRACT_ID] }],
       limit: 100,
     });
     for (const ev of res.events || []) {
@@ -454,7 +466,7 @@ async function fetchRankingFromContract() {
   });
   const sourceAddress = Keypair.random().publicKey();
   const source = new Account(sourceAddress, "0");
-  const sorobanContract = new Contract(CONTRACT_ID);
+  const sorobanContract = new Contract(DAO_CONTRACT_ID);
   const tx = new TransactionBuilder(source, {
     fee: BASE_FEE,
     networkPassphrase: Networks.TESTNET,

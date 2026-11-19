@@ -32,6 +32,7 @@ import {
 } from "./footprint";
 import { verificationWindow } from "./ringBuffer";
 import { isEncryptedEnvelope } from "./crypto";
+import { clientEnv } from "./env";
 
 /** Validate a Stellar Soroban contract ID (strkey 'C...' with CRC16 checksum).
  *  Throws immediately with a clear message instead of letting a malformed ID
@@ -45,11 +46,6 @@ export function assertValidContractId(id, label) {
   }
   return id;
 }
-
-const DEFAULT_CONTRACT_ID = assertValidContractId(
-  "CDP5XZ7UYCGSQBYRDYM2OEAUQJULBZPULSQXK7LGNAJTRXRG3VHZLSHY",
-  "DEFAULT_CONTRACT_ID",
-);
 
 const ACTIVE_NETWORK_STORAGE_KEY = "helphone:active-network";
 const WALLET_ADDRESS_STORAGE_KEY = "helphone:wallet-address";
@@ -98,24 +94,10 @@ export const HELPHONE_NETWORKS = {
       import.meta.env?.VITE_STELLAR_TESTNET_HORIZON_URL ||
       "https://horizon-testnet.stellar.org",
     contractId:
-      import.meta.env?.VITE_HELPHONE_TESTNET_CONTRACT_ID ||
-      import.meta.env?.VITE_HELPHONE_CONTRACT_ID ||
-      DEFAULT_CONTRACT_ID,
+      clientEnv.VITE_STELLAR_NETWORK === "testnet"
+        ? clientEnv.VITE_HELPHONE_DAO_ID
+        : undefined,
     friendbotUrl: import.meta.env?.VITE_FRIENDBOT_URL || DEFAULT_FRIENDBOT_URL,
-  },
-  futurenet: {
-    label: "Futurenet",
-    networkPassphrase: Networks.FUTURENET,
-    rpcUrl:
-      import.meta.env?.VITE_STELLAR_FUTURENET_RPC_URL ||
-      "https://rpc-futurenet.stellar.org",
-    horizonUrl:
-      import.meta.env?.VITE_STELLAR_FUTURENET_HORIZON_URL ||
-      "https://horizon-futurenet.stellar.org",
-    contractId:
-      import.meta.env?.VITE_HELPHONE_FUTURENET_CONTRACT_ID ||
-      DEFAULT_CONTRACT_ID,
-    friendbotUrl: import.meta.env?.VITE_FUTURENET_FRIENDBOT_URL || "",
   },
   mainnet: {
     label: "Mainnet",
@@ -127,9 +109,9 @@ export const HELPHONE_NETWORKS = {
       import.meta.env?.VITE_STELLAR_MAINNET_HORIZON_URL ||
       "https://horizon.stellar.org",
     contractId:
-      import.meta.env?.VITE_HELPHONE_MAINNET_CONTRACT_ID ||
-      import.meta.env?.VITE_HELPHONE_CONTRACT_ID ||
-      DEFAULT_CONTRACT_ID,
+      clientEnv.VITE_STELLAR_NETWORK === "mainnet"
+        ? clientEnv.VITE_HELPHONE_DAO_ID
+        : undefined,
     friendbotUrl: "",
   },
 };
@@ -164,15 +146,15 @@ export function getActiveNetworkConfig() {
 }
 
 const ACTIVE_NETWORK = getActiveNetworkConfig();
-const CONTRACT_ID = assertValidContractId(
-  ACTIVE_NETWORK.contractId,
-  "CONTRACT_ID",
-);
-const DAO_CONTRACT_ID = import.meta.env?.VITE_HELPHONE_DAO_CONTRACT_ID;
+const CONTRACT_ID = ACTIVE_NETWORK.contractId;
 
 function getDaoContractId() {
-  if (!DAO_CONTRACT_ID) throw new Error("VITE_HELPHONE_DAO_CONTRACT_ID is not configured");
-  return assertValidContractId(DAO_CONTRACT_ID, "VITE_HELPHONE_DAO_CONTRACT_ID");
+  if (!CONTRACT_ID) {
+    throw new Error(
+      `VITE_HELPHONE_DAO_ID is not deployed for ${ACTIVE_NETWORK.name}.`,
+    );
+  }
+  return assertValidContractId(CONTRACT_ID, "VITE_HELPHONE_DAO_ID");
 }
 const RPC_URL = ACTIVE_NETWORK.rpcUrl;
 const FRIENDBOT_URL = ACTIVE_NETWORK.friendbotUrl;
@@ -202,7 +184,11 @@ initRpcHealth({
     server = new rpc.Server(url, { timeout: RPC_TIMEOUT_MS });
   },
 });
-const contract = new Contract(CONTRACT_ID);
+const contract = {
+  call(...args) {
+    return new Contract(getDaoContractId()).call(...args);
+  },
+};
 
 // ── RPC Response Cache (issue #63) ──────────────────────────────
 // Caches read-only contract responses to reduce RPC rate limit hits
@@ -593,12 +579,12 @@ export async function getRanking(limit = 50, period = "All Time") {
 }
 
 /** Maintainer Vault funding stats (contracts/maintainer_vault). Returns null
- *  when VITE_MAINTAINER_VAULT_CONTRACT_ID is unset (vault not deployed). */
+ *  when VITE_MAINTAINER_VAULT_ID is unset (vault not deployed). */
 export async function getMaintainerFunding() {
-  const id = import.meta.env?.VITE_MAINTAINER_VAULT_CONTRACT_ID;
+  const id = clientEnv.VITE_MAINTAINER_VAULT_ID;
   if (!id) return null;
   const vault = new Contract(
-    assertValidContractId(id, "VITE_MAINTAINER_VAULT_CONTRACT_ID"),
+    assertValidContractId(id, "VITE_MAINTAINER_VAULT_ID"),
   );
   return _withCache("getMaintainerFunding", [id], CACHE_TTL.long, async () => {
     const sim = await simulateRead(vault.call("stats"));
@@ -656,12 +642,12 @@ export function normalizeMaintainerGrant(raw) {
 }
 
 function _daoContractId() {
-  const id = import.meta.env?.VITE_HELPHONE_DAO_CONTRACT_ID;
-  return id ? assertValidContractId(id, "VITE_HELPHONE_DAO_CONTRACT_ID") : null;
+  const id = clientEnv.VITE_HELPHONE_DAO_ID;
+  return id ? assertValidContractId(id, "VITE_HELPHONE_DAO_ID") : null;
 }
 
 /** Reserve + grant statistics. Returns null when the DAO is not deployed
- *  (VITE_HELPHONE_DAO_CONTRACT_ID unset). */
+ *  (VITE_HELPHONE_DAO_ID unset). */
 export async function getSustainabilityStats() {
   const id = _daoContractId();
   if (!id) return null;
@@ -684,7 +670,7 @@ export async function getMaintainerGrant(proposalId) {
 
 async function _daoWrite(fn, args, wallet) {
   const id = _daoContractId();
-  if (!id) throw new Error("VITE_HELPHONE_DAO_CONTRACT_ID not configured");
+  if (!id) throw new Error("VITE_HELPHONE_DAO_ID not configured");
   const signerAddress = await resolveWalletAddress(wallet);
   if (!signerAddress) throw new Error("Wallet address is not available yet");
   await ensureAccountFunded(signerAddress);
@@ -953,7 +939,7 @@ export async function ensureAccountFunded(address) {
 }
 
 // ── Aegis Vault — ZK location proof + aid claim ───────────────
-const AEGIS_VAULT_ID = import.meta.env?.VITE_AEGIS_VAULT_ID || "";
+const AEGIS_VAULT_ID = clientEnv.VITE_AEGIS_VAULT_ID;
 
 export async function claimAid(
   recipient,
@@ -1624,7 +1610,7 @@ export async function setTreasuryDailyLimit(asset, limit, wallet) {
 }
 
 // ── Price oracle conversions (HelPhone DAO, #543) ──────────────
-const DAO_ORACLE_CONTRACT_ID = import.meta.env?.VITE_HELPHONE_DAO_ID || "";
+const DAO_ORACLE_CONTRACT_ID = clientEnv.VITE_HELPHONE_DAO_ID;
 
 /** Live token conversion via the DAO's oracle adapter (e.g. XLM -> USDC).
  *  Throws an Error with a user-facing message; a feed older than 1 hour

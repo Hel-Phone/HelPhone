@@ -1,11 +1,40 @@
 /// <reference types="vitest/config" />
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { visualizer } from "rollup-plugin-visualizer";
 import { envFirewallVitePlugin } from "./scripts/security/env_firewall.js";
 import deadcodePruner from "./plugins/vite-plugin-deadcode-pruner.js";
 import { workerSandboxVitePlugin } from "./plugins/vite-plugin-worker-sandbox.js";
+import {
+  createContractIdsSchema,
+  normalizeContractEnvironment,
+} from "./shared/contractEnvironment.ts";
+
+function validateContractEnvironmentPlugin() {
+  return {
+    name: "helphone-contract-environment-validation",
+    configResolved(config) {
+      const rawEnv = loadEnv(config.mode, process.cwd(), "VITE_");
+      const env = normalizeContractEnvironment(rawEnv, "client");
+      const network = env.VITE_STELLAR_NETWORK || "testnet";
+      if (network !== "testnet" && network !== "mainnet") {
+        throw new Error(
+          `VITE_STELLAR_NETWORK must be testnet or mainnet (received ${network}).`,
+        );
+      }
+      const result = createContractIdsSchema(network, "client").safeParse(env);
+      if (!result.success) {
+        const messages = result.error.issues
+          .map((issue) => `${String(issue.path[0])}: ${issue.message}`)
+          .join("; ");
+        throw new Error(
+          `Invalid Vite contract IDs for ${network}: ${messages}`,
+        );
+      }
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => ({
   html: {
@@ -22,6 +51,7 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
+    validateContractEnvironmentPlugin(),
     // #626: fails the build if static output contains leaked secrets.
     envFirewallVitePlugin(),
     deadcodePruner(),

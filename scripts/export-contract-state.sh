@@ -7,17 +7,35 @@
 
 set -euo pipefail
 
-# Configuration with defaults
-CONTRACT_ID="${CONTRACT_ID:-CC325F37QW7N2F5M3QGHL4A4O7J2K9L0M1N2O3P4Q5R6S7T8U9V0}"
-SOROBAN_RPC_URL="${SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}"
-NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}"
+# Configuration
+NETWORK="${STELLAR_NETWORK:-testnet}"
+case "${NETWORK}" in
+  testnet)
+    DAO_ID="${HELPHONE_DAO_ID:-}"
+    SOROBAN_RPC_URL="${SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}"
+    NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}"
+    ;;
+  mainnet)
+    DAO_ID="${HELPHONE_DAO_ID:-}"
+    SOROBAN_RPC_URL="${SOROBAN_RPC_URL:-https://mainnet.sorobanrpc.com}"
+    NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE:-Public Global Stellar Network ; September 2015}"
+    ;;
+  *)
+    echo "ERROR: STELLAR_NETWORK must be testnet or mainnet" >&2
+    exit 1
+    ;;
+esac
+if [[ ! "${DAO_ID}" =~ ^C[A-Z2-7]{55}$ ]]; then
+  echo "ERROR: HELPHONE_DAO_ID must be a deployed contract ID for ${NETWORK}" >&2
+  exit 1
+fi
 OUTPUT_DIR="${OUTPUT_DIR:-./snapshots}"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 mkdir -p "${OUTPUT_DIR}"
 
 echo "[state-exporter] Starting Soroban contract storage state backup..."
-echo "[state-exporter] Target Contract ID: ${CONTRACT_ID}"
+echo "[state-exporter] Target Contract ID: ${DAO_ID} (${NETWORK})"
 echo "[state-exporter] Soroban RPC URL:  ${SOROBAN_RPC_URL}"
 
 # Fetch latest ledger sequence via RPC JSON-RPC
@@ -45,7 +63,7 @@ fi
 
 if [ -n "${CLI_TOOL}" ]; then
   echo "[state-exporter] Utilizing CLI tool '${CLI_TOOL}' for storage inspection..."
-  INSPECT_OUT=$("${CLI_TOOL}" contract inspect --id "${CONTRACT_ID}" --rpc-url "${SOROBAN_RPC_URL}" 2>/dev/null || echo "")
+  INSPECT_OUT=$("${CLI_TOOL}" contract inspect --id "${DAO_ID}" --rpc-url "${SOROBAN_RPC_URL}" 2>/dev/null || echo "")
   if [ -n "${INSPECT_OUT}" ]; then
     ENTRIES_JSON=$(echo "${INSPECT_OUT}" | jq -c '.storage // []' 2>/dev/null || echo "[]")
   fi
@@ -54,13 +72,13 @@ fi
 # Fallback/Direct RPC storage entry extraction if CLI did not populate entries
 if [ "${ENTRIES_JSON}" = "[]" ]; then
   echo "[state-exporter] Querying Soroban RPC getLedgerEntries for storage dump..."
-  DUMP_REQ="{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"getLedgerEntries\",\"params\":{\"keys\":[\"${CONTRACT_ID}\"]}}"
+  DUMP_REQ="{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"getLedgerEntries\",\"params\":{\"keys\":[\"${DAO_ID}\"]}}"
   DUMP_RESP=$(curl -s -X POST "${SOROBAN_RPC_URL}" -H "Content-Type: application/json" -d "${DUMP_REQ}" || echo '{}')
   
   ENTRIES_JSON='[
     {
       "key": "ADMIN",
-      "val": {"address": "'"${CONTRACT_ID}"'"},
+      "val": {"address": "'"${DAO_ID}"'"},
       "durability": "persistent",
       "lastModifiedLedgerSeq": '"${LEDGER_SEQ}"'
     },
@@ -78,7 +96,7 @@ OUTPUT_FILE="${OUTPUT_DIR}/snapshot-${LEDGER_SEQ}.json"
 cat <<EOF > "${OUTPUT_FILE}"
 {
   "ledgerSequence": ${LEDGER_SEQ},
-  "contractId": "${CONTRACT_ID}",
+  "contractId": "${DAO_ID}",
   "timestamp": "${TIMESTAMP}",
   "entries": ${ENTRIES_JSON},
   "metadata": {

@@ -1,7 +1,31 @@
 import { rpc, TransactionBuilder, Networks, Contract } from '@stellar/stellar-sdk';
+import {
+  contractIdsFromEnvironment,
+  createContractIdsSchema,
+  normalizeContractEnvironment,
+} from '../../shared/contractEnvironment.ts';
 
 const TTL_THRESHOLD_LEDGERS = 10_000;
 const EXTEND_TO_LEDGERS = 100_000;
+
+export function getConfiguredContractIds(
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const rawNetwork = env.STELLAR_NETWORK ?? 'testnet';
+  if (rawNetwork !== 'testnet' && rawNetwork !== 'mainnet') {
+    throw new Error(`STELLAR_NETWORK must be testnet or mainnet (received ${rawNetwork}).`);
+  }
+  const network = rawNetwork;
+  const normalized = normalizeContractEnvironment(env, 'server');
+  const result = createContractIdsSchema(network, 'server').safeParse(normalized);
+  if (!result.success) {
+    const errors = result.error.issues
+      .map((issue) => `${String(issue.path[0])}: ${issue.message}`)
+      .join('; ');
+    throw new Error(`Invalid server contract IDs for ${network}: ${errors}`);
+  }
+  return Object.values(contractIdsFromEnvironment(normalized, network, 'server'));
+}
 
 export interface RentRenewalResult {
   key: string;
@@ -89,5 +113,9 @@ export class RentRenewer {
       results.push(await this.renewIfNeeded(id, sourceKeypair));
     }
     return results;
+  }
+
+  async scanConfiguredContracts(sourceKeypair: any): Promise<RentRenewalResult[]> {
+    return this.scanAndRenewAll(getConfiguredContractIds(), sourceKeypair);
   }
 }

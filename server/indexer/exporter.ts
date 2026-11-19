@@ -1,6 +1,28 @@
 import { fsyncSync, writeFileSync, readFileSync, existsSync, readdirSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import type { ContractStateSnapshot, SorobanStorageEntry } from '../../src/types/index.js'
+import {
+  contractIdsFromEnvironment,
+  createContractIdsSchema,
+  normalizeContractEnvironment,
+} from '../../shared/contractEnvironment.ts'
+
+function configuredDaoId(): string {
+  const rawNetwork = process.env.STELLAR_NETWORK ?? 'testnet'
+  if (rawNetwork !== 'testnet' && rawNetwork !== 'mainnet') {
+    throw new Error(`STELLAR_NETWORK must be testnet or mainnet (received ${rawNetwork}).`)
+  }
+  const network = rawNetwork
+  const normalized = normalizeContractEnvironment(process.env, 'server')
+  const result = createContractIdsSchema(network, 'server').safeParse(normalized)
+  if (!result.success) {
+    const errors = result.error.issues.map((issue) => issue.message).join('; ')
+    throw new Error(`Invalid server contract IDs for ${network}: ${errors}`)
+  }
+  const id = contractIdsFromEnvironment(normalized, network, 'server').helphone_dao
+  if (!id) throw new Error(`HELPHONE_DAO_ID is not deployed for ${network}.`)
+  return id
+}
 
 export class SorobanStateExporter {
   private contractId: string
@@ -8,7 +30,7 @@ export class SorobanStateExporter {
   private outputDir: string
 
   constructor(
-    contractId = process.env.CONTRACT_ID || 'CC325F37QW7N2F5M3QGHL4A4O7J2K9L0M1N2O3P4Q5R6S7T8U9V0',
+    contractId = configuredDaoId(),
     rpcUrl = process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org',
     outputDir = './snapshots'
   ) {

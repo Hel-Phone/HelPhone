@@ -104,7 +104,7 @@ export function SustainabilityPanel({ stats }) {
           }}
         >
           Sustainability reserve not deployed. Set
-          VITE_HELPHONE_DAO_CONTRACT_ID to show dependency funding stats.
+          VITE_HELPHONE_DAO_ID to show dependency funding stats.
         </p>
       )}
     </section>

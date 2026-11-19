@@ -1,8 +1,30 @@
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import process from 'node:process'
+import { error } from 'node:console'
+import { setTimeout } from 'node:timers'
+import manifest from '../contracts/manifest.json' with { type: 'json' }
 
 const children = []
 let shuttingDown = false
+const network = process.env.VITE_STELLAR_NETWORK || process.env.STELLAR_NETWORK || 'testnet'
+const contractEnvNames = {
+  aegis_vault: 'VITE_AEGIS_VAULT_ID',
+  emergency_vault: 'VITE_EMERGENCY_VAULT_ID',
+  helphone_dao: 'VITE_HELPHONE_DAO_ID',
+  maintainer_vault: 'VITE_MAINTAINER_VAULT_ID',
+}
+
+if (network !== 'testnet' && network !== 'mainnet') {
+  throw new Error(`Unsupported VITE_STELLAR_NETWORK: ${network}`)
+}
+
+for (const [contract, variableName] of Object.entries(contractEnvNames)) {
+  if (!process.env[variableName] && manifest[contract][network].id !== 'UNDEPLOYED') {
+    process.env[variableName] = manifest[contract][network].id
+  }
+}
+process.env.VITE_STELLAR_NETWORK ||= network
 
 function prefixPipe(stream, label, sink) {
   const rl = createInterface({ input: stream })
@@ -26,7 +48,7 @@ function run(label, command, args, env = {}) {
   child.on('exit', code => {
     if (shuttingDown) return
     if (code && code !== 0) {
-      console.error(`[${label}] exited with code ${code}`)
+      error(`[${label}] exited with code ${code}`)
       shutdown(code)
     }
   })

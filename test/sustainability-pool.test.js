@@ -115,7 +115,7 @@ describe("SustainabilityPanel", () => {
   it("explains how to enable the panel when the DAO is not deployed", () => {
     render(createElement(SustainabilityPanel, { stats: null }));
     expect(
-      screen.getByText(/VITE_HELPHONE_DAO_CONTRACT_ID/),
+      screen.getByText(/VITE_HELPHONE_DAO_ID/),
     ).toBeInTheDocument();
   });
 });

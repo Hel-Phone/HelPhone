@@ -6,8 +6,13 @@ set -euo pipefail
 # schedule (cron / Render scheduled job); see server/indexer/rentRenewer.ts
 # for the underlying extend_ttl submission logic.
 
-RPC_URL="${SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}"
-NETWORK="${SOROBAN_NETWORK:-testnet}"
+NETWORK="${STELLAR_NETWORK:-testnet}"
+if [ "$NETWORK" = "mainnet" ]; then
+  DEFAULT_RPC_URL="https://mainnet.sorobanrpc.com"
+else
+  DEFAULT_RPC_URL="https://soroban-testnet.stellar.org"
+fi
+RPC_URL="${SOROBAN_RPC_URL:-${DEFAULT_RPC_URL}}"
 
 if [ -z "${RENT_RENEWAL_SOURCE_SECRET:-}" ]; then
   echo "ERROR: RENT_RENEWAL_SOURCE_SECRET must be set" >&2
@@ -18,16 +23,16 @@ echo "[renew-rent] Starting rent renewal scan at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "[renew-rent] RPC: ${RPC_URL} | Network: ${NETWORK}"
 
 node --loader ts-node/esm -e "
-  import { RentRenewer } from './server/indexer/rentRenewer.ts';
-  import { Keypair } from '@stellar/stellar-sdk';
+  import { RentRenewer, getConfiguredContractIds } from './server/indexer/rentRenewer.ts';
+  import { Keypair, Networks } from '@stellar/stellar-sdk';
 
-  const contractIds = (process.env.RENT_RENEWAL_CONTRACT_IDS || '').split(',').filter(Boolean);
+  const contractIds = getConfiguredContractIds();
   if (contractIds.length === 0) {
-    console.log('[renew-rent] No contract IDs configured, exiting.');
-    process.exit(0);
+    throw new Error('No deployed contract IDs are available for ' + process.env.STELLAR_NETWORK);
   }
 
-  const renewer = new RentRenewer('${RPC_URL}');
+  const passphrase = process.env.STELLAR_NETWORK === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
+  const renewer = new RentRenewer('${RPC_URL}', passphrase);
   const keypair = Keypair.fromSecret(process.env.RENT_RENEWAL_SOURCE_SECRET);
 
   renewer.scanAndRenewAll(contractIds, keypair).then((results) => {

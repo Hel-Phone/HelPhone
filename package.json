@@ -20,6 +20,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:manifest": "node scripts/verify-manifest.mjs",
+    "check:env-names": "node scripts/check-env-names.mjs",
     "benchmark:routing": "vitest run test/routing-benchmark-spike.test.js --reporter=verbose",
     "test:http2-manifest": "vitest run test/http2-manifest.test.js",
     "security:lockfiles": "node scripts/verify-lockfile-hashes.js",
