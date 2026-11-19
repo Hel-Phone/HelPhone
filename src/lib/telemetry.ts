@@ -575,6 +575,39 @@ export function recordError(error: Error, ctx: ErrorContext = {}): void {
   }
 }
 
+export function currentTraceIds(): { traceId: string; spanId: string } | undefined {
+  const spanContext = trace.getActiveSpan()?.spanContext();
+  if (!spanContext) return undefined;
+  return { traceId: spanContext.traceId, spanId: spanContext.spanId };
+}
+
+export function trackOfflineGap(): () => void {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return () => {};
+  }
+
+  let offlineSince = navigator.onLine ? null : Date.now();
+  const startGap = () => {
+    offlineSince = Date.now();
+  };
+  const finishGap = () => {
+    if (offlineSince === null) return;
+
+    const durationMs = Math.max(0, Date.now() - offlineSince);
+    const span = tracer.startSpan('network.offline_gap');
+    span.setAttribute('network.offline_gap_ms', durationMs);
+    span.end();
+    offlineSince = null;
+  };
+
+  window.addEventListener('offline', startGap);
+  window.addEventListener('online', finishGap);
+  return () => {
+    window.removeEventListener('offline', startGap);
+    window.removeEventListener('online', finishGap);
+  };
+}
+
 /**
  * Link an error to an existing trace (Issue #746)
  */

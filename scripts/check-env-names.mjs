@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import process from 'node:process';
 import { error, log } from 'node:console';
 
-const ROOT = process.cwd();
+const ROOT = resolve(process.argv[2] || process.cwd());
 const EXCLUDED_FILES = new Set([
   'scripts/check-env-names.mjs',
   'shared/contractEnvAliases.ts',

@@ -17,7 +17,7 @@ import { useTranslation } from 'react-i18next'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { useNetworkQuality } from '../hooks/useNetworkQuality'
-import { useGeofencing } from '../hooks/useGeofencing'
+import { useGeofencing } from '../hooks/useGeofencing.ts'
 import {
   startKioskSession,
   getKioskSession,

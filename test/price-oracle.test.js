@@ -28,7 +28,7 @@ vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
   };
 });
 
-const DAO = StrKey.encodeContract(Buffer.alloc(32, 9));
+const DAO = "CDP5XZ7UYCGSQBYRDYM2OEAUQJULBZPULSQXK7LGNAJTRXRG3VHZLSHY";
 const XLM = StrKey.encodeContract(Buffer.alloc(32, 1));
 const USDC = StrKey.encodeContract(Buffer.alloc(32, 2));
 
@@ -93,8 +93,7 @@ describe("contract.ts — getOracleQuote", () => {
   it("requires the DAO contract id", async () => {
     vi.resetModules();
     vi.stubEnv("VITE_HELPHONE_DAO_ID", "");
-    const bare = await import("../src/lib/contract.ts");
-    await expect(bare.getOracleQuote(XLM, USDC, 1)).rejects.toThrow(/not configured/);
+    await expect(import("../src/lib/contract.ts")).rejects.toThrow(/Invalid client environment configuration for testnet/);
   });
 });
 

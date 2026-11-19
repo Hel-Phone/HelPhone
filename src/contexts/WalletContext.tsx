@@ -67,6 +67,35 @@ function WrongNetworkScreen({ targetNetwork }: { targetNetwork: StellarNetwork }
   )
 }
 
+export function WalletNetworkGate({
+  isConnected,
+  walletNetwork,
+  targetNetwork,
+  manifestNetwork,
+  contractId,
+  children,
+}: {
+  isConnected: boolean
+  walletNetwork: string
+  targetNetwork: StellarNetwork
+  manifestNetwork: StellarNetwork
+  contractId?: string
+  children: ReactNode
+}) {
+  if (
+    isConnected &&
+    isWalletNetworkMismatch(
+      walletNetwork,
+      targetNetwork,
+      manifestNetwork,
+      contractId,
+    )
+  ) {
+    return <WrongNetworkScreen targetNetwork={targetNetwork} />
+  }
+  return children
+}
+
 export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [walletState, setWalletState] = useState<WalletState>({
     address: null,
@@ -120,25 +149,27 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }
 
   const targetNetwork = clientEnv.VITE_STELLAR_NETWORK
-  if (
-    walletState.isConnected &&
-    isWalletNetworkMismatch(walletState.network, targetNetwork)
-  ) {
-    return <WrongNetworkScreen targetNetwork={targetNetwork} />
-  }
 
   return (
-    <WalletContext.Provider
-      value={{
-        walletState,
-        connectWallet,
-        disconnectWallet,
-        generateEncryptedSessionKey,
-        decryptSessionKey,
-      }}
+    <WalletNetworkGate
+      isConnected={walletState.isConnected}
+      walletNetwork={walletState.network}
+      targetNetwork={targetNetwork}
+      manifestNetwork={clientEnv.VITE_STELLAR_NETWORK}
+      contractId={clientEnv.VITE_HELPHONE_DAO_ID}
     >
-      {children}
-    </WalletContext.Provider>
+      <WalletContext.Provider
+        value={{
+          walletState,
+          connectWallet,
+          disconnectWallet,
+          generateEncryptedSessionKey,
+          decryptSessionKey,
+        }}
+      >
+        {children}
+      </WalletContext.Provider>
+    </WalletNetworkGate>
   )
 }
 
