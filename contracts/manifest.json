@@ -1,0 +1,43 @@
+{
+  "aegis_vault": {
+    "testnet": {
+      "id": "UNDEPLOYED",
+      "wasmHash": "UNDEPLOYED"
+    },
+    "mainnet": {
+      "id": "UNDEPLOYED",
+      "wasmHash": "UNDEPLOYED"
+    }
+  },
+  "emergency_vault": {
+    "testnet": {
+      "id": "UNDEPLOYED",
+      "wasmHash": "UNDEPLOYED"
+    },
+    "mainnet": {
+      "id": "UNDEPLOYED",
+      "wasmHash": "UNDEPLOYED"
+    }
+  },
+  "helphone_dao": {
+    "testnet": {
+      "id": "CDP5XZ7UYCGSQBYRDYM2OEAUQJULBZPULSQXK7LGNAJTRXRG3VHZLSHY",
+      "wasmHash": "UNVERIFIED",
+      "status": "unverified"
+    },
+    "mainnet": {
+      "id": "UNDEPLOYED",
+      "wasmHash": "UNDEPLOYED"
+    }
+  },
+  "maintainer_vault": {
+    "testnet": {
+      "id": "UNDEPLOYED",
+      "wasmHash": "UNDEPLOYED"
+    },
+    "mainnet": {
+      "id": "UNDEPLOYED",
+      "wasmHash": "UNDEPLOYED"
+    }
+  }
+}
