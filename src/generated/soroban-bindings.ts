@@ -11,6 +11,7 @@ export type SorobanContractBinding = {
   wasmFile: string;
   source: string;
   functions: SorobanBindingFunction[];
+  contractIds?: { testnet: string; mainnet: string };
 };
 
 export const sorobanBindings = [
@@ -169,7 +170,11 @@ export const sorobanBindings = [
           "public_inputs_prefix"
         ]
       }
-    ]
+    ],
+    "contractIds": {
+      "testnet": "UNDEPLOYED",
+      "mainnet": "UNDEPLOYED"
+    }
   },
   {
     "crateName": "emergency_vault",
@@ -227,7 +232,11 @@ export const sorobanBindings = [
           "id"
         ]
       }
-    ]
+    ],
+    "contractIds": {
+      "testnet": "UNDEPLOYED",
+      "mainnet": "UNDEPLOYED"
+    }
   },
   {
     "crateName": "helphone_dao",
@@ -263,6 +272,20 @@ export const sorobanBindings = [
         ]
       },
       {
+        "name": "collect_sustainability_fee",
+        "params": [
+          "payer",
+          "gross_amount"
+        ]
+      },
+      {
+        "name": "configure_sustainability",
+        "params": [
+          "admin",
+          "reserve_token"
+        ]
+      },
+      {
         "name": "create_proposal",
         "params": [
           "proposer",
@@ -280,6 +303,12 @@ export const sorobanBindings = [
           "source_token",
           "payout_token",
           "source_amount"
+        ]
+      },
+      {
+        "name": "disburse_grant",
+        "params": [
+          "proposal_id"
         ]
       },
       {
@@ -317,6 +346,18 @@ export const sorobanBindings = [
         "params": []
       },
       {
+        "name": "get_maintainer_funding",
+        "params": [
+          "maintainer"
+        ]
+      },
+      {
+        "name": "get_maintainer_grant",
+        "params": [
+          "proposal_id"
+        ]
+      },
+      {
         "name": "get_oracle",
         "params": []
       },
@@ -332,6 +373,10 @@ export const sorobanBindings = [
       },
       {
         "name": "get_security_multisig",
+        "params": []
+      },
+      {
+        "name": "get_sustainability_stats",
         "params": []
       },
       {
@@ -351,6 +396,21 @@ export const sorobanBindings = [
         "params": [
           "proposal_id",
           "voter"
+        ]
+      },
+      {
+        "name": "get_voting_supply",
+        "params": []
+      },
+      {
+        "name": "propose_maintainer_grant",
+        "params": [
+          "proposer",
+          "maintainer",
+          "package",
+          "amount",
+          "title",
+          "description"
         ]
       },
       {
@@ -390,13 +450,24 @@ export const sorobanBindings = [
         ]
       },
       {
+        "name": "set_voting_supply",
+        "params": [
+          "admin",
+          "supply"
+        ]
+      },
+      {
         "name": "transfer_admin",
         "params": [
           "current_admin",
           "new_admin"
         ]
       }
-    ]
+    ],
+    "contractIds": {
+      "testnet": "CDP5XZ7UYCGSQBYRDYM2OEAUQJULBZPULSQXK7LGNAJTRXRG3VHZLSHY",
+      "mainnet": "UNDEPLOYED"
+    }
   },
   {
     "crateName": "maintainer_vault",
@@ -448,7 +519,11 @@ export const sorobanBindings = [
         "name": "stats",
         "params": []
       }
-    ]
+    ],
+    "contractIds": {
+      "testnet": "UNDEPLOYED",
+      "mainnet": "UNDEPLOYED"
+    }
   }
 ] as const satisfies readonly SorobanContractBinding[];
 

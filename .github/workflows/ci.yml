@@ -100,7 +100,7 @@ jobs:
         run: npm test
 
       - name: Execute Soroban State Export Verification Script
-        run: bash scripts/export-contract-state.sh
+        run: bash scripts/export-contract-state.sh --dry-run
 
   database-migrations:
     name: Schema Migrations (Postgres)

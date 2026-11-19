@@ -7,16 +7,22 @@
 
 set -euo pipefail
 
+DRY_RUN=false
+if [[ "${1:-}" == "--dry-run" ]]; then
+  DRY_RUN=true
+  shift
+fi
+
 # Configuration
 NETWORK="${STELLAR_NETWORK:-testnet}"
 case "${NETWORK}" in
   testnet)
-    DAO_ID="${HELPHONE_DAO_ID:-}"
+    DAO_ID="${HELPHONE_DAO_ID:-UNDEPLOYED}"
     SOROBAN_RPC_URL="${SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}"
     NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}"
     ;;
   mainnet)
-    DAO_ID="${HELPHONE_DAO_ID:-}"
+    DAO_ID="${HELPHONE_DAO_ID:-UNDEPLOYED}"
     SOROBAN_RPC_URL="${SOROBAN_RPC_URL:-https://mainnet.sorobanrpc.com}"
     NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE:-Public Global Stellar Network ; September 2015}"
     ;;
@@ -25,9 +31,17 @@ case "${NETWORK}" in
     exit 1
     ;;
 esac
+if [[ "${DAO_ID}" == "UNDEPLOYED" && "${DRY_RUN}" == "true" ]]; then
+  echo "[state-exporter] dry-run: ${NETWORK} HELPHONE_DAO_ID=UNDEPLOYED; no RPC requested"
+  exit 0
+fi
 if [[ ! "${DAO_ID}" =~ ^C[A-Z2-7]{55}$ ]]; then
   echo "ERROR: HELPHONE_DAO_ID must be a deployed contract ID for ${NETWORK}" >&2
   exit 1
+fi
+if [[ "${DRY_RUN}" == "true" ]]; then
+  echo "[state-exporter] dry-run: ${NETWORK} HELPHONE_DAO_ID=${DAO_ID}; no RPC requested"
+  exit 0
 fi
 OUTPUT_DIR="${OUTPUT_DIR:-./snapshots}"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")

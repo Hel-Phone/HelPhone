@@ -1,4 +1,21 @@
 # Render Blueprint for HelPhone Services & Automated Soroban State Exporter
+envVarGroups:
+  # Update this group once; the API service and exporter intentionally share it.
+  - name: helphone-contracts
+    envVars:
+      - key: STELLAR_NETWORK
+        sync: false
+      - key: SOROBAN_RPC_URL
+        sync: false
+      - key: AEGIS_VAULT_ID
+        sync: false
+      - key: EMERGENCY_VAULT_ID
+        sync: false
+      - key: HELPHONE_DAO_ID
+        sync: false
+      - key: MAINTAINER_VAULT_ID
+        sync: false
+
 services:
   - type: web
     name: helphone-backend-server
@@ -25,10 +42,7 @@ services:
       - key: DATABASE_URL
         value: fromEnv
         sync: false
-      - key: SOROBAN_RPC_URL
-        value: "https://soroban-testnet.stellar.org"
-      - key: CONTRACT_ID
-        value: "CC325F37QW7N2F5M3QGHL4A4O7J2K9L0M1N2O3P4Q5R6S7T8U9V0"
+      - fromGroup: helphone-contracts
       # Rate-limit whitelist (#536): verified emergency-service subnets / API keys
       # are stored in Redis and managed via /admin/whitelist (see docs/security-runbook.md).
       - key: REDIS_URL
@@ -85,10 +99,7 @@ services:
     buildCommand: npm ci --ignore-scripts
     startCommand: bash scripts/export-contract-state.sh
     envVars:
+      - fromGroup: helphone-contracts
       - key: DATABASE_URL
         value: fromEnv
         sync: false
-      - key: SOROBAN_RPC_URL
-        value: "https://soroban-testnet.stellar.org"
-      - key: CONTRACT_ID
-        value: "CC325F37QW7N2F5M3QGHL4A4O7J2K9L0M1N2O3P4Q5R6S7T8U9V0"

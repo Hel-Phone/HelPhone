@@ -4,6 +4,16 @@
 # - Pre-fetched vendored dependencies
 # - Strict seccomp profiles
 # - No shell access or postinstall script execution
+#
+# One image equals one Stellar network: Vite inlines VITE_* values at build
+# time. Build separate images; do not promote a testnet image to mainnet.
+# Testnet:
+# docker build -f Dockerfile.hermetic --build-arg STELLAR_NETWORK=testnet \
+#   --build-arg VITE_HELPHONE_DAO_ID=CDP5XZ7UYCGSQBYRDYM2OEAUQJULBZPULSQXK7LGNAJTRXRG3VHZLSHY .
+# Mainnet (after deployment):
+# docker build -f Dockerfile.hermetic --build-arg STELLAR_NETWORK=mainnet \
+#   --build-arg VITE_AEGIS_VAULT_ID=<aegis-id> --build-arg VITE_EMERGENCY_VAULT_ID=<emergency-id> \
+#   --build-arg VITE_HELPHONE_DAO_ID=<dao-id> --build-arg VITE_MAINTAINER_VAULT_ID=<maintainer-id> .
 
 FROM node:22-alpine AS dependencies
 WORKDIR /build
@@ -27,6 +37,12 @@ RUN npm cache clean --force
 FROM node:22-alpine AS build-hermetic
 WORKDIR /app
 
+ARG STELLAR_NETWORK=testnet
+ARG VITE_AEGIS_VAULT_ID
+ARG VITE_EMERGENCY_VAULT_ID
+ARG VITE_HELPHONE_DAO_ID
+ARG VITE_MAINTAINER_VAULT_ID
+
 # Copy pre-built vendor cache from previous stage
 COPY --from=vendor-cache /vendor /app/vendor
 
@@ -40,8 +56,17 @@ RUN ln -s /app/vendor/node_modules ./node_modules
 ENV npm_config_ignore_scripts=true
 ENV NODE_ENV=production
 
-# Run build with --network=none to prevent any network access
+# Select the matching environment example, then override only IDs explicitly
+# provided by the caller. ARGs participate in this RUN cache key.
 RUN --network=none \
+    set -eu; \
+    case "${STELLAR_NETWORK}" in testnet|mainnet) ;; *) echo "Unsupported STELLAR_NETWORK: ${STELLAR_NETWORK}" >&2; exit 1 ;; esac; \
+    cp ".env.${STELLAR_NETWORK}.example" .env.production; \
+    export VITE_STELLAR_NETWORK="${STELLAR_NETWORK}"; \
+    if [ -z "${VITE_AEGIS_VAULT_ID:-}" ]; then unset VITE_AEGIS_VAULT_ID; else export VITE_AEGIS_VAULT_ID; fi; \
+    if [ -z "${VITE_EMERGENCY_VAULT_ID:-}" ]; then unset VITE_EMERGENCY_VAULT_ID; else export VITE_EMERGENCY_VAULT_ID; fi; \
+    if [ -z "${VITE_HELPHONE_DAO_ID:-}" ]; then unset VITE_HELPHONE_DAO_ID; else export VITE_HELPHONE_DAO_ID; fi; \
+    if [ -z "${VITE_MAINTAINER_VAULT_ID:-}" ]; then unset VITE_MAINTAINER_VAULT_ID; else export VITE_MAINTAINER_VAULT_ID; fi; \
     npm run build 2>&1
 
 # Output stage: Production-ready artifacts

@@ -8,6 +8,7 @@ import { error, log } from 'node:console';
 const ROOT = process.cwd();
 const EXCLUDED_FILES = new Set([
   'scripts/check-env-names.mjs',
+  'shared/contractEnvAliases.ts',
   'shared/contractEnvironment.ts',
   'server/legacyContractEnv.js',
   'src/vite-env.d.ts',
