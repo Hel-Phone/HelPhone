@@ -4,7 +4,7 @@ import { KitEventType } from '@creit-tech/stellar-wallets-kit/types'
 import type { WalletState } from '../types/index.js'
 import { generateEd25519Keypair, encryptAESGCM, decryptAESGCM } from '../lib/crypto.js'
 import { clientEnv } from '../lib/env'
-import { getContractDeployment, type StellarNetwork } from '../../shared/contractManifest'
+import type { StellarNetwork } from '../../shared/contractManifest'
 
 interface WalletContextValue {
   walletState: WalletState
@@ -26,13 +26,14 @@ function normalizeNetwork(value: string): StellarNetwork | null {
 export function isWalletNetworkMismatch(
   walletNetwork: string,
   targetNetwork: StellarNetwork,
+  manifestNetwork: StellarNetwork = clientEnv.VITE_STELLAR_NETWORK,
+  contractId: string | undefined = clientEnv.VITE_HELPHONE_DAO_ID,
 ): boolean {
   const walletNetworkName = normalizeNetwork(walletNetwork)
-  const deployment = getContractDeployment('helphone_dao', targetNetwork)
   return (
     walletNetworkName !== targetNetwork ||
-    deployment.id === 'UNDEPLOYED' ||
-    deployment.id !== clientEnv.VITE_HELPHONE_DAO_ID
+    targetNetwork !== manifestNetwork ||
+    !contractId
   )
 }
 

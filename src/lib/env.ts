@@ -4,11 +4,34 @@
  * Secrets should never be exposed to the client bundle.
  */
 import { z } from 'zod';
-import {
-  contractIdsFromEnvironment,
-  createContractIdsSchema,
-  normalizeContractEnvironment,
-} from '../../shared/contractEnvironment.ts';
+import { normalizeContractEnvironment } from '../../shared/contractEnvAliases.ts';
+
+type StellarNetwork = 'testnet' | 'mainnet';
+type ContractName =
+  | 'aegis_vault'
+  | 'emergency_vault'
+  | 'helphone_dao'
+  | 'maintainer_vault';
+type ContractIds = Partial<Record<ContractName, string>>;
+
+declare const __HELPHONE_CONTRACT_IDS__: ContractIds;
+declare const __HELPHONE_CONTRACT_NETWORK__: StellarNetwork;
+
+const CONTRACT_ENV_NAMES: Record<ContractName, string> = {
+  aegis_vault: 'VITE_AEGIS_VAULT_ID',
+  emergency_vault: 'VITE_EMERGENCY_VAULT_ID',
+  helphone_dao: 'VITE_HELPHONE_DAO_ID',
+  maintainer_vault: 'VITE_MAINTAINER_VAULT_ID',
+};
+const CONTRACT_NAMES = Object.keys(CONTRACT_ENV_NAMES) as ContractName[];
+const clientManifestIds =
+  typeof __HELPHONE_CONTRACT_IDS__ === 'undefined'
+    ? {}
+    : __HELPHONE_CONTRACT_IDS__;
+const clientManifestNetwork =
+  typeof __HELPHONE_CONTRACT_NETWORK__ === 'undefined'
+    ? undefined
+    : __HELPHONE_CONTRACT_NETWORK__;
 
 const clientEnvBaseSchema = z.object({
   VITE_STELLAR_NETWORK: z.enum(['testnet', 'mainnet']).default('testnet'),
@@ -22,22 +45,50 @@ const clientEnvBaseSchema = z.object({
   VITE_API_BASE_URL: z.string().url().optional(),
 });
 
-export function createClientEnvSchema(network: 'testnet' | 'mainnet') {
+export function createClientEnvSchema(
+  network: StellarNetwork,
+  manifestIds: ContractIds = clientManifestIds,
+) {
   return clientEnvBaseSchema.superRefine((env, ctx) => {
-    const result = createContractIdsSchema(network, 'client').safeParse(env);
-    if (!result.success) {
-      for (const issue of result.error.issues) ctx.addIssue(issue);
+    if (clientManifestNetwork && network !== clientManifestNetwork) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['VITE_STELLAR_NETWORK'],
+        message: `VITE_STELLAR_NETWORK does not match the ${clientManifestNetwork} build manifest.`,
+      });
+    }
+
+    for (const contract of CONTRACT_NAMES) {
+      const variableName = CONTRACT_ENV_NAMES[contract];
+      const id = env[variableName] as string | undefined;
+      if (id === undefined) continue;
+
+      if (!/^C[A-Z2-7]{55}$/.test(id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [variableName],
+          message: `${variableName} must be a valid Stellar contract ID for ${network}.`,
+        });
+        continue;
+      }
+
+      const expectedId = manifestIds[contract];
+      if (
+        expectedId !== undefined &&
+        (expectedId === 'UNDEPLOYED' || id !== expectedId)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [variableName],
+          message: `${variableName} does not match the ${network} ${contract} ID in contracts/manifest.json.`,
+        });
+      }
     }
   });
 }
 
 export const clientEnvSchema = createClientEnvSchema('testnet');
-export type ClientEnv = z.infer<typeof clientEnvBaseSchema> & {
-  VITE_AEGIS_VAULT_ID?: string;
-  VITE_EMERGENCY_VAULT_ID?: string;
-  VITE_HELPHONE_DAO_ID?: string;
-  VITE_MAINTAINER_VAULT_ID?: string;
-};
+export type ClientEnv = z.infer<typeof clientEnvBaseSchema>;
 
 export function validateClientEnv(
   env: Record<string, unknown> = { ...import.meta.env },
@@ -57,14 +108,17 @@ export function validateClientEnv(
     );
   }
 
-  const ids = contractIdsFromEnvironment(result.data, network, 'client');
-  return {
-    ...result.data,
-    VITE_AEGIS_VAULT_ID: ids.aegis_vault,
-    VITE_EMERGENCY_VAULT_ID: ids.emergency_vault,
-    VITE_HELPHONE_DAO_ID: ids.helphone_dao,
-    VITE_MAINTAINER_VAULT_ID: ids.maintainer_vault,
-  };
+  const ids = Object.fromEntries(
+    CONTRACT_NAMES.flatMap((contract) => {
+      const supplied = result.data[CONTRACT_ENV_NAMES[contract]] as
+        | string
+        | undefined;
+      const manifestId = clientManifestIds[contract];
+      const id = supplied ?? (manifestId && manifestId !== 'UNDEPLOYED' ? manifestId : undefined);
+      return id === undefined ? [] : [[CONTRACT_ENV_NAMES[contract], id]];
+    }),
+  );
+  return { ...result.data, ...ids };
 }
 
 export const clientEnv = validateClientEnv();

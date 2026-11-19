@@ -28,10 +28,31 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const SENSITIVE_KEY_RE =
-  /SECRET|PRIVATE|TOKEN|MNEMONIC|SEED|PASSPHRASE|PASSWORD|API[_-]?KEY|AUTH[_-]?TOKEN|STELLAR[_-]?SECRET|SUPABASE.*(KEY|SECRET)|MAPBOX.*TOKEN/i;
-const PUBLIC_PREFIX_RE = /^(VITE_|NODE_ENV|PATH|HOME|HELPHONE_FIREWALL_)/;
+  /SECRET|PRIVATE|TOKEN|MNEMONIC|SEED|PASSPHRASE|PASSWORD|API[_-]?KEY|AUTH[_-]?TOKEN|STELLAR[_-]?SECRET|SUPABASE.*(KEY|SECRET)|MAPBOX.*TOKEN|DATABASE[_-]?URL/i;
+export const PUBLIC_CONTRACT_ID_NAMES = Object.freeze([
+  "VITE_AEGIS_VAULT_ID",
+  "VITE_EMERGENCY_VAULT_ID",
+  "VITE_HELPHONE_DAO_ID",
+  "VITE_MAINTAINER_VAULT_ID",
+]);
+const PUBLIC_ENV_ALLOWLIST = new Set([
+  ...PUBLIC_CONTRACT_ID_NAMES,
+  "VITE_MAPBOX_TOKEN",
+  "VITE_SUPABASE_ANON_KEY",
+]);
+function isSensitiveEnvKey(key) {
+  return (
+    typeof key === "string" &&
+    SENSITIVE_KEY_RE.test(key) &&
+    !PUBLIC_ENV_ALLOWLIST.has(key)
+  );
+}
 const SECRET_VALUE_PATTERNS = [
   { name: "stellar-secret-seed", re: /\bS[A-Z2-7]{55}\b/g },
+  {
+    name: "database-connection-string",
+    re: /\b(?:postgres(?:ql)?|mysql):\/\/[^\s"'<>]+/gi,
+  },
   {
     name: "supabase-service-key",
     re: /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g,
@@ -106,9 +127,7 @@ export function scanForPII(text) {
 const RAW_ENV = { ...process.env };
 
 export function sensitiveKeys(env = RAW_ENV) {
-  return Object.keys(env).filter(
-    (k) => SENSITIVE_KEY_RE.test(k) && !PUBLIC_PREFIX_RE.test(k),
-  );
+  return Object.keys(env).filter(isSensitiveEnvKey);
 }
 
 // ISP-094: Phase-based environment scoping (install must be strictly secret-free)
@@ -129,12 +148,7 @@ function installEnvFirewall() {
   const warned = new Set();
   const handler = {
     get(t, k) {
-      if (
-        typeof k === "string" &&
-        SENSITIVE_KEY_RE.test(k) &&
-        !PUBLIC_PREFIX_RE.test(k) &&
-        k in t
-      ) {
+      if (isSensitiveEnvKey(k) && k in t) {
         if (!warned.has(k)) {
           warned.add(k);
           console.warn(
@@ -146,31 +160,16 @@ function installEnvFirewall() {
       return Reflect.get(t, k);
     },
     has(t, k) {
-      if (
-        typeof k === "string" &&
-        SENSITIVE_KEY_RE.test(k) &&
-        !PUBLIC_PREFIX_RE.test(k)
-      )
-        return false;
+      if (isSensitiveEnvKey(k)) return false;
       return Reflect.has(t, k);
     },
     ownKeys(t) {
       return Reflect.ownKeys(t).filter(
-        (k) =>
-          !(
-            typeof k === "string" &&
-            SENSITIVE_KEY_RE.test(k) &&
-            !PUBLIC_PREFIX_RE.test(k)
-          ),
+        (k) => !isSensitiveEnvKey(k),
       );
     },
     getOwnPropertyDescriptor(t, k) {
-      if (
-        typeof k === "string" &&
-        SENSITIVE_KEY_RE.test(k) &&
-        !PUBLIC_PREFIX_RE.test(k)
-      )
-        return undefined;
+      if (isSensitiveEnvKey(k)) return undefined;
       return Reflect.getOwnPropertyDescriptor(t, k);
     },
   };

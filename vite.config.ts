@@ -10,12 +10,14 @@ import {
   createContractIdsSchema,
   normalizeContractEnvironment,
 } from "./shared/contractEnvironment.ts";
+import { getContractIds } from "./shared/contractManifest.ts";
 
 function validateContractEnvironmentPlugin() {
+  let targetNetwork: "testnet" | "mainnet";
   return {
     name: "helphone-contract-environment-validation",
-    configResolved(config) {
-      const rawEnv = loadEnv(config.mode, process.cwd(), "VITE_");
+    config(_config, { mode }) {
+      const rawEnv = loadEnv(mode, process.cwd(), "VITE_");
       const env = normalizeContractEnvironment(rawEnv, "client");
       const network = env.VITE_STELLAR_NETWORK || "testnet";
       if (network !== "testnet" && network !== "mainnet") {
@@ -32,6 +34,23 @@ function validateContractEnvironmentPlugin() {
           `Invalid Vite contract IDs for ${network}: ${messages}`,
         );
       }
+      targetNetwork = network;
+      return {
+        define: {
+          __HELPHONE_CONTRACT_IDS__: JSON.stringify(getContractIds(network)),
+          __HELPHONE_CONTRACT_NETWORK__: JSON.stringify(network),
+        },
+      };
+    },
+    generateBundle() {
+      if (!targetNetwork) {
+        throw new Error("Contract build network was not resolved.");
+      }
+      this.emitFile({
+        type: "asset",
+        fileName: "contract-network.json",
+        source: JSON.stringify({ network: targetNetwork }),
+      });
     },
   };
 }
