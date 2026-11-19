@@ -193,6 +193,40 @@ export interface QueryRunner {
   query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
 }
 
+export interface MaintainerPayoutRecord {
+  package_hash: string;
+  maintainer: string;
+  token: string;
+  amount: bigint;
+  tx_hash?: string;
+  ledger_seq?: number;
+}
+
+/**
+ * Project `maintainer_payout` contract events into auditable payout rows.
+ * Event data uses the `data_format = "map"` shape published by MaintainerVault.
+ */
+export function projectMaintainerPayouts(
+  events: Array<{ topics: string[]; data: any; tx_hash?: string; ledger_seq?: number }>
+): MaintainerPayoutRecord[] {
+  const payouts: MaintainerPayoutRecord[] = [];
+  for (const event of events) {
+    if (!event.topics?.some((topic) => topic.toLowerCase().includes('maintainer_payout'))) continue;
+    const data = event.data?.maintainer_payout ?? event.data ?? {};
+    const amount = data.amount ?? data.payout_amount;
+    if (!data.package_hash || !data.maintainer || !data.token || amount === undefined) continue;
+    payouts.push({
+      package_hash: String(data.package_hash),
+      maintainer: String(data.maintainer),
+      token: String(data.token),
+      amount: BigInt(amount),
+      ...(event.tx_hash ? { tx_hash: event.tx_hash } : {}),
+      ...(event.ledger_seq !== undefined ? { ledger_seq: event.ledger_seq } : {}),
+    });
+  }
+  return payouts;
+}
+
 /**
  * Projects a batch of dispatch ops into `dispatch_log` and advances `indexer_checkpoint`
  * within a single atomic transaction protected by an advisory transaction lock.

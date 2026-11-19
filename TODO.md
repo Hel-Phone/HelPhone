@@ -91,7 +91,7 @@ See `docs/onboarding-ladder.md` for the curriculum.
 ## Production readiness
 
 - [ ] Deploy `aegis_vault` to testnet/mainnet and set `VITE_AEGIS_VAULT_ID`
-- [ ] Decide whether `helphone-contract` should be deployed separately or bundled per environment
+- [x] Decide whether `helphone-contract` should be deployed separately or bundled per environment — see ADR-023
 - [ ] Add a real indexer for Soroban events if long-term audit/search is needed
 - [ ] Replace the localStorage fallback once on-chain reads are fully stable
 

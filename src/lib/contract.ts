@@ -535,13 +535,27 @@ export async function getResponder(requestId, index) {
   );
 }
 
-export async function getActiveRequests(max = 500) {
-  return _withCache("getActiveRequests", [max], CACHE_TTL.short, async () => {
+export async function getActiveRequests(max = MAX_ACTIVE_REQUEST_IDS) {
+  const limit = Math.min(Math.max(Number(max) || 0, 0), MAX_ACTIVE_REQUEST_IDS);
+  return _withCache("getActiveRequests", [limit], CACHE_TTL.short, async () => {
     const sim = await simulateRead(contract.call("get_active_requests"));
     if (!sim.result) return [];
     const rawIds = scValToNative(sim.result.retval);
-    return rawIds.map((id) => safeToNumber(id)).slice(0, max);
+    return rawIds.map((id) => safeToNumber(id)).slice(0, limit);
   });
+}
+
+export async function getActiveRequestsPage(cursor = 0, limit = MAX_ACTIVE_REQUESTS_PAGE) {
+  const pageLimit = Math.min(
+    Math.max(Number(limit) || 0, 0),
+    MAX_ACTIVE_REQUESTS_PAGE,
+  );
+  const start = Math.max(Number(cursor) || 0, 0);
+  const ids = await getActiveRequests(MAX_ACTIVE_REQUEST_IDS);
+  return {
+    items: ids.slice(start, start + pageLimit),
+    nextCursor: start + pageLimit < ids.length ? start + pageLimit : null,
+  };
 }
 
 export async function getRequestCount() {
@@ -951,6 +965,9 @@ export async function claimAid(
     throw new Error(
       "VITE_AEGIS_VAULT_ID not configured — deploy aegis_vault first",
     );
+  const proof = proofBytes instanceof Uint8Array ? proofBytes : new Uint8Array(proofBytes);
+  if (proof.byteLength > MAX_PROOF_BYTES)
+    throw new Error(`Proof is ${proof.byteLength} bytes; maximum is 1 MiB`);
   const signerAddress = await resolveWalletAddress(wallet);
   if (!signerAddress) throw new Error("Wallet address is not available yet");
   await ensureAccountFunded(signerAddress);
@@ -970,11 +987,7 @@ export async function claimAid(
               ? publicInputsBytes
               : new Uint8Array(publicInputsBytes),
           ),
-          nativeToScVal(
-            proofBytes instanceof Uint8Array
-              ? proofBytes
-              : new Uint8Array(proofBytes),
-          ),
+          nativeToScVal(proof),
         ],
       }),
     )
