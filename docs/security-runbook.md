@@ -1,5 +1,14 @@
 # Security Runbook — Supply Chain
 
+## PII HMAC salt rotation
+
+1. Generate a new random salt and deploy every writer with `PII_HMAC_SALTS=v2:<new>,v1:<old>`, `PII_HMAC_ACTIVE_VERSION=v2`, and `PII_HMAC_REQUIRED_VERSION=v2`. A missing/mismatched active version blocks pseudonym writes.
+2. Keep both versions only for the documented overlap window. Reads that need joins use `pseudonymCandidates`; all new writes use `v2`.
+3. Re-key permitted plaintext exports with `node scripts/rekey-pii-jsonl.mjs input.jsonl output.jsonl`. Existing one-way HMAC values cannot be re-keyed without their plaintext source.
+4. Verify logs, traces, indexer rows, and exports emit `hmac:v2:`; then remove `v1` from every deployment together. Retain neither the old salt nor a mapping table.
+
+Rollback before step 4 by restoring `v1` as active everywhere. After deleting the old salt, rollback requires a new rotation; never reintroduce a retired key.
+
 Covers the typosquatting gate (#588) and the transitive vulnerability scanner (#589).
 
 ## Typosquatting gate (#588)

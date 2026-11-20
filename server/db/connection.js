@@ -18,6 +18,22 @@ function resolveIdleTimeout() {
   return IDLE_TIMEOUT_MS;
 }
 async function createPgClient() {
+  const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (url) {
+    const { Client } = await import('pg');
+    const client = new Client({ connectionString: url });
+    await client.connect();
+    const now = Date.now();
+    return {
+      id: `pg-${now}-${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: now,
+      lastUsedAt: now,
+      state: 'idle',
+      query: (sql, params) => client.query(sql, params),
+      release() {},
+      end: () => client.end(),
+    };
+  }
   const id = `conn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   return {
     id,

@@ -19,6 +19,7 @@
  */
 import { getMaintenanceConfig, type MaintenanceConfig } from '../env.js'
 import { withClient } from './connection.js'
+import { findDuplicateIndexes, findUnusedIndexes } from './indexOptimizer.js'
 
 export type QueryFn = (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>
 
@@ -153,6 +154,21 @@ export async function runMaintenance(deps: MaintenanceDeps = {}): Promise<Mainte
       }
       return results
     })
+    try {
+      await exec(async (query) => {
+        const [unused, duplicate] = await Promise.all([
+          findUnusedIndexes(7, query),
+          findDuplicateIndexes(query),
+        ])
+        log('[db-maintenance] index usage report', { unused, duplicate })
+        if (unused.length || duplicate.length) {
+          log('[db-maintenance] ALERT index candidates require review', { unused: unused.length, duplicate: duplicate.length })
+        }
+        return []
+      })
+    } catch (error) {
+      log('[db-maintenance] index report failed', { error: (error as Error).message })
+    }
     return { tables }
   } finally {
     running = false

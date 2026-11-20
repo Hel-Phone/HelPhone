@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
-import { NamespacedCache, namespacedKey } from '../server/lib/sqlCache.ts';
+import { NamespacedCache, RedisNamespacedCache, namespacedKey } from '../server/lib/sqlCache.ts';
 
 describe('NamespacedCache', () => {
   it('keeps REST and GraphQL projections in separate namespaces', () => {
@@ -84,5 +84,27 @@ describe('NamespacedCache', () => {
     now = 121;
     expect(cache.get('rest', 'k')).toBeUndefined();
     random.mockRestore();
+  });
+});
+
+describe('RedisNamespacedCache', () => {
+  it('invalidates both API surfaces across process instances with one version bump', async () => {
+    const values = new Map();
+    const redis = {
+      get: async (key) => values.get(key) ?? null,
+      setex: async (key, _seconds, value) => values.set(key, value),
+      incr: async (key) => {
+        const next = Number(values.get(key) ?? 0) + 1;
+        values.set(key, String(next));
+        return next;
+      },
+    };
+    const writer = new RedisNamespacedCache(redis);
+    const reader = new RedisNamespacedCache(redis);
+    await reader.set('gql', 'dispatch:INC-1', { version: 1 });
+    expect(await reader.get('gql', 'dispatch:INC-1')).toEqual({ version: 1 });
+    await writer.invalidate('dispatch:INC-1');
+    expect(await reader.get('gql', 'dispatch:INC-1')).toBeUndefined();
+    expect(reader.stats()).toMatchObject({ hits: 1, misses: 1 });
   });
 });

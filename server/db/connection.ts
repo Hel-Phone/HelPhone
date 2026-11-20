@@ -33,20 +33,23 @@ function resolveIdleTimeout(): number {
 }
 
 async function createPgClient(): Promise<import('./poolManager.js').PooledClient> {
-  // Attempt to use real `pg` Pool if available and DATABASE_URL set
   const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   if (url) {
-    try {
-      const pgMod: unknown = await import('pg').catch(() => null);
-      const Pool = (pgMod as { Pool?: new (cfg: unknown) => unknown })?.Pool;
-      if (Pool) {
-        // Lazy realPool is cached outside to avoid per-client construction
-        // We delegate: create a thin wrapper around pool.connect()
-        // but for simplicity fall back to mock when pg not configured
-      }
-    } catch {}
+    const { Client } = await import('pg');
+    const client = new Client({ connectionString: url });
+    await client.connect();
+    const now = Date.now();
+    return {
+      id: `pg-${now}-${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: now,
+      lastUsedAt: now,
+      state: 'idle',
+      query: (sql, params) => client.query(sql, params),
+      release() {},
+      end: () => client.end(),
+    };
   }
-  // Fallback mock — guarantees tests never need a live DB
+  // Fallback mock for tests and local runs without a database URL.
   const id = `conn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   return {
     id,

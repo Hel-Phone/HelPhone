@@ -83,6 +83,14 @@ export class DomainStore {
     if (options.seed !== false) this.seed();
   }
 
+  /** Replace the in-memory projection from a durable adapter snapshot. */
+  loadSnapshot(snapshot: { incidents: Incident[]; responders: Responder[]; events: DomainEvent[] }): void {
+    this.incidents = new Map(snapshot.incidents.map((item) => [item.id, { ...item }]))
+    this.responders = new Map(snapshot.responders.map((item) => [item.id, { ...item }]))
+    this.events = snapshot.events.map((item) => ({ ...item }))
+    this.resetQueryCount()
+  }
+
   /** Seed one incident with 40 responders + events, matching the issue repro. */
   seed(): void {
     this.incidents.clear();

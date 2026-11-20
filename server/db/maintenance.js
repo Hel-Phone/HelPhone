@@ -19,6 +19,7 @@
  */
 import { getMaintenanceConfig } from "../env.js";
 import { withClient } from "./connection.js";
+import { findDuplicateIndexes, findUnusedIndexes } from "./indexOptimizer.js";
 const BLOAT_SQL = `SELECT schemaname, relname, n_live_tup, n_dead_tup
 FROM pg_stat_user_tables
 WHERE n_dead_tup > 0`;
@@ -130,6 +131,21 @@ export async function runMaintenance(deps = {}) {
       }
       return results;
     });
+    try {
+      await exec(async (query) => {
+        const [unused, duplicate] = await Promise.all([
+          findUnusedIndexes(7, query),
+          findDuplicateIndexes(query),
+        ]);
+        log('[db-maintenance] index usage report', { unused, duplicate });
+        if (unused.length || duplicate.length) {
+          log('[db-maintenance] ALERT index candidates require review', { unused: unused.length, duplicate: duplicate.length });
+        }
+        return [];
+      });
+    } catch (error) {
+      log('[db-maintenance] index report failed', { error: error.message });
+    }
     return { tables };
   } finally {
     running = false;

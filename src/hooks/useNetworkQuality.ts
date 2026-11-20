@@ -15,6 +15,8 @@ export interface NetworkQualityState {
   idleState: IdleState
   /** Seconds remaining before the next transition (warn → lock, active → warn) */
   secondsRemaining: number | null
+  clockOffsetMs: number | null
+  clockAccuracyMs: number | null
 }
 
 export interface UseNetworkQualityOptions {
@@ -50,6 +52,8 @@ export function useNetworkQuality(options: UseNetworkQualityOptions = {}): Netwo
   })
   const [idleState, setIdleState] = useState<IdleState>('active')
   const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null)
+  const [clockOffsetMs, setClockOffsetMs] = useState<number | null>(null)
+  const [clockAccuracyMs, setClockAccuracyMs] = useState<number | null>(null)
 
   const lastActivityRef = useRef(Date.now())
   const idleStateRef = useRef<IdleState>('active')
@@ -83,6 +87,24 @@ export function useNetworkQuality(options: UseNetworkQualityOptions = {}): Netwo
       window.removeEventListener('offline', handleOffline)
       conn?.removeEventListener('change', handleChange)
     }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const samples: Array<{ t0: number; t1: number; tServer: number }> = []
+    Promise.all(Array.from({ length: 3 }, async () => {
+      const t0 = Date.now()
+      const response = await fetch('/api/time', { cache: 'no-store' })
+      const { tServer } = await response.json()
+      const t1 = Date.now()
+      samples.push({ t0, t1, tServer })
+    })).then(() => {
+      if (cancelled || !samples.length) return
+      const best = samples.reduce((a, b) => b.t1 - b.t0 < a.t1 - a.t0 ? b : a)
+      setClockOffsetMs(Math.round(best.tServer - (best.t0 + best.t1) / 2))
+      setClockAccuracyMs(Math.ceil((best.t1 - best.t0) / 2))
+    }).catch(() => {})
+    return () => { cancelled = true }
   }, [])
 
   // Idle tracking
@@ -127,5 +149,5 @@ export function useNetworkQuality(options: UseNetworkQualityOptions = {}): Netwo
     }
   }, [trackIdle, warnAfterMs, lockAfterMs, resetIdle])
 
-  return { online, effectiveType, idleState, secondsRemaining, resetIdle }
+  return { online, effectiveType, idleState, secondsRemaining, clockOffsetMs, clockAccuracyMs, resetIdle }
 }

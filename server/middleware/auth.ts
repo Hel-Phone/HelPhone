@@ -80,7 +80,13 @@ export async function verifyRequestAuth(req: Request): Promise<AuthResult> {
 
   const timestamp = parseInt(timestampStr, 10)
   const now = Date.now()
-  if (Number.isNaN(timestamp) || Math.abs(now - timestamp) > 5 * 60 * 1000) {
+  const offset = Number(req.header('X-Clock-Offset') ?? 0)
+  const accuracy = Number(req.header('X-Clock-Accuracy') ?? 0)
+  const clockBoundValid = Number.isFinite(offset) && Math.abs(offset) <= 60 * 60_000
+    && Number.isFinite(accuracy) && accuracy >= 0 && accuracy <= 30_000
+  const correctedTimestamp = timestamp + (clockBoundValid ? offset : 0)
+  const tolerance = 5 * 60_000 + (clockBoundValid ? accuracy : 0)
+  if (Number.isNaN(timestamp) || Math.abs(now - correctedTimestamp) > tolerance) {
     return {
       ok: false,
       status: 401,

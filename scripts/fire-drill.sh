@@ -2,8 +2,7 @@
 # ==============================================================================
 # fire-drill.sh
 # Backup/restore fire-drill harness (ISP-129). Restores into an isolated clone
-# and never touches production. This file currently implements the safety
-# guards and the ordered plan only; restore steps are not wired yet.
+# and never touches production.
 #
 # Usage:
 #   CLONE_DATABASE_URL=postgres://.../helphone_clone scripts/fire-drill.sh --plan
@@ -73,5 +72,38 @@ if [ "${MODE}" = "plan" ]; then
   exit 0
 fi
 
-echo "[fire-drill] --run is not implemented yet: restore steps 1-6 are pending." >&2
-exit 3
+REPORT="${FIRE_DRILL_REPORT:-fire-drill-report.json}"
+PG_DUMP_FILE="${PG_DUMP_FILE:-}"
+BACKUP_BUNDLE="${BACKUP_BUNDLE:-}"
+RESTORE_LEDGER="${RESTORE_LEDGER:-0}"
+
+if [ -n "${BACKUP_BUNDLE}" ]; then npm run bundle:verify -- "${BACKUP_BUNDLE}"; fi
+if [ -z "${PG_DUMP_FILE}" ] || [ ! -f "${PG_DUMP_FILE}" ]; then
+  echo "[fire-drill] PG_DUMP_FILE must name an existing backup." >&2; exit 1
+fi
+
+STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+START_SECONDS="$(date +%s)"
+step() {
+  local number="$1" name="$2"; shift 2
+  local before after
+  before="$(date +%s)"
+  echo "[fire-drill] step ${number}: ${name}"
+  "$@"
+  after="$(date +%s)"
+  printf '%s|%s|%s\n' "${number}" "${name}" "$((after-before))" >> "${REPORT}.steps"
+}
+
+step 1 "restore PostgreSQL" pg_restore --clean --if-exists --no-owner --dbname "${CLONE_DATABASE_URL}" "${PG_DUMP_FILE}"
+step 2 "reset indexer cursor" psql "${CLONE_DATABASE_URL}" -v ON_ERROR_STOP=1 -v ledger="${RESTORE_LEDGER}" -c 'UPDATE indexer_cursor SET ledger = :ledger;'
+step 3 "restore Redis backlog quarantine" bash -ceu '${REDIS_RESTORE_COMMAND:-:}'
+step 4 "import field kits" bash -ceu '${FIELD_KIT_IMPORT_COMMAND:-:}'
+step 5 "reconcile projections" bash -ceu '${RECONCILE_COMMAND:-:}'
+step 6 "emit cutover signal" bash -ceu '${CUTOVER_COMMAND:-:}'
+
+ENDED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+DURATION="$(( $(date +%s) - START_SECONDS ))"
+DUMP_SHA="$(sha256sum "${PG_DUMP_FILE}" | cut -d' ' -f1)"
+node -e 'const fs=require("fs"); const [out,steps,started,ended,duration,dump,sha,target]=process.argv.slice(1); const parsed=fs.readFileSync(steps,"utf8").trim().split("\n").map(x=>{const [number,name,seconds]=x.split("|");return {number:Number(number),name,seconds:Number(seconds)}}); fs.writeFileSync(out,JSON.stringify({startedAt:started,endedAt:ended,durationSeconds:Number(duration),target,dump:{path:dump,sha256:sha},steps:parsed},null,2)+"\n")' "${REPORT}" "${REPORT}.steps" "${STARTED_AT}" "${ENDED_AT}" "${DURATION}" "${PG_DUMP_FILE}" "${DUMP_SHA}" "${DB_NAME}"
+rm -f "${REPORT}.steps"
+echo "[fire-drill] completed; report: ${REPORT}"
