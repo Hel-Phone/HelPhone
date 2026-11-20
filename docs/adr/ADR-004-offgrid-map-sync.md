@@ -3,6 +3,7 @@
 - **Status:** Proposed (spike #604 complete)
 - **Date:** 2026-09-23
 - **Evidence:** [Spike report](../spikes/604-crdt-memory-analysis.md) · [raw results](../spikes/results/crdt-memory-profile.json) · `scripts/spikes/crdt_memory_profile.js`
+**Evidence check:** `crdt-memory-profile.json#/singleDoc/stateVector_pruned/heapAfterPruneMB = 0.13`
 - **Prototype:** `src/services/crdtSync.js` (`StateVectorDoc`, `OtServer`/`OtClient`)
 
 ## Context

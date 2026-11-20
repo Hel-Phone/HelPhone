@@ -3,6 +3,7 @@
 - **Status:** Proposed (spike #607 complete; quota/eviction measurement outstanding, see below)
 - **Date:** 2026-09-23
 - **Evidence:** [Spike report](../spikes/607-storage-lock-contention-report.md) · [raw results](../spikes/results/storage-contention.json) · `scripts/spikes/storage_contention_benchmark.js`
+**Evidence check:** `storage-contention.json#/scenarios/0/throughputPerSec = 497`
 - **Prototype:** `src/services/storageEngine.js`, `src/workers/telemetryWorker.js`
 
 ## Context

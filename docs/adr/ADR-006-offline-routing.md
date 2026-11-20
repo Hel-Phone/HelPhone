@@ -3,6 +3,7 @@
 - **Status:** Proposed (spike #606 complete)
 - **Date:** 2026-09-23
 - **Evidence:** [Spike report](../spikes/606-routing-benchmark-report.md) · [raw results](../spikes/results/routing-benchmark.json) · `scripts/spikes/routing_benchmark.js`
+**Evidence check:** `routing-benchmark.json#/algorithms/astar/latencyMs/p95 = 19.004`
 - **Prototype:** `src/utils/graphTraversal.js`, `src/workers/routingWorker.js`
 
 ## Context

@@ -34,6 +34,35 @@ merges.** If the decision is deferred, the ADR still ships — with status
 | [ADR-022](ADR-022-honest-dispatch-eta.md) | Honest Dispatch ETA: Ranges, Fatigue Pace, and Degraded-State Signalling | Proposed | ISP-105 / #775 |
 | [ADR-023](ADR-023-canonical-contract-workspace.md) | Canonical Soroban Contract Workspace | Proposed | #980 |
 
+
+## Evidence status
+
+Generated from raw spike citations by `node scripts/check-adr-evidence.mjs --write`.
+CI verifies that the cited JSON paths and numbers still match the results.
+
+<!-- ADR-EVIDENCE-START -->
+| ADR | Evidence status |
+|---|---|
+| [ADR-001](ADR-001-soroban-incident-storage.md) | No raw result cited |
+| [ADR-002](ADR-002-wasm-memory-isolation.md) | No raw result cited |
+| [ADR-003](ADR-003-webtransport-vs-websocket.md) | Checked (1 result) |
+| [ADR-004](ADR-004-offgrid-map-sync.md) | Checked (1 result) |
+| [ADR-005](ADR-005-zk-proof-aggregation.md) | Checked (1 result) |
+| [ADR-006](ADR-006-offline-routing.md) | Checked (1 result) |
+| [ADR-007](ADR-007-offline-storage.md) | Checked (1 result) |
+| [ADR-008](ADR-008-webgpu-spatial-clustering.md) | No raw result cited |
+| [ADR-014](ADR-014-binary-telemetry-protocol.md) | Checked (4 results) |
+| [ADR-015](ADR-015-tokenomics-fee-envelope.md) | No raw result cited |
+| [ADR-016](ADR-016-attestation-cryptography.md) | No raw result cited |
+| [ADR-017](ADR-017-multi-tenant-database.md) | No raw result cited |
+| [ADR-018](ADR-018-centerless-federation.md) | No raw result cited |
+| [ADR-019](ADR-019-compulsion-law-halt-doctrine.md) | No raw result cited |
+| [ADR-020](ADR-020-triage-ethics-shedding-order.md) | No raw result cited |
+| [ADR-021](ADR-021-multi-vendor-cost-control.md) | No raw result cited |
+| [ADR-022](ADR-022-ble-proximity-relay.md) | No raw result cited |
+| [ADR-022](ADR-022-honest-dispatch-eta.md) | Unmeasured |
+<!-- ADR-EVIDENCE-END -->
+
 ---
 
 ## Done-definition for new ADRs
