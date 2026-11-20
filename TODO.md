@@ -48,7 +48,7 @@ See `docs/onboarding-ladder.md` for the curriculum.
   <!-- first-spike | difficulty: intermediate | mentor: @helphone-dispatch-owner | demo-slot: 2027-Q1 | subsystem: api | ladder: 2 -->
   Add to `server/routes/health.ts`, document in `swagger.json`, test in `test/server-api.test.js`.
 
-- [ ] Label all routes in `server/routes/docs.ts` with their ADR-020 priority tier
+- [x] Label all routes in `server/routes/docs.ts` with their ADR-020 priority tier
   <!-- first-spike | difficulty: intermediate | mentor: @helphone-dispatch-owner | demo-slot: 2027-Q1 | subsystem: api | ladder: 2 -->
   Use the P0/P1/P2/P3 vocabulary from ADR-020. Add JSDoc comments to each route handler.
 

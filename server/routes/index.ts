@@ -2,6 +2,7 @@ import type { Express } from 'express';
 import { createDispatchRouter } from './dispatch.ts';
 import { createEventsRouter } from './events.ts';
 import { createSyncRouter } from './sync.ts';
+import { createDocsRouter } from './docs.ts';
 import { installGraphQLRoutes } from '../graphql/server.ts';
 import type { DomainStore } from '../lib/domainStore.ts';
 
@@ -25,6 +26,7 @@ export function installDomainRoutes(app: Express, options: DomainRoutesOptions =
   app.use('/api/dispatch', createDispatchRouter({ store: options.store }));
   app.use('/api/events', createEventsRouter({ store: options.store }));
   app.use('/api/sync', createSyncRouter({ store: options.store }));
+  app.use('/docs', createDocsRouter());
   installGraphQLRoutes(app, { store: options.store, path: options.graphqlPath ?? '/graphql' });
   return true;
 }

@@ -79,6 +79,7 @@ app.use('/metrics', dispatchRouters.metrics)
 app.use('/api/sync', syncRouter)
 app.use('/api/history', historyRouter)
 app.use('/api/federation', createFederationRouter())
+app.use('/docs', createDocsRouter())
 
 const stateExporter = new SorobanStateExporter()
 

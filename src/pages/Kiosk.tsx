@@ -622,7 +622,7 @@ function ConfirmStep({ draft, shelterName, onBack, onSubmit }: { draft: DraftSta
       <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
         <Row label={t('kiosk.confirm.type', 'Type')} value={draft.emergencyType} />
         <Row label={t('kiosk.confirm.location', 'Location')} value={`${shelterName}${draft.locationName ? ` · ${draft.locationName}` : ''}`} />
-        {draft.details && <Row label={t('kiosk.confirm.details', 'Details')} value={draft.details} />}
+        {draft.details && <Row label={t('kiosk.confirm.details', 'Details')} value={draft.details} isHtml />}
       </div>
       <p style={{ fontSize: 12, color: 'rgba(242,236,220,0.4)', margin: 0 }}>
         {t('kiosk.confirm.privacy', 'Your details are encrypted before transmission and only visible to verified responders.')}
@@ -635,11 +635,15 @@ function ConfirmStep({ draft, shelterName, onBack, onSubmit }: { draft: DraftSta
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, isHtml }: { label: string; value: string; isHtml?: boolean }) {
   return (
     <div>
       <div style={{ fontSize: 10, color: 'rgba(242,236,220,0.4)', letterSpacing: '1px', fontWeight: 700, marginBottom: 3 }}>{label.toUpperCase()}</div>
-      <div style={{ fontSize: 14, color: '#F4ECDC' }}>{value}</div>
+      {isHtml ? (
+        <SanitizedHtml style={{ fontSize: 14, color: '#F4ECDC' }} html={value} />
+      ) : (
+        <div style={{ fontSize: 14, color: '#F4ECDC' }}>{sanitizeText(value)}</div>
+      )}
     </div>
   )
 }

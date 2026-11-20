@@ -15,6 +15,7 @@ import {
   MAX_PAYLOAD_PLAINTEXT_BYTES,
 } from '../lib/crypto.js'
 import { api } from '../services/api.js'
+import { sanitizeText, SanitizedHtml } from '../lib/htmlSanitizer'
 
 /** Where a responder's sealed private key is stashed, per Stellar address. */
 const RESPONDER_KEY_PREFIX = 'hp_responder_e2ee_v1:'
@@ -482,10 +483,13 @@ export default function Help() {
                   responder sees:
                 </p>
                 {revealed.contact && (
-                  <p style={{ fontSize: '0.95rem', margin: '0.35rem 0 0' }}>📞 {revealed.contact}</p>
+                  <p style={{ fontSize: '0.95rem', margin: '0.35rem 0 0' }}>📞 {sanitizeText(revealed.contact)}</p>
                 )}
                 {revealed.medicalNotes && (
-                  <p style={{ fontSize: '0.95rem', margin: '0.35rem 0 0' }}>🩺 {revealed.medicalNotes}</p>
+                  <div style={{ fontSize: '0.95rem', margin: '0.35rem 0 0', display: 'flex', gap: '6px' }}>
+                    <span>🩺</span>
+                    <SanitizedHtml as="span" html={revealed.medicalNotes} />
+                  </div>
                 )}
               </div>
             )}

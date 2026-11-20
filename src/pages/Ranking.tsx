@@ -7,6 +7,7 @@ import styles from "./Ranking.module.css";
 import { cx } from "../styles/cssModules";
 import { annotateLeaderboard, type ReputationTier } from "../lib/rankingIntegrity";
 import { useFeatureFlag } from "../lib/featureFlags.js";
+import { sanitizeText } from "../lib/htmlSanitizer";
 
 const PERIODS = Object.freeze(["This Week", "This Month", "All Time"]);
 
@@ -150,7 +151,7 @@ export default function Ranking() {
                     {row.responder[7]?.toUpperCase() || "?"}
                   </div>
                   <span className={styles["hp-ranking-address"]}>
-                    {row.responder.slice(0, 8)}…{row.responder.slice(-4)}
+                    {sanitizeText(row.responder.slice(0, 8))}…{sanitizeText(row.responder.slice(-4))}
                   </span>
                   {row.tier && (
                     <span
