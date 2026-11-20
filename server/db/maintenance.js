@@ -19,6 +19,7 @@
  */
 import { getMaintenanceConfig } from "../env.js";
 import { withClient } from "./connection.js";
+import { runPartitionEviction } from "./partitionEviction.js";
 import { findDuplicateIndexes, findUnusedIndexes } from "./indexOptimizer.js";
 const BLOAT_SQL = `SELECT schemaname, relname, n_live_tup, n_dead_tup
 FROM pg_stat_user_tables
@@ -88,6 +89,9 @@ export async function runMaintenance(deps = {}) {
         : withClient((client) =>
             fn((sql, params) => client.query(sql, params)),
           );
+    const eviction = config.partitionEvictionEnabled
+      ? await exec((query) => runPartitionEviction({ query, now: now(), dryRun: config.partitionEvictionDryRun, retentionDays: config.partitionRetentionDays, reversalDays: config.partitionReversalDays, log }))
+      : { skipped: "disabled", candidates: [] };
     const tables = await exec(async (query) => {
       const candidates = (await measureBloat(query)).filter(
         (t) =>
@@ -146,7 +150,7 @@ export async function runMaintenance(deps = {}) {
     } catch (error) {
       log('[db-maintenance] index report failed', { error: error.message });
     }
-    return { tables };
+    return { tables, eviction };
   } finally {
     running = false;
   }

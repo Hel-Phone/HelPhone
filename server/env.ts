@@ -63,6 +63,10 @@ export interface MaintenanceConfig {
   intervalMs: number;
   reindexCooldownMs: number;
   minTableTuples: number;
+    partitionEvictionEnabled?: boolean;
+    partitionRetentionDays?: number;
+    partitionReversalDays?: number;
+    partitionEvictionDryRun?: boolean;
 }
 
 function envNumber(raw: string | undefined, fallback: number, bounds: { min: number; max: number }): number {
@@ -80,5 +84,9 @@ export function getMaintenanceConfig(env: NodeJS.ProcessEnv = process.env): Main
     intervalMs: envNumber(env.DB_MAINTENANCE_INTERVAL_MS, 15 * 60_000, { min: 1_000, max: 24 * 3_600_000 }),
     reindexCooldownMs: envNumber(env.DB_REINDEX_COOLDOWN_MS, 7 * 24 * 3_600_000, { min: 0, max: 365 * 24 * 3_600_000 }),
     minTableTuples: envNumber(env.DB_MAINTENANCE_MIN_TUPLES, 1_000, { min: 0, max: Number.MAX_SAFE_INTEGER }),
+      partitionEvictionEnabled: env.DB_PARTITION_EVICTION_ENABLED === 'true',
+      partitionRetentionDays: envNumber(env.DB_PARTITION_RETENTION_DAYS, 90, { min: 1, max: 3650 }),
+      partitionReversalDays: envNumber(env.DB_PARTITION_REVERSAL_DAYS, 7, { min: 1, max: 90 }),
+      partitionEvictionDryRun: env.DB_PARTITION_EVICTION_DRY_RUN === 'true',
   };
 }

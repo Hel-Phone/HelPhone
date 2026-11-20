@@ -137,6 +137,10 @@ vacuums and re-indexes bloated tables during a low-traffic window.
 | `DB_MAINTENANCE_INTERVAL_MS` | `900000` | Tick interval |
 | `DB_REINDEX_COOLDOWN_MS` | `604800000` | Min gap between re-indexes of a table |
 | `DB_MAINTENANCE_MIN_TUPLES` | `1000` | Skip tiny tables |
+| `DB_PARTITION_EVICTION_ENABLED` | `false` | Enable hold-aware partition eviction |
+| `DB_PARTITION_EVICTION_DRY_RUN` | `false` | Report candidates without detaching |
+| `DB_PARTITION_RETENTION_DAYS` | `90` | Minimum partition age |
+| `DB_PARTITION_REVERSAL_DAYS` | `7` | Detach reversal window |
 
 Invalid values fall back to the default. `pg_stat_user_tables` counters are
 estimates, so the percentage is approximate. Per-table autovacuum tuning is
