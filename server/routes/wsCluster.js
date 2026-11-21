@@ -6,6 +6,8 @@ const MAX_BUFFERED_BYTES = 1024 * 1024;
 
 export function attachWebSocketRelay(server, { heartbeatMs = 30_000 } = {}) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096, clientTracking: true });
+  const replay = [];
+  let sequence = 0;
 
   server.on("upgrade", (request, socket, head) => {
     let pathname;
@@ -45,6 +47,16 @@ export function attachWebSocketRelay(server, { heartbeatMs = 30_000 } = {}) {
           return;
         }
 
+        if (message?.type === "resume" && Number.isSafeInteger(message.after) && message.after >= 0) {
+          for (const item of replay) {
+            if (item.sequence <= message.after) continue;
+            if (subscription.topics.has(item.event.topic) && (!tenantId || item.event.tenantId === tenantId)) {
+              client.send(JSON.stringify({ type: "contract-event", sequence: item.sequence, ...item.event }));
+            }
+          }
+          client.send(JSON.stringify({ type: "resumed", after: message.after, latest: sequence }));
+          return;
+        }
         if (message?.type !== "subscribe" || !Array.isArray(message.topics) || message.topics.length > EVENT_TOPICS.size) {
           client.close(1008, "Invalid subscription");
           return;
@@ -64,6 +76,9 @@ export function attachWebSocketRelay(server, { heartbeatMs = 30_000 } = {}) {
   });
 
   const unsubscribe = subscribeContractEvents((event) => {
+    sequence += 1;
+    replay.push({ sequence, event });
+    if (replay.length > 1000) replay.shift();
     for (const client of wss.clients) {
       if (client.readyState !== WebSocket.OPEN || client.bufferedAmount > MAX_BUFFERED_BYTES) {
         if (client.readyState === WebSocket.OPEN) client.close(1013, "Client is too slow");
@@ -72,7 +87,7 @@ export function attachWebSocketRelay(server, { heartbeatMs = 30_000 } = {}) {
       const filter = client.subscription;
       if (!filter?.topics.has(event.topic)) continue;
       if (filter.tenantId && event.tenantId !== filter.tenantId) continue;
-      client.send(JSON.stringify({ type: "contract-event", ...event }));
+      client.send(JSON.stringify({ type: "contract-event", sequence, ...event }));
     }
   });
 
@@ -100,6 +115,7 @@ export function attachWebSocketRelay(server, { heartbeatMs = 30_000 } = {}) {
 
   return {
     wss,
+    stats: () => ({ transport: "websocket", latestSequence: sequence, replayDepth: replay.length }),
     close: async () => {
       clearInterval(heartbeat);
       unsubscribe();

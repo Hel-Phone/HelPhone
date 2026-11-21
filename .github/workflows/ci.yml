@@ -81,6 +81,9 @@ jobs:
       - name: Install Dependencies
         run: npm ci || npm install
 
+      - name: Verify environment templates
+        run: npm run config:check
+
       - name: Scan dependency lifecycle scripts
         run: bash scripts/sandbox-install.sh --scan node_modules
 

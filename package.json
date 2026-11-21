@@ -23,6 +23,7 @@
     "benchmark:routing": "vitest run test/routing-benchmark-spike.test.js --reporter=verbose",
     "test:http2-manifest": "vitest run test/http2-manifest.test.js",
     "security:lockfiles": "node scripts/verify-lockfile-hashes.js",
+    "config:check": "node scripts/check-env-templates.mjs",
     "security:lockfiles:offline": "node scripts/verify-lockfile-hashes.js --offline",
     "security:install": "bash scripts/sandbox-install.sh",
     "security:scan-lifecycle": "bash scripts/sandbox-install.sh --scan",

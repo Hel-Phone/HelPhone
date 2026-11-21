@@ -37,6 +37,10 @@ export function createEventsRouter(options: { store?: DomainStore } = {}): Route
     })
   })
 
+  router.get('/subscription-transport', (_req, res) => {
+    res.json({ transport: 'websocket', endpoint: '/events/ws', resume: 'sequence', http2Push: false })
+  })
+
   router.post('/ice-metrics', (req, res) => {
     const { gatheringMs, success, hasRelay } = req.body || {}
     if (!Number.isFinite(gatheringMs) || typeof success !== 'boolean' || typeof hasRelay !== 'boolean') { res.status(400).json({ error: 'invalid ICE metric' }); return }
