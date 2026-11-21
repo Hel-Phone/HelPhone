@@ -4,8 +4,11 @@ import { CacheFirst, StaleWhileRevalidate } from "workbox-strategies";
 import { ExpirationPlugin } from "workbox-expiration";
 import { CacheableResponsePlugin } from "workbox-cacheable-response";
 import { createPartialResponse } from "workbox-range-requests";
+import { AssetManager } from "./lib/assetManager.ts";
 
 cleanupOutdatedCaches();
+
+const assetManager = new AssetManager();
 
 const manifest = self.__WB_MANIFEST || [];
 precacheAndRoute(manifest);
@@ -21,6 +24,54 @@ const ALLOWED_TILE_MIMES = [
   "image/webp",
   "image/jpeg",
 ];
+
+async function notifyQuotaPressure(stats) {
+  try {
+    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const c of clients) {
+      c.postMessage({ type: "QUOTA_PRESSURE", stats, degraded: Boolean(stats?.pressured) });
+    }
+  } catch {
+    // ignore client broadcast errors
+  }
+}
+
+async function evictTileOrEphemeralCaches() {
+  await assetManager.evictUnderPressure();
+  const tileCache = await caches.open(TILES_CACHE_NAME).catch(() => null);
+  if (tileCache) {
+    const keys = await tileCache.keys();
+    for (const k of keys.slice(0, Math.min(10, keys.length))) {
+      await tileCache.delete(k);
+    }
+  }
+}
+
+async function safeCachePut(cache, request, response, tier = "frequent") {
+  try {
+    const blob = await response.clone().blob();
+    const url = typeof request === "string" ? request : request.url;
+    const priority = tier === "critical" ? 0 : tier === "frequent" ? 1 : 2;
+    await assetManager.cacheAsset(
+      { url, size: blob.size, type: tier, hash: "", priority },
+      blob,
+    );
+    await cache.put(request, response);
+  } catch (err) {
+    if (err && (err.name === "QuotaExceededError" || /quota/i.test(String(err.message)))) {
+      await evictTileOrEphemeralCaches();
+      const stats = await assetManager.getStatsPublic();
+      await notifyQuotaPressure(stats);
+      if (tier === "critical") {
+        try {
+          await cache.put(request, response);
+        } catch {
+          // Critical asset still held in AssetManager persistent tier
+        }
+      }
+    }
+  }
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -83,7 +134,7 @@ self.addEventListener("fetch", (event) => {
       let full = await cache.match(key);
       if (!full) {
         full = await fetch(key);
-        if (full.ok) await cache.put(key, full.clone());
+        if (full.ok) await safeCachePut(cache, key, full.clone(), "critical");
       }
       if (!request.headers.has("range") || !full.ok) return full;
       try {
@@ -151,7 +202,7 @@ self.addEventListener("fetch", (event) => {
               const isOversized = contentLength > 1024 * 1024;
 
               if (isAllowedMime && !isOversized) {
-                await cache.put(request, networkResponse.clone());
+                await safeCachePut(cache, request, networkResponse.clone(), "frequent");
               } else {
                 const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
                 clients.forEach((c) =>
@@ -184,7 +235,13 @@ self.addEventListener("fetch", (event) => {
       return;
     }
 
-    if (request.url.endsWith(".wasm") || request.url.endsWith(".json")) {
+    if (
+      request.url.endsWith(".wasm") ||
+      request.url.endsWith(".mp4") ||
+      request.url.endsWith(".webm") ||
+      request.url.endsWith(".json")
+    ) {
+      const tier = request.url.endsWith(".json") ? "ephemeral" : "critical";
       event.respondWith(
         caches.match(request).then((response) => {
           return (
@@ -192,7 +249,7 @@ self.addEventListener("fetch", (event) => {
             fetch(request).then((response) => {
               const responseClone = response.clone();
               caches.open(CACHE_NAME).then((cache) => {
-                cache.put(request, responseClone);
+                void safeCachePut(cache, request, responseClone, tier);
               });
               return response;
             })
@@ -229,14 +286,33 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("message", (event) => {
   const data = event.data || {};
 
-  // CRDT sync: forward the local state change to the backend sync endpoint.
+  if (data.type === "GET_ASSET_STATS") {
+    event.waitUntil(
+      assetManager.getStatsPublic().then((stats) => {
+        if (event.source && typeof event.source.postMessage === "function") {
+          event.source.postMessage({ type: "ASSET_STATS", stats, degraded: Boolean(stats.pressured) });
+        }
+      }),
+    );
+    return;
+  }
+
+  // CRDT sync: forward the local state change to the backend sync endpoint,
+  // delaying background sync if storage quota is under pressure.
   if (data.type === "CRDT_SYNC") {
     event.waitUntil(
-      fetch("/api/sync", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(data.payload),
-      }),
+      (async () => {
+        const stats = await assetManager.getStatsPublic();
+        if (stats.pressured) {
+          await notifyQuotaPressure(stats);
+          await new Promise((resolve) => setTimeout(resolve, stats.criticalPressured ? 5_000 : 1_500));
+        }
+        await fetch("/api/sync", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(data.payload),
+        });
+      })(),
     );
   }
 

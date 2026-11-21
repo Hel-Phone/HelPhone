@@ -24,6 +24,7 @@ import {
 import { createPasskeyAuthRouter } from './routes/passkey-auth.js'
 import { createFederationRouter } from './routes/federation.js'
 import { createDispatchRouters } from './routes/dispatch.js'
+import { createDispatchPriorityMiddleware } from './middleware/dispatchPriority.js'
 import { syncRouter } from './routes/sync.js'
 import historyRouter from './routes/history.js'
 import { createDocsRouter } from './routes/docs.js'
@@ -72,6 +73,7 @@ app.use(
 )
 if (process.env.NODE_ENV !== 'test') app.use(generalLimiter)
 app.use('/api/auth/passkey', createPasskeyAuthRouter())
+app.use(createDispatchPriorityMiddleware())
 const dispatchRouters = createDispatchRouters()
 app.use('/api/dispatch', dispatchRouters.api)
 app.use('/metrics', dispatchRouters.metrics)

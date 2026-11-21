@@ -9,7 +9,46 @@
  *  - every drop is reason-coded, and the snapshot is exposed on /metrics.
  */
 
+import { createHash } from 'node:crypto';
+import { redactObject } from './lib/redact.js';
+
 const PRIORITY_RANK = { heartbeat: 1, normal: 2, critical: 3 };
+const PLAINTEXT_COORD_KEYS = new Set([
+  'lat',
+  'lng',
+  'lon',
+  'latitude',
+  'longitude',
+  'dispatch.lat',
+  'dispatch.lng',
+]);
+
+function hasPlaintextCoords(span) {
+  if (!span || typeof span !== 'object') return false;
+  if (span.location && typeof span.location === 'object') {
+    const loc = span.location;
+    if (loc.lat !== undefined || loc.lng !== undefined || loc.latitude !== undefined || loc.longitude !== undefined) {
+      return true;
+    }
+  }
+  const checkMap = (obj) => {
+    if (!obj || typeof obj !== 'object') return false;
+    for (const [k, v] of Object.entries(obj)) {
+      if (PLAINTEXT_COORD_KEYS.has(k.toLowerCase()) && v !== undefined && v !== null) return true;
+    }
+    return false;
+  };
+  return checkMap(span.attributes) || checkMap(span.data);
+}
+
+function verifyIngestChecksum(span) {
+  const expected = span.checksum ?? span.attributes?.['helphone.checksum'];
+  if (expected === undefined) return true;
+  if (typeof expected !== 'string' || !expected) return false;
+  const payloadSource = span.payload ?? (span.checksum !== undefined ? { ...span, checksum: undefined } : span.attributes);
+  const digest = createHash('sha256').update(JSON.stringify(payloadSource)).digest('hex');
+  return digest === expected;
+}
 
 function priorityOf(span) {
   const value = span?.priority;
@@ -114,14 +153,17 @@ export class TelemetryReceiver {
     let accepted = 0;
     let rejected = 0;
     for (const span of incoming) {
-      if (!span || typeof span.name !== 'string') {
+      if (!span || typeof span.name !== 'string' || hasPlaintextCoords(span) || !verifyIngestChecksum(span)) {
         this.droppedReasons.invalid++;
         this.dropped++;
         this.rejected++;
         rejected++;
         continue;
       }
-      if (!this.admit(span)) {
+      const sanitizedSpan = span.attributes
+        ? { ...span, attributes: redactObject(span.attributes) }
+        : span;
+      if (!this.admit(sanitizedSpan)) {
         rejected++;
       } else {
         accepted++;

@@ -3,8 +3,13 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { getDomainStore, type DomainStore } from '../lib/domainStore.ts'
 import { invalidateIncident } from '../lib/sqlCache.ts'
-import { LwwElementSet, evaluateConflictWinner } from '../../src/lib/crdt.js'
+import {
+  LwwElementSet,
+  STATUS_LATTICE_RANK,
+  PRIORITY_LATTICE_RANK,
+} from '../../src/lib/crdt.js'
 import type { LwwOperation, VectorClock } from '../../src/lib/crdt.js'
+import { computeReconciliationMerge, type AnnotatedOperation } from '../../src/lib/crdtAdvanced.js'
 
 export const localCrdtStore = new LwwElementSet('server-sync', process.env.TENANT || 'local')
 
@@ -32,14 +37,53 @@ const flushSchema = z.object({
  *   409 { conflict, serverVersion, mergeProposal }   ← same as GraphQL SyncConflict
  *   422 { error, issues[] }                          ← same as GraphQL ValidationError
  */
+export interface ConflictAuditEntry {
+  key: string
+  actor: string
+  reason: string
+  zone?: string
+  epoch?: number
+  timestamp: number
+}
+
+const conflictAuditLog: ConflictAuditEntry[] = []
+const MAX_CONFLICT_AUDIT_LOG = 500
+
+export function getConflictAuditLog(): ConflictAuditEntry[] {
+  return [...conflictAuditLog]
+}
+
+function parseConflictString(conflict: string, zone?: string, epoch?: number): ConflictAuditEntry {
+  const keyMatch = /key=([^:]+)/.exec(conflict)
+  const actorMatch = /actor=([^:]+)/.exec(conflict)
+  const reasonIdx = conflict.indexOf('actor=')
+  const reason =
+    reasonIdx !== -1
+      ? conflict.slice(conflict.indexOf(':', reasonIdx) + 1)
+      : conflict
+  return {
+    key: keyMatch?.[1] ?? 'unknown',
+    actor: actorMatch?.[1] ?? 'unknown',
+    reason,
+    zone,
+    epoch,
+    timestamp: Date.now(),
+  }
+}
+
 export function createSyncRouter(options: { store?: DomainStore } = {}): Router {
   const store = options.store ?? getDomainStore()
   const router = Router()
 
   router.post('/', (req, res) => {
-    const incoming: (LwwOperation & { device_id?: string; seq?: number })[] = Array.isArray(req.body?.operations) ? req.body.operations : []
+    const incoming: (AnnotatedOperation & { device_id?: string; seq?: number })[] = Array.isArray(req.body?.operations)
+      ? req.body.operations
+      : []
+    const zone = typeof req.body?.zone === 'string' ? req.body.zone : undefined
+    const epoch = typeof req.body?.epoch === 'number' ? req.body.epoch : undefined
     let allDeduped = incoming.length > 0
 
+    const validIncoming: AnnotatedOperation[] = []
     for (const op of incoming) {
       if (op?.device_id && op?.seq !== undefined) {
         const dedupKey = `${op.device_id}:${op.seq}`
@@ -53,24 +97,60 @@ export function createSyncRouter(options: { store?: DomainStore } = {}): Router 
       }
 
       if (typeof op?.actor !== 'string' || !Number.isSafeInteger(op?.counter) || op.counter < 1) continue
-      localCrdtStore.apply(op)
+      validIncoming.push(op)
+    }
+
+    const localOps = localCrdtStore.snapshot().operations as AnnotatedOperation[]
+    const { merged, conflicts } = computeReconciliationMerge(
+      localOps,
+      validIncoming,
+      STATUS_LATTICE_RANK,
+      PRIORITY_LATTICE_RANK,
+    )
+
+    let appliedAny = false
+    for (const op of merged) {
+      if (localCrdtStore.apply(op)) {
+        appliedAny = true
+      }
       operations.set(`${op.actor}:${op.counter}`, op as Operation)
+    }
+
+    if (appliedAny && conflicts.length > 0) {
+      for (const conflict of conflicts) {
+        const entry = parseConflictString(conflict, zone, epoch)
+        conflictAuditLog.push(entry)
+        if (conflictAuditLog.length > MAX_CONFLICT_AUDIT_LOG) {
+          conflictAuditLog.shift()
+        }
+        console.info('[sync/reconcile] conflict resolved', JSON.stringify(entry))
+      }
     }
 
     const remoteClock: VectorClock = (req.body?.vectorClock as VectorClock) || {}
     const deltas = localCrdtStore.delta(remoteClock)
+    const isNoOp = (allDeduped || (!appliedAny && validIncoming.length > 0)) && incoming.length > 0
 
-    if (allDeduped && incoming.length > 0) {
+    if (isNoOp) {
       return res.status(200).json({
         deduped: true,
-        operations: deltas.length > 0 ? deltas : localCrdtStore.snapshot().operations,
+        operations: deltas.length > 0 ? deltas : merged,
+        conflicts: [],
         vectorClock: localCrdtStore.clock,
       })
     }
 
     res.json({
-      operations: deltas.length > 0 ? deltas : localCrdtStore.snapshot().operations,
+      operations: deltas.length > 0 ? deltas : merged,
+      conflicts,
       vectorClock: localCrdtStore.clock,
+    })
+  })
+
+  router.get('/conflicts', (_req, res) => {
+    res.set('Cache-Control', 'no-store').json({
+      count: conflictAuditLog.length,
+      conflicts: getConflictAuditLog(),
     })
   })
 

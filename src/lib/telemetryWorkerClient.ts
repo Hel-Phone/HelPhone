@@ -12,6 +12,7 @@
 
 import { TelemetryPipeline, type TelemetrySpanInput } from './telemetry';
 import type { TelemetryPriority } from './ringBuffer';
+import { redactTelemetryAttributes } from './telemetryRedactor';
 
 export interface TelemetryWorkerLike {
   postMessage(message: unknown, transfer?: Transferable[]): void;
@@ -233,12 +234,12 @@ export class TelemetryIngestClient {
         priority: frame.priority ?? 'normal',
         kind: frame.kindName ?? 'unknown',
         ts: Number.isFinite(frame.ts) ? (frame.ts as number) : this.now(),
-        attributes: {
+        attributes: redactTelemetryAttributes({
           seq: frame.seq,
           lat: frame.lat,
           lng: frame.lng,
           accuracy: frame.accuracy,
-        },
+        }),
       };
       if (this.pipeline.record(span)) admitted++;
     }

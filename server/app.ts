@@ -1,6 +1,7 @@
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import { installDomainRoutes } from './routes/index.ts';
 import { installTelemetryRoutes } from './telemetryBootstrap.js';
+import { createDispatchPriorityMiddleware } from './middleware/dispatchPriority.ts';
 import type { DomainStore } from './lib/domainStore.ts';
 
 export interface AppOptions {
@@ -20,6 +21,7 @@ export function createApp(options: AppOptions = {}): Express {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '1mb' }));
+  app.use(createDispatchPriorityMiddleware());
 
   if (options.telemetry !== false) installTelemetryRoutes(app);
   installDomainRoutes(app, { store: options.store, graphqlPath: options.graphqlPath });

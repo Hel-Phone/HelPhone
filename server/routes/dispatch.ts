@@ -21,6 +21,7 @@ import { PROMETHEUS_CONTENT_TYPE, renderPrometheus } from '../middleware/metrics
 import type { MetricFamily } from '../middleware/metrics.ts'
 import { getDomainStore, type DomainStore } from '../lib/domainStore.ts'
 import { getSqlCache, invalidateIncident } from '../lib/sqlCache.ts'
+import { DispatchQueue, toQueuePriority, type QueueMetrics } from '../../src/lib/dispatchQueue.ts'
 
 // ── Zod Schemas for Incident REST surface ───────────────────────────────────
 
@@ -158,6 +159,8 @@ export interface DispatchRouterOptions {
   store?: DispatchStore | DomainStore
   domainStore?: DomainStore
   enabled?: boolean
+  queue?: DispatchQueue
+  tickIntervalMs?: number
 }
 
 const FORBIDDEN_BODY_KEYS = new Set([
@@ -207,17 +210,19 @@ export interface DispatchMetricOptions {
   writes: number
   reads: number
   rateLimited: number
+  queueMetrics?: QueueMetrics
 }
 
 export function dispatchMetricFamilies(opts: DispatchMetricOptions): MetricFamily[] {
   const s = opts.store.stats()
+  const qm = opts.queueMetrics
   const sample = (name: string, help: string, value: number) => ({
     name,
     help,
     type: 'counter' as const,
     samples: [{ labels: {}, value }],
   })
-  return [
+  const families: MetricFamily[] = [
     {
       name: 'helphone_dispatch_envelopes',
       help: 'Sealed emergency payload envelopes currently held by the relay.',
@@ -258,6 +263,34 @@ export function dispatchMetricFamilies(opts: DispatchMetricOptions): MetricFamil
       opts.rateLimited,
     ),
   ]
+  if (qm) {
+    families.push(
+      {
+        name: 'helphone_dispatch_queue_queued',
+        help: 'Current number of queued dispatch items.',
+        type: 'gauge',
+        samples: [{ labels: {}, value: qm.queued }],
+      },
+      {
+        name: 'helphone_dispatch_queue_critical',
+        help: 'Current number of queued P0 (critical) dispatch items.',
+        type: 'gauge',
+        samples: [{ labels: {}, value: qm.critical }],
+      },
+      {
+        name: 'helphone_dispatch_queue_max_wait_ms',
+        help: 'Maximum wait time (ms) among queued dispatch items.',
+        type: 'gauge',
+        samples: [{ labels: {}, value: qm.maxWaitTime }],
+      },
+      sample(
+        'helphone_dispatch_queue_stale_prevented_total',
+        'Count of stale updates skipped to prevent starving P0 requests.',
+        qm.stalePrevented,
+      ),
+    )
+  }
+  return families
 }
 
 export function createWriteLimiter(limit: number, windowMs: number) {
@@ -285,6 +318,19 @@ export function createDispatchRouters(opts: DispatchRouterOptions = {}) {
 
   const enabled = opts.enabled ?? true
   const limiter = createWriteLimiter(WRITE_RATE_LIMIT, WRITE_RATE_WINDOW_MS)
+  const queue = opts.queue ?? new DispatchQueue()
+
+  queue.onProcess(async (item) => {
+    const data = item.payload as { requestId?: string; envelope?: EncryptedEnvelope } | undefined
+    if (data?.requestId && data?.envelope) {
+      store.putEnvelope(data.requestId, data.envelope)
+    }
+  })
+  if (opts.tickIntervalMs && opts.tickIntervalMs > 0) {
+    queue.startTick(opts.tickIntervalMs)
+  } else if (process.env.NODE_ENV !== 'test') {
+    queue.startTick(100)
+  }
 
   const counters = { rejectedPlaintext: 0, rejectedMalformed: 0, writes: 0, reads: 0, rateLimited: 0 }
 
@@ -405,6 +451,16 @@ export function createDispatchRouters(opts: DispatchRouterOptions = {}) {
       })
       return
     }
+
+    const priority = req.priorityContext?.priority ?? toQueuePriority(req.headers['x-priority']?.toString())
+    queue.enqueue({
+      id: `envelope:${requestId}:${Date.now()}`,
+      priority,
+      payload: { requestId, envelope },
+      timestamp: req.priorityContext?.timestamp ?? Date.now(),
+      maxRetries: 3,
+      isUpdate: req.priorityContext?.isUpdate ?? false,
+    })
 
     const outcome = store.putEnvelope(requestId, envelope)
     if (!outcome.stored) {
@@ -636,14 +692,18 @@ export function createDispatchRouters(opts: DispatchRouterOptions = {}) {
     }
   })
 
+  api.get('/queue/metrics', (_req: Request, res: Response) => {
+    res.set('Cache-Control', 'no-store').json(queue.getMetrics())
+  })
+
   const metrics = Router()
   metrics.get('/dispatch', (_req: Request, res: Response) => {
     res
       .set('Content-Type', PROMETHEUS_CONTENT_TYPE)
-      .send(renderPrometheus(dispatchMetricFamilies({ store, ...counters })))
+      .send(renderPrometheus(dispatchMetricFamilies({ store, ...counters, queueMetrics: queue.getMetrics() })))
   })
 
-  return { api, metrics, store, limiter }
+  return { api, metrics, store, limiter, queue }
 }
 
 export function createDispatchRouter(options: DispatchRouterOptions = {}): Router {
