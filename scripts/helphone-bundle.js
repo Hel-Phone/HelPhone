@@ -34,6 +34,7 @@ import {
   scrubText,
   scanForPii,
 } from "./security/env_firewall.js";
+import { verifyIncidentTape } from "../server/lib/incidentTape.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -429,7 +430,14 @@ export function collectBundle({
   return { manifest, out: outAbs, bytes: tgz.length };
 }
 
-export function verifyBundle(tgzPath) {
+export function verifyBundle(
+  tgzPath,
+  {
+    now = new Date(),
+    tapePublicKey = process.env.HELPHONE_TAPE_PUBLIC_KEY || null,
+    requireTapeSignature = false,
+  } = {},
+) {
   const abs = path.isAbsolute(tgzPath)
     ? tgzPath
     : path.join(process.cwd(), tgzPath);
@@ -440,6 +448,14 @@ export function verifyBundle(tgzPath) {
   if (!manifestEntry) throw new Error("manifest.json missing");
   const manifest = JSON.parse(manifestEntry.data.toString("utf8"));
   const problems = [];
+
+  if (manifest.expiresAt) {
+    const expMs = Date.parse(manifest.expiresAt);
+    if (!Number.isFinite(expMs) || expMs <= now.getTime()) {
+      problems.push(`bundle expired: ${manifest.expiresAt}`);
+    }
+  }
+
   for (const f of manifest.files || []) {
     const entry = byName.get(f.path);
     if (!entry) {
@@ -448,6 +464,27 @@ export function verifyBundle(tgzPath) {
     }
     const digest = sha256(entry.data);
     if (digest !== f.sha256) problems.push(`hash mismatch: ${f.path}`);
+
+    if (/(?:^|\/)(?:.*incident-tape.*\.json|.*\.tape\.json)$/i.test(f.path)) {
+      try {
+        const tapeDoc = JSON.parse(entry.data.toString("utf8"));
+        if (tapeDoc.signature || requireTapeSignature) {
+          const tapeCheck = verifyIncidentTape(tapeDoc, tapePublicKey, { now });
+          if (!tapeCheck.ok) {
+            for (const p of tapeCheck.problems) {
+              problems.push(`${f.path}: ${p}`);
+            }
+          }
+        } else if (tapeDoc.expiresAt) {
+          const tExp = Date.parse(tapeDoc.expiresAt);
+          if (!Number.isFinite(tExp) || tExp <= now.getTime()) {
+            problems.push(`${f.path}: incident tape expired at ${tapeDoc.expiresAt}`);
+          }
+        }
+      } catch (err) {
+        problems.push(`${f.path}: invalid incident tape JSON (${err.message})`);
+      }
+    }
   }
   return { ok: problems.length === 0, problems, manifest };
 }
@@ -483,10 +520,16 @@ function cliMain(argv) {
   if (cmd === "verify") {
     const target = argv[1];
     if (!target) {
-      console.error("usage: helphone-bundle verify <bundle.tgz>");
+      console.error("usage: helphone-bundle verify <bundle.tgz> [--tape-key <pub.pem>]");
       return 2;
     }
-    const result = verifyBundle(target);
+    const tapePublicKey = flags["tape-key"]
+      ? fs.readFileSync(path.resolve(flags["tape-key"]), "utf8")
+      : process.env.HELPHONE_TAPE_PUBLIC_KEY || null;
+    const result = verifyBundle(target, {
+      tapePublicKey,
+      requireTapeSignature: argv.includes("--require-tape-signature"),
+    });
     if (!result.ok) {
       for (const p of result.problems) console.error(`FAIL ${p}`);
       return 1;
