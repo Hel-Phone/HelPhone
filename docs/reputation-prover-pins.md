@@ -10,6 +10,7 @@ They must remain aligned with:
 
 - **At boot**: `bootReputationPinCheck()` runs in `src/main.tsx`. If the circuit compiler version, prover pins, or ranking flag generation disagree, `proven`-tier ranking is automatically disabled and responders degrade to `probationary` labels.
 - **In CI**: `node scripts/check-reputation-pins.js` (`npm run security:reputation-pins`) runs in `.github/workflows/ci.yml` and fails the build if any of the four sources drift.
+- **Flag Governance & Staged Rollout (#944)**: `node scripts/audit-feature-flags.js --check` (`npm run security:flag-audit`) verifies flag ownership, `expiresAt` freshness, `canaryStage` alignment, and `auditLog` actor/reason records. Promoting `reputationGatedRanking` or `experimental_zk_v2` must follow `off -> canary_10 -> canary_50 -> ga_100` and fails if prover pins are misaligned.
 
 ## Rollback
 

@@ -87,6 +87,12 @@ jobs:
       - name: Audit generated code for security defects
         run: npm run security:ai-code
 
+      - name: Three-way GraphQL/REST/OpenAPI schema contract drift guard (#946)
+        run: npm run schema:drift -- --report artifacts/schema-drift-report.md
+
+      - name: Feature flag governance & ZK/ranking pin audit (#944)
+        run: npm run security:flag-audit
+
       - name: Code Formatting & ESLint Quality Check
         run: npx eslint .
 

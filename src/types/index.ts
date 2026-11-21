@@ -185,9 +185,26 @@ export interface DaoProposalSummary {
 }
 
 // --- Feature Flags Subsystem ---
+export type CanaryStage = 'off' | 'canary_10' | 'canary_50' | 'ga_100'
+
+export interface FlagAuditEvent {
+  timestamp: string
+  flagKey: string
+  actor: string
+  reason: string
+  fromStage: CanaryStage
+  toStage: CanaryStage
+  pinsAligned?: boolean
+}
+
 export interface FeatureFlagRuleset {
   enabled: boolean
   rolloutPercentage?: number
+  generation?: number
+  owner?: string
+  expiresAt?: string
+  canaryStage?: CanaryStage
+  requiresPinAlignment?: boolean
   targets?: {
     roles?: string[]
     environments?: string[]
@@ -200,6 +217,7 @@ export interface FeatureFlagConfig {
   version: string
   updatedAt?: string
   flags: Record<string, FeatureFlagRuleset>
+  auditLog?: FlagAuditEvent[]
 }
 
 export interface UserContext {

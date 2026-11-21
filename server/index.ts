@@ -27,6 +27,7 @@ import { createDispatchRouters } from './routes/dispatch.js'
 import { syncRouter } from './routes/sync.js'
 import historyRouter from './routes/history.js'
 import { createDocsRouter } from './routes/docs.js'
+import { apiVersionMiddleware } from './middleware/apiVersion.ts'
 
 /* Cross-Origin-Opener-Policy: same-origin */
 /* Cross-Origin-Embedder-Policy: credentialless */
@@ -73,11 +74,16 @@ app.use(
 if (process.env.NODE_ENV !== 'test') app.use(generalLimiter)
 app.use('/api/auth/passkey', createPasskeyAuthRouter())
 const dispatchRouters = createDispatchRouters()
-app.use('/api/dispatch', dispatchRouters.api)
+const federationRouter = createFederationRouter()
+app.use('/api/v1/dispatch', apiVersionMiddleware('v1'), dispatchRouters.api)
+app.use('/api/v1/sync', apiVersionMiddleware('v1'), syncRouter)
+app.use('/api/v1/history', apiVersionMiddleware('v1'), historyRouter)
+app.use('/api/v1/federation', apiVersionMiddleware('v1'), federationRouter)
+app.use('/api/dispatch', apiVersionMiddleware('v0'), dispatchRouters.api)
 app.use('/metrics', dispatchRouters.metrics)
-app.use('/api/sync', syncRouter)
-app.use('/api/history', historyRouter)
-app.use('/api/federation', createFederationRouter())
+app.use('/api/sync', apiVersionMiddleware('v0'), syncRouter)
+app.use('/api/history', apiVersionMiddleware('v0'), historyRouter)
+app.use('/api/federation', apiVersionMiddleware('v0'), federationRouter)
 app.use('/docs', createDocsRouter())
 
 const stateExporter = new SorobanStateExporter()
