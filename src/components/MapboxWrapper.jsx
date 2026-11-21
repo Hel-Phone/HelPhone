@@ -2,6 +2,8 @@ import { forwardRef, useEffect, useRef, useState } from "react";
 import Map, { NavigationControl } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { searchCities, isOffline } from "../lib/geocoder.ts";
+import { MapboxGLResourceManager } from "../lib/memoryLeakFixes.ts";
+import { DEFAULT_LONG_TASK_THRESHOLDS, LongTaskMonitor } from "../lib/mainThreadOptimization.ts";
 
 /**
  * MapboxWrapper (#87)
@@ -87,17 +89,22 @@ const MapboxWrapper = forwardRef(function MapboxWrapper(
   }, [provider, onProviderChange]);
 
   useEffect(() => {
+    const resourceMgr = new MapboxGLResourceManager();
+    const monitor = new LongTaskMonitor(DEFAULT_LONG_TASK_THRESHOLDS, { route: "/map" });
+    monitor.startMonitoring();
     return () => {
+      monitor.stopMonitoring();
       if (internalRef.current?.getMap) {
         try {
           const mapInstance = internalRef.current.getMap();
           if (mapInstance) {
-            mapInstance.remove();
+            resourceMgr.setMap(mapInstance);
           }
         } catch {
           // Map already removed or disposed
         }
       }
+      resourceMgr.dispose();
     };
   }, []);
 

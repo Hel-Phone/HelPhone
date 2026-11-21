@@ -246,6 +246,111 @@ function logSlice({ logFile, sinceMs }) {
   return kept.join("\n");
 }
 
+const FORENSIC_SIGNALS = [
+  "ts",
+  "jsHeapUsed",
+  "jsHeapLimit",
+  "workerQueueDepth",
+  "workerPendingBytes",
+  "workerHeartbeatAgeMs",
+  "yjsBytes",
+  "mapboxTiles",
+  "mapboxStyleBytes",
+  "ringBytes",
+  "wasmBytes",
+  "wasmGrowEvents",
+  "parserAllocBytes",
+  "storageUsage",
+  "storageQuota",
+];
+
+function normalizeForensicEnvelope(raw, now = Date.now()) {
+  if (raw && typeof raw === "object" && raw.schema === "helphone.forensics/1") {
+    const census = Array.isArray(raw.census)
+      ? raw.census.slice(-50).map((row) =>
+          Array.isArray(row)
+            ? FORENSIC_SIGNALS.map((_, i) =>
+                typeof row[i] === "number" && Number.isFinite(row[i])
+                  ? row[i]
+                  : null,
+              )
+            : FORENSIC_SIGNALS.map(() => null),
+        )
+      : [];
+    return {
+      schema: "helphone.forensics/1",
+      reason: raw.reason || "manual",
+      ts: typeof raw.ts === "number" && Number.isFinite(raw.ts) ? raw.ts : now,
+      ua: raw.ua || "other",
+      signals: FORENSIC_SIGNALS,
+      census,
+      breakdown:
+        raw.breakdown && typeof raw.breakdown === "object" ? raw.breakdown : {},
+      hints: raw.hints && typeof raw.hints === "object" ? raw.hints : {},
+    };
+  }
+  const mem =
+    typeof process !== "undefined" && typeof process.memoryUsage === "function"
+      ? process.memoryUsage()
+      : null;
+  const heapUsed =
+    typeof mem?.heapUsed === "number" && Number.isFinite(mem.heapUsed)
+      ? mem.heapUsed
+      : null;
+  const heapTotal =
+    typeof mem?.heapTotal === "number" && Number.isFinite(mem.heapTotal)
+      ? mem.heapTotal
+      : null;
+  return {
+    schema: "helphone.forensics/1",
+    reason: "manual",
+    ts: now,
+    ua: "other",
+    signals: FORENSIC_SIGNALS,
+    census: [
+      [
+        now,
+        heapUsed,
+        heapTotal,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        6000,
+        null,
+        0,
+        0,
+        null,
+        null,
+      ],
+    ],
+    breakdown: heapUsed != null ? { jsHeapUsed: heapUsed, ringBytes: 6000 } : { ringBytes: 6000 },
+    hints: {},
+  };
+}
+
+function loadForensicSnapshot({ forensicEnvelope, forensicsFile, now }) {
+  if (forensicEnvelope) {
+    return normalizeForensicEnvelope(forensicEnvelope, now);
+  }
+  if (forensicsFile) {
+    const abs = path.isAbsolute(forensicsFile)
+      ? forensicsFile
+      : path.join(ROOT, forensicsFile);
+    if (fs.existsSync(abs)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(abs, "utf8"));
+        return normalizeForensicEnvelope(parsed, now);
+      } catch {
+        // fall back to synthesized envelope
+      }
+    }
+  }
+  return normalizeForensicEnvelope(null, now);
+}
+
 // ── collect ─────────────────────────────────────────────────────────────────
 
 export function collectBundle({
@@ -254,6 +359,8 @@ export function collectBundle({
   out = "helphone-bundle.tgz",
   breakGlass = false,
   logFile = null,
+  forensicsFile = null,
+  forensicEnvelope = null,
   dispatch = false,
   extraFiles = {},
 } = {}) {
@@ -347,6 +454,18 @@ export function collectBundle({
     "# Client ring/crash slices: export from the device via TelemetryLab-equivalent\n# (ringBuffer/crashRecovery) and re-run with --client-slice <file>.\n",
     "src/lib",
   );
+  if (!Object.prototype.hasOwnProperty.call(extraFiles, "client/heap-forensics.json")) {
+    const forensicSnap = loadForensicSnapshot({
+      forensicEnvelope,
+      forensicsFile,
+      now,
+    });
+    push(
+      "client/heap-forensics.json",
+      JSON.stringify(forensicSnap, null, 2),
+      "src/lib/heapForensics.ts",
+    );
+  }
 
   // operator-supplied extras
   for (const [name, content] of Object.entries(extraFiles)) {
@@ -473,6 +592,7 @@ function cliMain(argv) {
       out: flags.out || "helphone-bundle.tgz",
       breakGlass: !!flags.breakGlass,
       logFile: flags["log-file"] || null,
+      forensicsFile: flags.forensics || flags["forensics-file"] || null,
       dispatch: !!flags.dispatch,
     });
     console.log(

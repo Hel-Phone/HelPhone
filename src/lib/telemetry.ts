@@ -643,6 +643,110 @@ export function trackAudioAlert(
   }
 }
 
+export const MAX_LONGTASK_NAME_LENGTH = 64;
+export const MAX_LONGTASK_TELEMETRY_EVENTS = 50;
+
+export interface LongTaskTelemetryEvent {
+  name: string;
+  durationMs: number;
+  startTime: number;
+  endTime: number;
+  severity: 'warning' | 'critical';
+  warningThresholdMs: number;
+  criticalThresholdMs: number;
+  route?: string;
+}
+
+const longTaskTelemetryBuffer: LongTaskTelemetryEvent[] = [];
+
+/**
+ * Record a bounded long-task telemetry breach event (#961).
+ * Bounds string lengths and retains at most MAX_LONGTASK_TELEMETRY_EVENTS entries.
+ */
+export function trackLongTask(
+  input: {
+    name: string;
+    durationMs: number;
+    startTime: number;
+    endTime?: number;
+    severity: 'warning' | 'critical';
+    warningThresholdMs: number;
+    criticalThresholdMs: number;
+    route?: string;
+  },
+  pipeline?: TelemetryPipeline | null,
+): LongTaskTelemetryEvent {
+  const boundedName = String(input.name || 'longtask').slice(0, MAX_LONGTASK_NAME_LENGTH);
+  const durationMs = Number.isFinite(input.durationMs) ? Math.max(0, Math.round(input.durationMs * 100) / 100) : 0;
+  const startTime = Number.isFinite(input.startTime) ? Math.max(0, Math.round(input.startTime * 100) / 100) : 0;
+  const endTime = Number.isFinite(input.endTime)
+    ? Math.max(startTime, Math.round((input.endTime as number) * 100) / 100)
+    : Math.round((startTime + durationMs) * 100) / 100;
+  const boundedRoute = input.route ? String(input.route).slice(0, 64) : undefined;
+
+  const event: LongTaskTelemetryEvent = {
+    name: boundedName,
+    durationMs,
+    startTime,
+    endTime,
+    severity: input.severity,
+    warningThresholdMs: input.warningThresholdMs,
+    criticalThresholdMs: input.criticalThresholdMs,
+    ...(boundedRoute ? { route: boundedRoute } : {}),
+  };
+
+  if (input.severity === 'critical') {
+    longTaskTelemetryBuffer.push(event);
+    while (longTaskTelemetryBuffer.length > MAX_LONGTASK_TELEMETRY_EVENTS) {
+      longTaskTelemetryBuffer.shift();
+    }
+  }
+
+  const span = tracer.startSpan('longtask.breach');
+  try {
+    span.setAttributes({
+      'longtask.name': event.name,
+      'longtask.duration_ms': event.durationMs,
+      'longtask.severity': event.severity,
+      'longtask.warning_threshold_ms': event.warningThresholdMs,
+      'longtask.critical_threshold_ms': event.criticalThresholdMs,
+      ...(event.route ? { 'longtask.route': event.route } : {}),
+    });
+    if (event.severity === 'critical') {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: 'critical long task' });
+    }
+  } finally {
+    span.end();
+  }
+
+  if (pipeline) {
+    pipeline.record({
+      name: 'longtask.breach',
+      kind: 'longtask',
+      priority: event.severity === 'critical' ? 'critical' : 'normal',
+      ts: event.startTime,
+      durationMs: event.durationMs,
+      attributes: {
+        taskName: event.name,
+        severity: event.severity,
+        warningThresholdMs: event.warningThresholdMs,
+        criticalThresholdMs: event.criticalThresholdMs,
+        ...(event.route ? { route: event.route } : {}),
+      },
+    });
+  }
+
+  return event;
+}
+
+export function getLongTaskTelemetryEvents(): LongTaskTelemetryEvent[] {
+  return [...longTaskTelemetryBuffer];
+}
+
+export function clearLongTaskTelemetryEvents(): void {
+  longTaskTelemetryBuffer.length = 0;
+}
+
 /**
  * Track video performance metrics (Issue #745)
  */

@@ -3,6 +3,8 @@ import Map, { NavigationControl } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { searchCities, isOffline } from '../lib/geocoder.ts'
 import { loadRoadNetwork } from '../lib/routing.ts'
+import { MapboxGLResourceManager } from '../lib/memoryLeakFixes.ts'
+import { DEFAULT_LONG_TASK_THRESHOLDS, LongTaskMonitor } from '../lib/mainThreadOptimization.ts'
 
 /**
  * MapboxWrapper (#87)
@@ -77,8 +79,15 @@ const MapboxWrapper = forwardRef<unknown, MapboxWrapperProps>(function MapboxWra
   }, [provider, onProviderChange])
 
   useEffect(() => {
+    const resourceMgr = new MapboxGLResourceManager()
+    const monitor = new LongTaskMonitor(DEFAULT_LONG_TASK_THRESHOLDS, { route: '/map' })
+    monitor.startMonitoring()
     const id = window.setTimeout(() => { void loadRoadNetwork().catch(() => undefined) }, 0)
-    return () => window.clearTimeout(id)
+    return () => {
+      window.clearTimeout(id)
+      monitor.stopMonitoring()
+      resourceMgr.dispose()
+    }
   }, [])
 
   return (

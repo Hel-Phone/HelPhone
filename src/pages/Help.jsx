@@ -66,6 +66,12 @@ import {
 } from "../lib/crypto";
 import { redactProfile, jitterCoordinates } from "../lib/privacy.ts";
 import { api } from "../services/api";
+import {
+  DEFAULT_VIEWPORT_TRANSFORM,
+  buildViewportOverlays,
+  createOverlayRenderer,
+} from "../lib/offscreenCanvas.ts";
+import { useClusterer } from "../hooks/useClusterer.js";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -878,6 +884,7 @@ function TrackingScreen({
   isMarkingArrived,
   onMarkArrived,
   onResolve,
+  overlayActive = false,
 }) {
   const dist =
     requesterLat != null && responderLat != null
@@ -897,7 +904,7 @@ function TrackingScreen({
           lat={responderLat}
           lng={responderLng}
         >
-          {!isArrived && (
+          {!isArrived && !overlayActive && (
             <div
               style={{
                 position: "absolute",
@@ -1577,6 +1584,103 @@ export default function Help() {
   const [zkLogs, setZkLogs] = useState([]);
   const [zkProof, setZkProof] = useState(null);
   const [zkError, setZkError] = useState("");
+  const [mapViewport, setMapViewport] = useState(DEFAULT_VIEWPORT_TRANSFORM);
+  const [overlayMountKey, setOverlayMountKey] = useState(0);
+  const [overlayForceMain, setOverlayForceMain] = useState(false);
+  const overlayCanvasRef = useRef(null);
+  const overlayRendererRef = useRef(null);
+  const overlayRendererCanvasRef = useRef(null);
+
+  const clusterPoints = [
+    ...(location && Number.isFinite(location[0]) && Number.isFinite(location[1])
+      ? [
+          {
+            id: "self",
+            lat: location[0],
+            lng: location[1],
+            kind: mode === "get" ? "pending" : "responder",
+          },
+        ]
+      : []),
+    ...responders
+      .filter((r) => r && Number.isFinite(r.lat) && Number.isFinite(r.lng))
+      .map((r) => ({
+        id: `resp-${r.id}`,
+        lat: r.lat,
+        lng: r.lng,
+        kind: responderArrived ? "resolved" : "enroute",
+      })),
+    ...openRequests
+      .filter((req) => req && Number.isFinite(req.lat) && Number.isFinite(req.lng))
+      .map((req) => ({
+        id: `req-${req.id}`,
+        lat: req.lat,
+        lng: req.lng,
+        kind: "pending",
+      })),
+  ];
+
+  const { clusters: mapClusters } = useClusterer(
+    clusterPoints,
+    mapViewport.zoom ?? 2,
+    mapViewport.bounds ?? DEFAULT_VIEWPORT_TRANSFORM.bounds,
+    {
+      scale: mapViewport.scale,
+      offsetX: mapViewport.offsetX,
+      offsetY: mapViewport.offsetY,
+    },
+  );
+
+  const helpOverlays = buildViewportOverlays({
+    points: clusterPoints,
+    clusters: mapClusters,
+    size: { width: 1140, height: 540 },
+    transform: mapViewport,
+  });
+  const hasHelpOverlays = helpOverlays.length > 0;
+
+  useEffect(() => {
+    const canvas = overlayCanvasRef.current;
+    if (!hasHelpOverlays || !canvas) return undefined;
+    let renderer = overlayRendererRef.current;
+    if (overlayRendererCanvasRef.current !== canvas) {
+      if (renderer) renderer.destroy();
+      overlayRendererRef.current = null;
+      overlayRendererCanvasRef.current = null;
+      try {
+        renderer = createOverlayRenderer(canvas, {
+          width: 1140,
+          height: 540,
+          dpr: Math.min((typeof window !== "undefined" && window.devicePixelRatio) || 1, 2),
+          forceMainThread: overlayForceMain,
+          onError: () => {
+            setOverlayForceMain(true);
+            setOverlayMountKey((k) => k + 1);
+          },
+        });
+      } catch {
+        if (!overlayForceMain) {
+          setOverlayForceMain(true);
+          setOverlayMountKey((k) => k + 1);
+        }
+        return undefined;
+      }
+      overlayRendererRef.current = renderer;
+      overlayRendererCanvasRef.current = canvas;
+    }
+    return () => {
+      if (overlayRendererRef.current === renderer && renderer) {
+        renderer.destroy();
+        overlayRendererRef.current = null;
+        overlayRendererCanvasRef.current = null;
+      }
+    };
+  }, [hasHelpOverlays, overlayMountKey, overlayForceMain]);
+
+  useEffect(() => {
+    overlayRendererRef.current?.setOverlays(helpOverlays);
+    overlayRendererRef.current?.setViewport?.(mapViewport);
+  }, [helpOverlays, mapViewport, overlayMountKey, overlayForceMain]);
 
   const [walletAddress, setWalletAddress] = useState("");
   const activeWalletAddress = walletAddress;
@@ -4083,6 +4187,19 @@ export default function Help() {
               setLocation([e.lngLat.lat, e.lngLat.lng]);
             }
           }}
+          onMove={(e) => {
+            const vs = e?.viewState;
+            if (!vs) return;
+            const z = Number.isFinite(vs.zoom) ? vs.zoom : 2;
+            const scale = Math.pow(2, Math.max(-4, Math.min(4, (z - 2) * 0.25)));
+            setMapViewport((prev) => ({
+              ...prev,
+              zoom: z,
+              scale,
+              offsetX: Number.isFinite(vs.longitude) ? -vs.longitude * 2 : 0,
+              offsetY: Number.isFinite(vs.latitude) ? vs.latitude * 2 : 0,
+            }));
+          }}
         >
           {location && <MapController center={location} zoom={14} />}
           <NavigationControl position="bottom-right" />
@@ -4233,6 +4350,7 @@ export default function Help() {
               etaSeconds={responders[0].eta_seconds}
               isArrived={responderArrived}
               isResponderView={false}
+              overlayActive={hasHelpOverlays}
               onResolve={async () => {
                 try {
                   await resolveRequest(
@@ -4266,9 +4384,25 @@ export default function Help() {
                 isResponderView={true}
                 isMarkingArrived={arrivalSubmitting}
                 onMarkArrived={handleMarkArrived}
+                overlayActive={hasHelpOverlays}
               />
             )}
         </Map>
+        {hasHelpOverlays && (
+          <canvas
+            key={overlayMountKey}
+            ref={overlayCanvasRef}
+            aria-hidden="true"
+            data-testid="help-map-overlay-canvas"
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              pointerEvents: "none",
+            }}
+          />
+        )}
 
         <div
           ref={styleSelectorRef}

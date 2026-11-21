@@ -48,6 +48,43 @@ Logs, traces, indexer rows and exports go through `server/lib/redact.js`:
 
 Morgan logs `:redacted-url`. `node scripts/security/env_firewall.js --scan <file>` fails if it finds PII.
 
+## Heap forensics and measurability matrix (#793)
+
+`src/lib/heapForensics.ts` samples per-subsystem memory proxies into a fixed 50-entry census (`CENSUS_SIZE = 50`) backed by a single preallocated `Float64Array(50 * 15)` (`SELF_BYTES = 6000`). Both sampling (`sample()`) and envelope construction (`buildEnvelope()` / `readCensusMatrix()`) reuse preallocated row views so emitting a memory-pressure envelope allocates no per-sample objects.
+
+Every probe is wrapped in a non-throwing guard (`safe()`): when a browser or runtime lacks an API (for example, `performance.memory` outside Chromium, `performance.measureUserAgentSpecificMemory` without cross-origin isolation, or `navigator.storage.estimate` in restricted contexts), the probe records `NaN` in the `Float64Array` census (serialized as `null` in `helphone.forensics/1` JSON envelopes) and never throws. When `performance.measureUserAgentSpecificMemory()` is supported (`COOP: same-origin` + `COEP: credentialless`), `probeUaSpecificMemory()` populates the cross-origin isolated byte measurement and triggers pressure evaluation when memory usage crosses the pressure threshold.
+
+### Measurability matrix
+
+| Signal | Kind (`SIGNAL_KIND`) | Source / Probe | Browser & Runtime Availability | Missing API Behavior |
+|--------|----------------------|----------------|--------------------------------|----------------------|
+| `ts` | timestamp | `Date.now()` | All runtimes | `NaN` if non-finite |
+| `jsHeapUsed` | `measured` | `performance.memory.usedJSHeapSize`, falling back to `performance.measureUserAgentSpecificMemory()` | Chromium (`performance.memory`) or COOP/COEP isolated UAs (`measureUserAgentSpecificMemory`) | `NaN` (`null` in JSON) |
+| `jsHeapLimit` | `measured` | `performance.memory.jsHeapSizeLimit` | Chromium main thread | `NaN` (`null` in JSON) |
+| `workerQueueDepth` | `measured` | `recordWorkerQueue(depth, pendingBytes)` via `workerSupervision.js` heartbeats | All workers with supervision hooks | `0` (counter default) |
+| `workerPendingBytes` | `estimate` | Sum of structured-clone payload byte estimates from supervised workers | All workers with supervision hooks | `0` (counter default) |
+| `workerHeartbeatAgeMs` | `proxy` | `now - lastHeartbeat` from `recordWorkerHeartbeat()` | Main thread supervising workers | `NaN` before first beat |
+| `yjsBytes` | `estimate` | `subsystems.yjsDoc.encodeState().byteLength` | Sessions with active CRDT document | `NaN` when unattached |
+| `mapboxTiles` | `measured` | Tile count across `subsystems.map.style.sourceCaches[*]._tiles` | Sessions with mounted Mapbox GL instance | `NaN` when unmounted |
+| `mapboxStyleBytes` | `estimate` | `JSON.stringify(subsystems.map.getStyle()).length` | Sessions with mounted Mapbox GL instance | `NaN` when unmounted |
+| `ringBytes` | `measured` | `counters.ringBytes + SELF_BYTES` (fed by `RingBuffer` and `createAuditTape`) | All runtimes | `SELF_BYTES` (`6000`) |
+| `wasmBytes` | `measured` | `subsystems.wasmMemory().buffer.byteLength` | Runtimes with loaded WASM linear memory | `NaN` when unattached |
+| `wasmGrowEvents` | `measured` | `instrumentWasmMemory(memory)` wrapper on `WebAssembly.Memory.prototype.grow` | Runtimes with instrumented WASM memory | `0` (counter default) |
+| `parserAllocBytes` | `measured` | `recordParserAlloc(bytes)` in `src/utils/binaryParserWasm.js` | WASM telemetry parser path | `0` (counter default) |
+| `storageUsage` | `estimate` | `navigator.storage.estimate().usage` | StorageManager-capable browsers | `NaN` (`null` in JSON) |
+| `storageQuota` | `estimate` | `navigator.storage.estimate().quota` | StorageManager-capable browsers | `NaN` (`null` in JSON) |
+
+### Pressure triggers, metrics, and incident bundle attachment
+
+- **Pressure reasons (`PressureReason`)**:
+  - `heartbeat_stall`: `workerHeartbeatAgeMs > 30_000`
+  - `heap_near_limit`: `jsHeapUsed / jsHeapLimit > 0.85` (or `jsHeapUsed > DEFAULT_UA_MEMORY_PRESSURE_BYTES` when `jsHeapLimit` is `NaN` under `measureUserAgentSpecificMemory`, or on `RingBuffer` critical pressure)
+  - `storage_near_quota`: `storageUsage / storageQuota > 0.90`
+  - `crash`: `emergencyEmit()` from `ErrorBoundary` / crash recovery (skips retainer hints for OOM safety)
+  - `manual`: operator snapshot from `TelemetryLabPanels` or `window.__helphone_forceHeapSnapshot()`
+- **Server ingest & Prometheus metrics**: `POST /api/telemetry/forensics` validates against `forensicEnvelopeSchema` (`schema: "helphone.forensics/1"`, up to 50 census rows) and exports `helphone_forensic_envelopes_total{reason,ua}` and `helphone_forensic_subsystem_bytes{subsystem,ua}`.
+- **Incident bundle**: `scripts/helphone-bundle.js` (and `attachForensicsToIncidentBundle()`) attaches the fixed 50-entry census envelope at `client/heap-forensics.json`, carrying sizes and counts only (zero PII).
+
 ## Incident tape and clock semantics (#794)
 
 | Source | Field | Clock | Trust |
