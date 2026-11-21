@@ -257,6 +257,27 @@ jobs:
             tests/e2e/layout.spec.ts-snapshots/
           if-no-files-found: ignore
 
+  e2e-field-zk:
+    name: E2E field and ZK flows
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci || npm install
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test tests/e2e/field-zk-flows.spec.ts --project=chromium --reporter=line
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: field-zk-playwright-traces
+          path: test-results/
+          if-no-files-found: ignore
+
   # Build-pipeline network egress monitor: every outbound connection made
   # while dependencies are fetched and while `npm run build` runs is captured
   # (tcpdump) and classified against the allowlist in
