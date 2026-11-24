@@ -7,6 +7,8 @@ import { searchCities, isOffline } from '../lib/geocoder.ts'
 import { loadRoadNetwork } from '../lib/routing.ts'
 import { MapboxGLResourceManager } from '../lib/memoryLeakFixes.ts'
 import { DEFAULT_LONG_TASK_THRESHOLDS, LongTaskMonitor } from '../lib/mainThreadOptimization.ts'
+import TelemetryLayer from './TelemetryLayer'
+import type { TelemetryBuffers } from '../lib/telemetryBuffers.ts'
 
 /**
  * MapboxWrapper (#87)
@@ -41,6 +43,8 @@ interface MapboxWrapperProps extends PassThroughMapProps {
   onIsolationChange?: (isolated: boolean) => void
   onProviderChange?: (provider: 'online' | 'offline') => void
   navigationControlPosition?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left'
+  /** Optional preallocated telemetry store; adds the binary custom layer. */
+  telemetryBuffers?: TelemetryBuffers
   style?: CSSProperties
   /** Map content, or a render function that receives the offline geocoder while offline. */
   children?: ReactNode | ((ctx: { provider: 'online' | 'offline'; searchCities: typeof searchCities }) => ReactNode)
@@ -56,6 +60,7 @@ const MapboxWrapper = forwardRef<unknown, MapboxWrapperProps>(function MapboxWra
     navigationControlPosition = 'bottom-right',
     onIsolationChange,
     onProviderChange,
+    telemetryBuffers,
     style = FILL_PARENT,
     children,
     ...rest
@@ -133,6 +138,7 @@ const MapboxWrapper = forwardRef<unknown, MapboxWrapperProps>(function MapboxWra
       {showNavigationControl && (
         <NavigationControl position={navigationControlPosition} />
       )}
+      {telemetryBuffers && <TelemetryLayer buffers={telemetryBuffers} />}
       {provider === 'offline' && typeof children === 'function'
         ? (children as (ctx: { provider: 'online' | 'offline'; searchCities: typeof searchCities }) => ReactNode)({ provider, searchCities })
         : children}

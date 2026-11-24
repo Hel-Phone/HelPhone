@@ -204,3 +204,33 @@ const t = createNetworkTransport({
 |---|---|
 | `src/lib/transportTelemetry.ts` | `buildTransportAttributes`, `emitTransportTelemetry`, bounding constants |
 | `src/services/networkTransport.js` | `emitTelemetry(pipeline)` method on the transport instance |
+
+## Binary map frames (ADR-014 follow-up; this PR)
+
+In addition to the tracing/pipeline above, the live map can carry high-rate
+position updates as FlatBuffers frames. The two systems are independent: the
+OTel pipeline handles spans and forensics, while this path handles map objects.
+
+```
+producer
+  └─ encodeTelemetryFrame()            src/lib/telemetryFrame.js
+       └─ flatbuffers.Builder → HPTL Uint8Array (≤1000 objects, 1 MiB cap)
+  └─ createFrameEncoder()              server/telemetry.js
+       └─ 30 frames/s budget; RangeError → dropped frame
+  └─ attachTelemetryWebSocket()        server/telemetry.js
+       └─ binary WS at /api/events/frame-stream (+ HTTP fallback ingest)
+consumer
+  └─ createTelemetryClient()           src/lib/telemetry.ts
+       ├─ WebSocket.binaryType = 'arraybuffer'
+       └─ verifyFrame() → drop malformed without throwing
+  └─ TelemetryBuffers.ingest()         src/lib/telemetryBuffers.ts
+       └─ id/kind/status/lat/lng/heading straight into typed arrays
+  └─ createTelemetryLayer()            src/lib/telemetryLayer.ts
+       └─ Mapbox custom layer; JSON path only for popups/details
+```
+
+Low-rate APIs (`/api/events/ice-config`, `/api/events/ice-metrics`,
+`/api/events/frames/config`) stay JSON. The schema is
+`src/schemas/telemetry.fbs`; the checked-in accessors are
+`src/schemas/telemetry_generated.js`. Conformance: `npm run test:telemetry:frames`
+(49 wire-format checks). Jank benchmark: `npm run bench:telemetry-jank`.

@@ -30,6 +30,8 @@ import { syncRouter } from './routes/sync.js'
 import historyRouter from './routes/history.js'
 import { createDocsRouter } from './routes/docs.js'
 import { apiVersionMiddleware } from './middleware/apiVersion.ts'
+import { eventsRouter } from './routes/events.js'
+import { attachTelemetryWebSocket } from './telemetry.js'
 
 /* Cross-Origin-Opener-Policy: same-origin */
 /* Cross-Origin-Embedder-Policy: credentialless */
@@ -88,6 +90,7 @@ app.use('/api/sync', apiVersionMiddleware('v0'), syncRouter)
 app.use('/api/history', apiVersionMiddleware('v0'), historyRouter)
 app.use('/api/federation', apiVersionMiddleware('v0'), federationRouter)
 app.use('/docs', createDocsRouter())
+app.use('/api/events', eventsRouter)
 
 const stateExporter = new SorobanStateExporter()
 
@@ -165,5 +168,6 @@ if (process.env.NODE_ENV !== 'test') {
     if (getMaintenanceConfig().enabled) startMaintenanceScheduler()
     scheduleStateBackup()
   })
+  attachTelemetryWebSocket(server)
   applyKeepAliveTuning(server)
 }

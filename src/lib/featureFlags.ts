@@ -459,3 +459,60 @@ export function resolveUnifiedFlag(
     },
   }
 }
+
+// ---------------------------------------------------------------------------
+// predictiveEtaV2 convenience helpers (ADR-022 / this PR).
+// Built on top of the unified resolver so both remote config and the
+// field-local override storage keep working. No existing API is changed.
+// ---------------------------------------------------------------------------
+
+export const FEATURE_FLAGS = {
+  predictiveEtaV2: 'predictiveEtaV2',
+} as const
+
+export type SimpleFeatureFlag = (typeof FEATURE_FLAGS)[keyof typeof FEATURE_FLAGS]
+
+const SIMPLE_STORAGE_PREFIX = 'helphone:feature:'
+
+function simpleStoredValue(flag: SimpleFeatureFlag): string | undefined {
+  try {
+    if (typeof localStorage === 'undefined') return undefined
+    return localStorage.getItem(SIMPLE_STORAGE_PREFIX + flag) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+function parseSimple(value: string | undefined): boolean {
+  if (value === undefined) return false
+  return value === '1' || value.toLowerCase() === 'true'
+}
+
+/** True only when explicitly enabled by env, remote config or an override. */
+export function isFeatureEnabled(flag: SimpleFeatureFlag): boolean {
+  const override = simpleStoredValue(flag)
+  if (override !== undefined) return parseSimple(override)
+  try {
+    const env = (import.meta as unknown as { env?: Record<string, unknown> })?.env
+    const envValue = env?.[`VITE_FEATURE_${flag.toUpperCase()}`]
+    if (envValue !== undefined && envValue !== null) return parseSimple(String(envValue))
+  } catch {
+    /* no import.meta.env in a plain Node runtime */
+  }
+  const unified = resolveUnifiedFlag(flag)
+  return unified.enabled && unified.source !== 'default'
+}
+
+export const isPredictiveEtaV2Enabled = (): boolean => isFeatureEnabled(FEATURE_FLAGS.predictiveEtaV2)
+
+/** Test/E2E helper. Pass `null` to clear an override. */
+export function setFeatureOverride(flag: SimpleFeatureFlag, value: boolean | null): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    const key = SIMPLE_STORAGE_PREFIX + flag
+    if (value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, value ? 'true' : 'false')
+  } catch {
+    /* storage disabled — flags stay at their env-derived defaults */
+  }
+}

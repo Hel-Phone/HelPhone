@@ -59,3 +59,32 @@ table TelemetryFrame {
 }
 
 root_type TelemetryFrame;
+
+// ---------------------------------------------------------------------------
+// ADR-014 follow-up (this PR): the server-side frame encoder emits the smaller
+// `Frame` root below. It is intentionally a separate table so the canonical
+// `TelemetryFrame` root above stays byte-compatible with binaryParser.js.
+// Decode these frames with: flatc --root-type Frame --json telemetry.fbs frame.hptl
+// (Both tables share the HPTL file identifier; ingest distinguishes them by
+// schema version: Frame.version() === 1.)
+namespace HelPhone.Telemetry;
+
+enum Kind : byte { Responder = 0, Requester = 1, Incident = 2 }
+enum ObjectStatus : byte { Active = 0, EnRoute = 1, OnScene = 2, Resolved = 3 }
+
+table TrackedObject {
+  id: uint;
+  kind: byte;
+  status: byte;
+  lat: double;
+  lng: double;
+  heading: float;
+  speed: float;
+}
+
+table Frame {
+  objects: [TrackedObject];
+  ts_sec: uint;
+  seq: uint;
+  version: ushort;
+}

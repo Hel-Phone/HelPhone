@@ -276,6 +276,7 @@ app.use("/api/sync", syncRouter);
 app.use("/api/history", historyRouter);
 app.use("/api/federation", createFederationRouter());
 app.use("/docs", createDocsRouter());
+app.use("/api/events", eventsRouter);
 
 // ── Contract event bridge ────────────────────────────────────────
 // Issue #177: the frontend used to poll the contract directly on a timer
@@ -753,6 +754,7 @@ export function startServer() {
   const shutdown = () => {
     stopReload();
     relay.close().catch((err) => console.error("[events] WebSocket shutdown failed:", err.message));
+    frameStream.close().catch((err) => console.error("[telemetry] frame stream shutdown failed:", err.message));
     closeEventBus().catch((err) => console.error("[events] Redis shutdown failed:", err.message));
     shutdownTelemetry().catch((err) => console.error("[telemetry] shutdown failed:", err.message));
     server.close();

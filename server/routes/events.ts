@@ -1,5 +1,6 @@
-import { Router } from 'express'
+import { Router, raw } from 'express'
 import { getDomainStore, type DomainStore } from '../lib/domainStore.ts'
+import { TELEMETRY_BUDGETS, verifyIngest } from '../telemetry.js'
 
 /**
  * Event log + WebRTC ICE helpers.
@@ -47,6 +48,33 @@ export function createEventsRouter(options: { store?: DomainStore } = {}): Route
     console.info('[ice-metric]', { gatheringMs, success, hasRelay })
     res.status(202).json({ accepted: true })
   })
+
+  // Low-rate JSON discovery; high-rate live positions are binary HPTL frames.
+  router.get('/frames/config', (_req, res) => {
+    res.set('Cache-Control', 'no-store').json({
+      transport: 'websocket',
+      endpoint: '/api/events/frame-stream',
+      binaryType: 'arraybuffer',
+      fileIdentifier: 'HPTL',
+      ...TELEMETRY_BUDGETS,
+    })
+  })
+
+  // HTTP fallback ingest for clients without WebSocket. Verification never
+  // throws: malformed frames get 400 and never reach the main path.
+  router.post(
+    '/frames',
+    raw({ type: () => true, limit: TELEMETRY_BUDGETS.maxFrameBytes }),
+    (req, res) => {
+      const body = req.body instanceof Uint8Array ? req.body : Buffer.from(req.body || '')
+      const result = verifyIngest(body)
+      if (!result.ok) {
+        res.status(400).json({ accepted: false, error: result.error })
+        return
+      }
+      res.status(202).json({ accepted: true, objectCount: result.objectCount, byteLength: result.byteLength })
+    },
+  )
 
   return router
 }

@@ -31,6 +31,7 @@ unchecked CODEOWNERS review items.
 | [ADR-007](ADR-007-offline-storage.md) | High-Throughput Offline Client Storage: IndexedDB vs OPFS SQLite WASM | Proposed (spike #607 complete; quota/eviction measurement outstanding, see below) | — |
 | [ADR-008](ADR-008-webgpu-spatial-clustering.md) | WebGPU-accelerated spatial clustering for high-density emergency maps | Proposed (feasibility spike [#608](https://github.com/Hel-Phone/HelPhone/issues/608)) | — |
 | [ADR-014](ADR-014-binary-telemetry-protocol.md) | Binary Protocol Selection for Zero-Jank Telemetry Map Streams | Proposed (feasibility spike [#614](https://github.com/Hel-Phone/HelPhone/issues/614)) | — |
+| [ADR-014](ADR-014-telemetry-binary-frames.md) | Binary telemetry frames for the live map | Accepted · **Owner:** @helphone-telemetry-owner / @helphone-maps-owner | — |
 | [ADR-015](ADR-015-tokenomics-fee-envelope.md) | Tokenomics: Fee Envelope, Sustainability Reserve & Maintainer Grant Model | Proposed | ISP-141 |
 | [ADR-016](ADR-016-attestation-cryptography.md) | Responder Attestation Cryptography: ZK Credential vs On-Chain Registry | Proposed | ISP-142 |
 | [ADR-017](ADR-017-multi-tenant-database.md) | Multi-Tenant Database Architecture: RLS Policy Design & Partition Strategy | Proposed | ISP-143 |
@@ -39,6 +40,7 @@ unchecked CODEOWNERS review items.
 | [ADR-020](ADR-020-triage-ethics-shedding-order.md) | Triage Ethics & Load-Shedding Order Under Overload | Proposed | ISP-146 |
 | [ADR-021](ADR-021-multi-vendor-cost-control.md) | Multi-Vendor Cost Control: Spending Envelopes & Kill-Switch Protocol | Proposed | ISP-147 |
 | [ADR-022](ADR-022-ble-proximity-relay.md) | BLE Proximity Relay: Authenticated Beacon Format & Shippable-Scope Decision | Deferred (expires 2027-Q1, owner: @helphone-pwa-owner) | ISP-113 / #783 |
+| [ADR-022](ADR-022-eta-ranges-and-calibration.md) | Bounded ETA ranges, degraded display and calibration | Accepted · **Owner:** @helphone-maintainers | — |
 | [ADR-022](ADR-022-honest-dispatch-eta.md) | Honest Dispatch ETA: Ranges, Fatigue Pace, and Degraded-State Signalling | Proposed | ISP-105 / #775 |
 | [ADR-023](ADR-023-canonical-contract-workspace.md) | Canonical Soroban Contract Workspace | Proposed | #980 |
 | [ADR-024](ADR-024-matrix-call-caching-quota.md) | Matrix Call Caching and Quota Policy | Proposed | — |

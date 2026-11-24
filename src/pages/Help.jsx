@@ -41,6 +41,9 @@ import {
   updateLocation,
   recordExpertVerification,
 } from "../lib/contract";
+import { EtaLabel, DegradedEtaNotice } from "../components/EtaLabel";
+import { isPredictiveEtaV2Enabled } from "../lib/featureFlags";
+import { rankByRealisticEta } from "../lib/etaEstimate";
 import { NetworkStatusIndicator } from "../components/NetworkStatusIndicator.jsx";
 import { ReplicaStaleBadge } from "../components/ReplicaStaleBadge.jsx";
 import OfflineRoutePanel from "../features/help/OfflineRoutePanel.jsx";
@@ -893,6 +896,7 @@ function TrackingScreen({
   requesterLng,
   requesterChar,
   etaSeconds,
+  mapboxFailed = false,
   isArrived,
   isResponderView,
   isMarkingArrived,
@@ -1081,7 +1085,9 @@ function TrackingScreen({
                 ETA
               </div>
               <div style={{ fontSize: "11px", color: "#F4ECDC" }}>
-                {isArrived ? "Arrived" : etaMin != null ? `${etaMin} min` : "—"}
+                {isArrived ? "Arrived" : etaMin != null ? (
+                  <EtaLabel etaSeconds={etaSeconds} degraded={!etaSeconds || mapboxFailed} />
+                ) : "—"}
               </div>
             </div>
             <div
@@ -1112,6 +1118,8 @@ function TrackingScreen({
               </div>
             </div>
           </div>
+
+          <DegradedEtaNotice etaSeconds={etaSeconds} degraded={!etaSeconds || mapboxFailed} />
 
           <div style={{ display: "flex", gap: "8px" }}>
             {isResponderView && !isArrived && (
@@ -1575,6 +1583,11 @@ export default function Help() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [responders, setResponders] = useState([]);
+  const [mapboxFailed, setMapboxFailed] = useState(false);
+  const locationRef = useRef(location);
+  locationRef.current = location;
+  const mapboxFailedRef = useRef(mapboxFailed);
+  mapboxFailedRef.current = mapboxFailed;
   const [popupMarker, setPopupMarker] = useState(null);
   const [selectedChar, setSelectedChar] = useState(null);
   const [mapStyleIndex, setMapStyleIndex] = useState(0);
@@ -2462,12 +2475,21 @@ export default function Help() {
           if (mounted) {
             setResponders((prev) => {
               const idx = prev.findIndex((p) => p.responder === r.responder);
+              let next;
               if (idx >= 0) {
-                const next = [...prev];
+                next = [...prev];
                 next[idx] = r;
-                return next;
+              } else {
+                next = [...prev, r];
               }
-              return [...prev, r];
+              // Flag off: preserve today's insertion order byte-for-byte.
+              if (!isPredictiveEtaV2Enabled() || !locationRef.current) return next;
+              return rankByRealisticEta(next, {
+                lat: locationRef.current[0],
+                lng: locationRef.current[1],
+                trafficAware: !mapboxFailedRef.current,
+                mapboxFailed: mapboxFailedRef.current,
+              });
             });
             setRequestStatus("Enroute");
             setTrackingIndex(i);
@@ -3187,7 +3209,7 @@ export default function Help() {
                             color: "rgba(242,236,220,0.5)",
                           }}
                         >
-                          ETA {Math.round(responders[0].eta_seconds / 60)} min
+                          ETA <EtaLabel etaSeconds={responders[0].eta_seconds} degraded={mapboxFailed} />
                         </span>
                       )}
                   </div>
@@ -3232,10 +3254,7 @@ export default function Help() {
                         {responders[0].eta_seconds && !responderArrived && (
                           <>
                             {" "}
-                            · ETA {Math.round(
-                              responders[0].eta_seconds / 60,
-                            )}{" "}
-                            min
+                            · ETA <EtaLabel etaSeconds={responders[0].eta_seconds} degraded={mapboxFailed} />
                           </>
                         )}
                         {location && responders[0] && (
@@ -4241,6 +4260,7 @@ export default function Help() {
           }}
           style={{ width: "100%", height: "100%" }}
           mapStyle={MAP_STYLES[mapStyleIndex].url}
+          onError={() => setMapboxFailed(true)}
           onClick={(e) => {
             if (isGetMode && requestStatus === "idle" && e?.lngLat?.lat != null && e?.lngLat?.lng != null) {
               setLocation([e.lngLat.lat, e.lngLat.lng]);
@@ -4357,7 +4377,7 @@ export default function Help() {
                       {r.eta_seconds && (
                         <>
                           <br />
-                          ETA: {Math.round(r.eta_seconds / 60)} min
+                          ETA: <EtaLabel etaSeconds={r.eta_seconds} degraded={mapboxFailed} />
                         </>
                       )}
                     </Popup>
@@ -4409,6 +4429,7 @@ export default function Help() {
               requesterLng={location?.[1]}
               requesterChar={myChar}
               etaSeconds={responders[0].eta_seconds}
+              mapboxFailed={mapboxFailed}
               isArrived={responderArrived}
               isResponderView={false}
               overlayActive={hasHelpOverlays}
@@ -4441,6 +4462,7 @@ export default function Help() {
                 requesterLng={requesterLocation[1]}
                 requesterChar={pickChar("default", lastOfferReceipt.nickname)}
                 etaSeconds={null}
+                mapboxFailed={mapboxFailed}
                 isArrived={responderArrived}
                 isResponderView={true}
                 isMarkingArrived={arrivalSubmitting}

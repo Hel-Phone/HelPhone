@@ -37,6 +37,8 @@ const Kiosk = lazy(loadKiosk);
 const ClusterLab = lazy(() => import("./components/WebGPUMap"));
 // Telemetry lab: backpressure drop ledger & binary decode benchmark (ADR-014 / ISP-032).
 const TelemetryLab = lazy(() => import("./components/TelemetryLab"));
+// ADR-022 calibration dashboard (this PR).
+const CalibrationDashboard = lazy(() => import("./pages/CalibrationDashboard"));
 
 function RouteFallback() {
   return (
@@ -104,6 +106,7 @@ function render() {
                 <Route path="/lab/cluster-bench" element={<ClusterLab />} />
                 <Route path="/lab/telemetry" element={<TelemetryLab />} />
                 <Route path="/lab/telemetry-bench" element={<TelemetryLab />} />
+                <Route path="/lab/eta-calibration" element={<CalibrationDashboard />} />
               </Routes>
             </Suspense>
           </BrowserRouter>
