@@ -132,6 +132,21 @@ Applies to: `server/routes/dispatch.ts`, `server/routes/wsCluster.js`.
       broadcast amplification)?
 - [ ] Graceful degradation: if Redis is unavailable, does dispatch fall back to
       local memory pub/sub without crashing?
+- [ ] **No identity priority (ADR-020 §Decision 1):** every tier assignment must
+      come from the dispatch message type (`RqCreated`/`LocUpd`/`OfferMade`/
+      `OfferAccepted`/`StatusChange`) and its declared severity only. A PR that
+      reads a wallet address, responder role, reputation score, or any other
+      identity field to boost a queue tier must be rejected. The code-level
+      guard is `test/dispatch-shedding.test.js`.
+- [ ] Bounded tiers: P0 is unbounded and never shed; P1/P2/P3 bounds must stay
+      configurable in `public/config.json → dispatch.bounds` and respected by
+      `src/lib/dispatchQueue.ts`.
+- [ ] Overload transparency: shedding must emit `503 Overloaded` with
+      `Retry-After` and write a PII-free row to `server/indexer/auditStreamer.js`;
+      never drop a message silently.
+- [ ] Federation receives: every inbound federated envelope must be re-checked
+      against the originating instance's current trust bundle (signature,
+      freshness, rotation counter, revocations) on every receive.
 
 ### `security` — Security Infrastructure {#security}
 

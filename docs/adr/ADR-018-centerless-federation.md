@@ -155,6 +155,43 @@ started by that date, the decision owner must re-evaluate or escalate.
 
 ---
 
+## Follow-up decision — overload shedding & trust on every receive (ADR-018/020)
+
+The ADR-020 "Follow-up ADRs" question — *does an overloaded node shed locally or
+gossip a shed signal?* — is resolved here as an additive decision, not a change
+to the Option B gossip topology.
+
+**Decision:** both, selected by a pure two-node rule in
+`server/routes/federation.ts → resolveSheddingPolicy(localOverloaded, peerShedding)`:
+
+| Local load | Peer shed signal | Action | Rationale |
+|---|---|---|---|
+| overloaded | none | Shed locally **and** gossip a signed `overload` envelope | Peer must stop sending before it becomes overloaded too. |
+| overloaded | present | Shed locally, **do not gossip** | Both nodes agree; gossiping back would be an amplification loop. |
+| nominal | present | Shed locally, honour the signal | A peer's shed signal is binding on the receiver. |
+| nominal | none | Process normally | — |
+
+The gossip message is a v1 signed `FederatedEnvelope` with `payloadType:
+'overload'`, anchored to the sender's current `rotationCounter`. It is ingested
+at `POST /api/federation/overload` and reported at `GET /api/federation/overload`.
+ADR-020 P0 messages (`type=medical`/`danger`/`critical`) are exempt from shedding
+on either side.
+
+**Per-receive trust rule:** every inbound dispatch, ack, CRDT delta and overload
+envelope is verified against the *current* stored trust bundle of the
+originating instance on every receive — signature, expiry/grace, rotation
+counter (`>= bundle.rotationCounter`) and revocations across all identity fields
+in the payload. The bundle lookup is never cached across receives, so a
+revocation gossiped in rotation cycle N takes effect for in-flight messages
+immediately, within one rotation cycle.
+
+**Chaos expectation:** with two nodes and a synthetic surge, both nodes report
+the same shedding policy (`both_overloaded_local_shed`) and neither gossips a
+feedback signal; with one node overloaded, the peer observes and honours
+`local_overload_gossip`.
+
+---
+
 ## Done-definition checklist
 
 - [x] Status set

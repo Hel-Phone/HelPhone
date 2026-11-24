@@ -1,6 +1,28 @@
 {
-  "version": "1.0.0",
-  "updatedAt": "2026-10-16T00:00:00Z",
+  "version": "1.1.0",
+  "updatedAt": "2026-11-24T00:00:00Z",
+  "dispatch": {
+    "owner": "@helphone-dispatch-owner",
+    "adr": "ADR-020",
+    "note": "Bounds are keyed on message type only (ADR-020 no-identity-priority rule). P0 is never bounded; critical: 0 means unbounded.",
+    "bounds": {
+      "critical": 0,
+      "high": 10000,
+      "normal": 5000,
+      "low": 1000
+    },
+    "memoryBudgetItems": 17000,
+    "overloadedRetryAfterSeconds": 5,
+    "pollingIntervalMs": 5000,
+    "wallet": {
+      "maxRequests": 12,
+      "windowMs": 60000,
+      "baseBackoffMs": 1000,
+      "maxBackoffMs": 60000,
+      "maxLevel": 5,
+      "escalationWindowMs": 600000
+    }
+  },
   "flags": {
     "emergency_broadcaster": {
       "enabled": true,

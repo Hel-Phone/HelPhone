@@ -1,4 +1,5 @@
 import { classifyProbeFailure, type ProbeFailureClass } from './networkEstimator';
+import { isOverloadSignal, OverloadFallback } from './overloadFallback';
 import {
   createRaceTracker,
   decideRace,
@@ -11,7 +12,7 @@ import {
   type RaceHourTracker,
 } from './raceGate';
 
-export type ConnectionState = 'CONNECTING' | 'OPEN' | 'RECONNECTING' | 'FAILED';
+export type ConnectionState = 'CONNECTING' | 'OPEN' | 'RECONNECTING' | 'FAILED' | 'DEGRADED';
 
 /** Origin tag injected into kiosk-sourced intent messages. */
 export const KIOSK_ORIGIN_TAG = 'KIOSK-UNVERIFIED' as const;
@@ -24,6 +25,11 @@ export interface WsClientOptions {
   onStateChange?: (state: ConnectionState) => void;
   onMessage?: (data: unknown) => void;
   onResync?: () => void;
+  /** Bounded polling fallback used when dispatch reports 503 Overloaded. */
+  overloadFallback?: OverloadFallback;
+  pollUrl?: string;
+  pollIntervalMs?: number;
+  onDegradedChange?: (degraded: boolean) => void;
   raceFlagOn?: boolean;
   operatorOverride?: boolean;
   secondarySend?: (payload: string) => void;
@@ -65,6 +71,10 @@ export class WsClient {
   private duplicatesDropped = 0;
   private racesFired = 0;
   private lastFailureClass: ProbeFailureClass | null = null;
+  private degraded = false;
+  private readonly overloadFallback: OverloadFallback;
+  /** Writes attempted while degraded, de-duplicated and flushed exactly once on recovery. */
+  private deferredSends: Array<{ key: string; data: string }> = [];
 
   constructor(private options: WsClientOptions) {
     this.url = options.url;
@@ -73,6 +83,17 @@ export class WsClient {
     this.maxDelayMs = options.maxDelayMs ?? 30_000;
     this.now = options.now ?? (() => Date.now());
     this.raceTracker = createRaceTracker(this.now);
+    this.overloadFallback =
+      options.overloadFallback ??
+      new OverloadFallback({
+        pollUrl: options.pollUrl,
+        pollIntervalMs: options.pollIntervalMs,
+        onDegradedChange: (degraded) => {
+          this.degraded = degraded;
+          this.options.onDegradedChange?.(degraded);
+        },
+        onMessages: (messages) => this.options.onMessage?.(messages),
+      });
     this.watchBattery();
   }
 
@@ -106,9 +127,11 @@ export class WsClient {
 
     this.ws.onopen = () => {
       const wasReconnect = this.attempt > 0;
+      const wasDegraded = this.degraded;
       this.attempt = 0;
       this.setState('OPEN');
-      if (wasReconnect) {
+      if (wasDegraded) this.recoverFromDegraded();
+      if (wasReconnect || wasDegraded) {
         this.options.onResync?.();
       }
     };
@@ -148,8 +171,56 @@ export class WsClient {
         }
       }
     }
+    if (isOverloadSignal(parsed)) this.enterDegraded(parsed);
     this.options.onMessage?.(parsed);
     return true;
+  }
+
+  /** Switch to bounded polling on 503 Overloaded. Idempotent. */
+  enterDegraded(signal?: unknown): void {
+    if (!this.degraded) {
+      this.degraded = true;
+      this.options.onDegradedChange?.(true);
+    }
+    this.overloadFallback.enterOverload(signal);
+    this.setState('DEGRADED');
+  }
+
+  /** Leave degraded mode and flush deferred writes exactly once. */
+  private recoverFromDegraded(): void {
+    this.degraded = false;
+    this.overloadFallback.recover();
+    this.options.onDegradedChange?.(false);
+    const pending = this.deferredSends;
+    this.deferredSends = [];
+    if (this.ws && this.state === 'OPEN') {
+      for (const entry of pending) this.ws.send(entry.data);
+    }
+  }
+
+  getDegraded(): boolean {
+    return this.degraded;
+  }
+
+  getOverloadFallback(): OverloadFallback {
+    return this.overloadFallback;
+  }
+
+  /** Hold a write while degraded; dedupe by idempotency key so reconnect is safe. */
+  private deferSend(data: unknown): string {
+    const serialized = typeof data === 'string' ? data : JSON.stringify(data);
+    let key = serialized;
+    try {
+      const parsed = JSON.parse(serialized) as Record<string, unknown>;
+      key = String(parsed.idempotencyKey ?? parsed.id ?? parsed.nonce ?? serialized);
+    } catch {
+      // Non-JSON payloads are keyed by their serialized bytes.
+    }
+    if (!this.deferredSends.some((entry) => entry.key === key)) {
+      this.deferredSends.push({ key, data: serialized });
+      if (this.deferredSends.length > 50) this.deferredSends.shift();
+    }
+    return key;
   }
 
   getDuplicatesDropped(): number {
@@ -171,7 +242,12 @@ export class WsClient {
       return;
     }
 
-    const delay = this.computeBackoffDelay(this.attempt);
+    const backoff = this.computeBackoffDelay(this.attempt);
+    // While degraded, reconnect no faster than the bounded poll interval so a
+    // 503 storm cannot turn into a reconnect storm.
+    const delay = this.degraded
+      ? Math.min(this.maxDelayMs, Math.max(backoff, this.overloadFallback.getState().pollIntervalMs))
+      : backoff;
     this.attempt += 1;
     this.setState('RECONNECTING');
 
@@ -197,6 +273,10 @@ export class WsClient {
   }
 
   send(data: unknown): void {
+    if (this.degraded) {
+      this.deferSend(data);
+      return;
+    }
     if (this.ws && this.state === 'OPEN') {
       this.ws.send(typeof data === 'string' ? data : JSON.stringify(data));
     }
@@ -210,7 +290,7 @@ export class WsClient {
   sendDispatch(
     data: Record<string, unknown>,
     opts: WsDispatchOptions = {},
-  ): { sent: boolean; raced: boolean; decision: RaceDecision } {
+  ): { sent: boolean; raced: boolean; deferred: boolean; decision: RaceDecision } {
     const nav = this.getNavigator();
     const rawPayload = opts.payload ?? (data.payloadClass as PayloadClass) ?? (data.priority as PayloadClass) ?? 'P1';
     const payload: PayloadClass = rawPayload === 'P0' || rawPayload === 'P1' || rawPayload === 'bulk' ? rawPayload : 'P1';
@@ -240,6 +320,11 @@ export class WsClient {
 
     const serialized = JSON.stringify(data);
     let sent = false;
+    if (this.degraded) {
+      // No racing while degraded: one deferred write, flushed once on recovery.
+      this.deferSend(data);
+      return { sent: false, raced: false, deferred: true, decision: { ...decision, race: false } as RaceDecision };
+    }
     if (this.ws && this.state === 'OPEN') {
       this.ws.send(serialized);
       sent = true;
@@ -260,7 +345,7 @@ export class WsClient {
       }
     }
 
-    return { sent, raced, decision };
+    return { sent, raced, deferred: false, decision };
   }
 
   /**
@@ -274,6 +359,7 @@ export class WsClient {
 
   close(): void {
     this.manuallyClosed = true;
+    this.overloadFallback.dispose();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

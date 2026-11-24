@@ -56,6 +56,31 @@ async function notifyQuotaPressure(stats) {
   }
 }
 
+// ADR-020: a 503 Overloaded (or X-Overloaded: 1) from dispatch switches clients
+// to bounded polling. The SW only broadcasts on state transitions so a surge of
+// 503s cannot itself become a message storm.
+let dispatchDegraded = false;
+const DISPATCH_POLL_CEILING_MS = 5_000;
+
+async function notifyDispatchOverload(response) {
+  if (dispatchDegraded) return;
+  dispatchDegraded = true;
+  const hinted = Number(response?.headers?.get?.("Retry-After") || "5") * 1000;
+  const retryAfterMs = Number.isFinite(hinted) ? Math.min(hinted, DISPATCH_POLL_CEILING_MS) : DISPATCH_POLL_CEILING_MS;
+  await postToAllClients({
+    type: "DISPATCH_OVERLOADED",
+    degraded: true,
+    retryAfterMs,
+    at: Date.now(),
+  });
+}
+
+async function notifyDispatchRecovered() {
+  if (!dispatchDegraded) return;
+  dispatchDegraded = false;
+  await postToAllClients({ type: "DISPATCH_RECOVERED", degraded: false, at: Date.now() });
+}
+
 async function evictTileOrEphemeralCaches() {
   await assetManager.evictUnderPressure();
   const tileCache = await caches.open(TILES_CACHE_NAME).catch(() => null);
@@ -295,6 +320,28 @@ self.addEventListener("fetch", (event) => {
     }
   }
 
+  // ADR-020: dispatch overload is a protocol signal, not an offline condition.
+  // Never cache it; forward it to clients so they enter bounded polling mode.
+  if (url.pathname.startsWith("/api/dispatch")) {
+    event.respondWith(
+      (async () => {
+        const response = await fetch(request);
+        if (response.status === 503 || response.headers.get("X-Overloaded") === "1") {
+          await notifyDispatchOverload(response);
+        } else {
+          await notifyDispatchRecovered();
+        }
+        return response;
+      })().catch(() => {
+        return new Response(
+          JSON.stringify({ message: "Offline", description: "You are currently offline." }),
+          { status: 503, headers: { "Content-Type": "application/json" } },
+        );
+      }),
+    );
+    return;
+  }
+
   event.respondWith(
     fetch(request).catch(() => {
       return caches.match(request).then((response) => {
@@ -320,6 +367,27 @@ self.addEventListener("fetch", (event) => {
 
 self.addEventListener("message", (event) => {
   const data = event.data || {};
+
+  // ADR-020: clients that detect overload themselves tell the SW so every tab
+  // converges on the same degraded state, then recover as one.
+  if (data.type === "DISPATCH_OVERLOADED" || data.type === "DISPATCH_RECOVERED") {
+    event.waitUntil(
+      (async () => {
+        if (data.type === "DISPATCH_OVERLOADED") {
+          dispatchDegraded = true;
+          await postToAllClients({
+            type: "DISPATCH_OVERLOADED",
+            degraded: true,
+            retryAfterMs: data.retryAfterMs || DISPATCH_POLL_CEILING_MS,
+            at: Date.now(),
+          });
+        } else {
+          await notifyDispatchRecovered();
+        }
+      })(),
+    );
+    return;
+  }
 
   // #896: package an incident zone's map tiles for offline use.
   if (data.type === "OFFLINE_TILES_INSTALL" && typeof data.zone === "string") {

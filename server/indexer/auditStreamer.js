@@ -143,5 +143,58 @@ export function createAuditStreamer(options) {
   return new ContractEventStreamer(options);
 }
 
+// ── ADR-020 dispatch shedding audit ────────────────────────────────────────
+//
+// Every message shed by the dispatch queue (or by federation overload control)
+// is written here with a timestamp, tier and reason. The record is built from
+// an allow-list of non-identifying fields only: no wallet, request id, note or
+// responder address is ever copied into the row.
+
+const dispatchShedSink = new InMemoryAuditSink();
+
+/** Fields copied to an audit row. Anything not listed here cannot be logged. */
+const SHED_ALLOWED_FIELDS = ["tier", "reason", "messageType"];
+
+export function getDispatchShedSink() {
+  return dispatchShedSink;
+}
+
+export async function latestDispatchShed(limit = 100) {
+  return dispatchShedSink.latest(limit);
+}
+
+export function clearDispatchShed() {
+  dispatchShedSink.events.length = 0;
+  dispatchShedSink.ids.clear();
+}
+
+/**
+ * Record one shed event. `event` may contain extra caller fields (requestId,
+ * wallet, ...) but they are discarded before the row is normalized/stored.
+ */
+export async function recordDispatchShed(event = {}, now = Date.now()) {
+  const observedAt = new Date(now).toISOString();
+  const payload = {};
+  for (const field of SHED_ALLOWED_FIELDS) {
+    const value = event[field];
+    if (typeof value === "string" && value.length <= 64) payload[field] = value;
+  }
+  payload.at = now;
+
+  const row = normalizeContractEvent(
+    {
+      id: `dispatch-shed:${now}:${payload.tier || "unknown"}:${payload.reason || "unknown"}:${dispatchShedSink.events.length}`,
+      source: "dispatch",
+      observedAt,
+      type: "dispatch_shed",
+      topic: "dispatch_shed",
+      payload,
+    },
+    { source: "dispatch_shed", observedAt, attributionSecret: null },
+  );
+  await dispatchShedSink.append(row);
+  return row;
+}
+
 // Join receipts live in src/lib so the client can emit them too (#932).
 export { createJoinReceipt, verifyJoinCompleteness } from '../../src/lib/joinReceipt.js';

@@ -4,6 +4,7 @@ import { FeatureFlagProvider, useFeatureFlag } from './lib/featureFlags.js'
 import { WalletProvider } from './contexts/WalletContext.js'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import ProvenanceBadge from './components/ProvenanceBadge.jsx'
+import DispatchDegradedBanner from './components/DispatchDegradedBanner.tsx'
 import { NavSection, HeroSection } from './components/sections'
 import { colors, motion, spacing } from './theme/tokens'
 
@@ -57,6 +58,7 @@ function AppContent() {
 
   return (
     <div style={{ background: colors.background, color: colors.cream, minHeight: '100vh' }}>
+      <DispatchDegradedBanner />
       {sliceNav ? (
         <NavSection canaryActive={canaryMapClustering} backupActive={sorobanBackupEnabled} />
       ) : (
