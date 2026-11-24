@@ -15,7 +15,7 @@
  *   signature covers `canonicalBeaconString()` (Ed25519, signer = station-provisioned public key)
  * `msgCrc32` is the CRC-32 of the whole message and doubles as the reassembly id and checksum.
  */
-import { signEd25519Message, verifyEd25519Signature } from './crypto'
+import { signEd25519Message, verifyEd25519Signature } from './crypto.ts'
 
 export const BLE_BEACON_VERSION = 0
 export const FRAGMENT_MAGIC = 0x48
@@ -159,10 +159,13 @@ interface PartialMessage {
 /** Bounded reassembly buffer: fixed partial-message count, fragment count, byte budget and age. */
 export class BeaconReassembler {
   private partials = new Map<number, PartialMessage>()
-  constructor(
-    private readonly maxPartials = 16,
-    private readonly maxAgeMs = 10_000
-  ) {}
+  private readonly maxPartials: number
+  private readonly maxAgeMs: number
+
+  constructor(maxPartials = 16, maxAgeMs = 10_000) {
+    this.maxPartials = maxPartials
+    this.maxAgeMs = maxAgeMs
+  }
 
   /** Returns the full message once complete and checksum-valid, otherwise null. */
   accept(fragment: Uint8Array, nowMs: number): Uint8Array | null {
@@ -294,7 +297,11 @@ export class BleRelayGate {
 /** Bounded queue ordered by severity, then freshness, then fewest hops. Lowest priority is evicted first. */
 export class BeaconPriorityQueue {
   private items: { beacon: Beacon; hops: number }[] = []
-  constructor(private readonly capacity = 64) {}
+  private readonly capacity: number
+
+  constructor(capacity = 64) {
+    this.capacity = capacity
+  }
 
   push(beacon: Beacon, hops: number): void {
     this.items.push({ beacon, hops })
@@ -312,4 +319,243 @@ export class BeaconPriorityQueue {
   get size(): number {
     return this.items.length
   }
+
+  getAll(): { beacon: Beacon; hops: number }[] {
+    return [...this.items]
+  }
+
+  clear(): void {
+    this.items = []
+  }
 }
+
+// --- Store-and-Forward Gossip Relay -----------------------------------------
+
+export interface BleGossipPeer {
+  id: string
+  send: (fragment: Uint8Array) => Promise<boolean> | boolean
+}
+
+export interface BlePlatformDisposition {
+  supported: boolean
+  hasBackgroundScan: boolean
+  platform: 'android' | 'ios' | 'desktop' | 'unknown'
+  reason?: string
+}
+
+export interface BleGossipRelayOptions {
+  trustedSigners: Iterable<string>
+  mtu?: number
+  capacity?: number
+  maxAgeMs?: number
+  windowMs?: number
+  maxPerSourcePerWindow?: number
+  onBeaconReceived?: (beacon: Beacon, hops: number) => void
+}
+
+/**
+ * Production-grade Store-and-Forward BLE Proximity Gossip Relay (#897).
+ * Connects the transport-free relay gate, fragmentation reassembly, and
+ * priority queue into an integrated mesh gossip layer for emergency dispatch.
+ *
+ * Space Complexity: O(M + B) bounded by max partial fragments and queue capacity.
+ * Time Complexity:
+ *   - acceptFragment(): O(1) reassembly buffer lookup + O(K) CRC32 on completion.
+ *   - relayBeacon(): O(1) signature verification + O(log C) priority insertion.
+ *   - forwardPending(): O(P * F) where P = peer count, F = fragment count.
+ */
+export class BleStoreAndForwardRelay {
+  readonly gate: BleRelayGate
+  readonly reassembler: BeaconReassembler
+  readonly queue: BeaconPriorityQueue
+  private readonly mtu: number
+  private readonly listeners: ((beacon: Beacon, hops: number) => void)[] = []
+  private readonly peers = new Map<string, BleGossipPeer>()
+  private readonly deliveredSignatures = new Set<string>()
+
+  constructor(opts: BleGossipRelayOptions) {
+    this.mtu = opts.mtu ?? DEFAULT_MTU
+    this.gate = new BleRelayGate({
+      trustedSigners: opts.trustedSigners,
+      maxPerSourcePerWindow: opts.maxPerSourcePerWindow,
+      windowMs: opts.windowMs,
+    })
+    this.reassembler = new BeaconReassembler(16, opts.maxAgeMs ?? 10_000)
+    this.queue = new BeaconPriorityQueue(opts.capacity ?? 64)
+
+    if (opts.onBeaconReceived) {
+      this.listeners.push(opts.onBeaconReceived)
+    }
+  }
+
+  /** Register an active nearby peer connection */
+  registerPeer(peer: BleGossipPeer): void {
+    this.peers.set(peer.id, peer)
+  }
+
+  /** Unregister a disconnected peer */
+  unregisterPeer(peerId: string): void {
+    this.peers.delete(peerId)
+  }
+
+  /** Listen for verified, deduplicated incoming beacons */
+  onBeacon(listener: (beacon: Beacon, hops: number) => void): () => void {
+    this.listeners.push(listener)
+    return () => {
+      const idx = this.listeners.indexOf(listener)
+      if (idx !== -1) this.listeners.splice(idx, 1)
+    }
+  }
+
+  /**
+   * Ingress: Process incoming raw fragment from a peer.
+   * Reassembles, evaluates verify-before-forward gate, deduplicates, and enqueues.
+   */
+  processFragment(fragment: Uint8Array, sourcePeerId: string, nowMs = Date.now(), hops = 1): Beacon | null {
+    const rawMessage = this.reassembler.accept(fragment, nowMs)
+    if (!rawMessage) return null
+
+    const beacon = decodeBeacon(rawMessage)
+    if (!beacon) return null
+
+    const decision = this.gate.evaluate(beacon, sourcePeerId, nowMs)
+    if (!decision.forward) return null
+
+    const dedupKey = `${beacon.signer}:${beacon.incidentId}:${beacon.seq}`
+    if (this.deliveredSignatures.has(dedupKey)) {
+      return null
+    }
+    this.deliveredSignatures.add(dedupKey)
+
+    // Bound delivered signatures set (LRU/cap to 1000 items)
+    if (this.deliveredSignatures.size > 1000) {
+      const first = this.deliveredSignatures.values().next().value
+      if (first !== undefined) this.deliveredSignatures.delete(first)
+    }
+
+    this.queue.push(beacon, hops)
+
+    for (const listener of this.listeners) {
+      try {
+        listener(beacon, hops)
+      } catch (err) {
+        console.error('[BleRelay] Listener error:', err)
+      }
+    }
+
+    return beacon
+  }
+
+  /**
+   * Egress / Relay: Broadcast all pending beacons in the priority queue to
+   * all connected peers, fragmented according to MTU.
+   */
+  async forwardPending(nowMs = Date.now()): Promise<number> {
+    let forwardedCount = 0
+    const nowS = Math.floor(nowMs / 1000)
+
+    while (this.queue.size > 0) {
+      const item = this.queue.shift()
+      if (!item) break
+
+      // Discard expired beacons from store-and-forward queue
+      if (item.beacon.expiresAt <= nowS) {
+        continue
+      }
+
+      const encoded = encodeBeacon(item.beacon)
+      const fragments = fragmentMessage(encoded, this.mtu)
+
+      for (const peer of this.peers.values()) {
+        try {
+          for (const frag of fragments) {
+            await peer.send(frag)
+          }
+          forwardedCount++
+        } catch (err) {
+          console.warn(`[BleRelay] Failed to forward to peer ${peer.id}:`, err)
+        }
+      }
+    }
+
+    return forwardedCount
+  }
+
+  /**
+   * Originate: Local device signs and injects an emergency beacon.
+   */
+  originateBeacon(
+    unsigned: Omit<Beacon, 'sig' | 'signer'>,
+    publicKey: string,
+    secretKey: string,
+    nowMs = Date.now()
+  ): Beacon {
+    const beacon = signBeacon(unsigned, publicKey, secretKey)
+    const dedupKey = `${beacon.signer}:${beacon.incidentId}:${beacon.seq}`
+    this.deliveredSignatures.add(dedupKey)
+    this.queue.push(beacon, 0)
+    return beacon
+  }
+
+  /**
+   * Connects the BLE proximity relay directly to the SyncManager / Dispatch layer.
+   */
+  integrateWithSyncManager(syncManager: { dispatch?: (op: any) => Promise<any> }): () => void {
+    return this.onBeacon((beacon) => {
+      if (syncManager && typeof syncManager.dispatch === 'function') {
+        void syncManager.dispatch({
+          device_id: `ble-${beacon.signer.slice(0, 8)}`,
+          seq: beacon.seq,
+          type: 'incident-beacon',
+          incidentId: beacon.incidentId,
+          geohash: beacon.geohash,
+          severity: beacon.severity,
+          note: beacon.note,
+          issuedAt: beacon.issuedAt,
+          bearer: 'ble-trickle',
+        })
+      }
+    })
+  }
+}
+
+/**
+ * Returns platform capabilities and limitations for WebBluetooth / BLE gossip.
+ * Handles iOS absence and Android background duty-cycle constraints gracefully.
+ */
+export function getBlePlatformDisposition(
+  nav: { userAgent?: string; bluetooth?: unknown } = typeof navigator !== 'undefined' ? navigator : {}
+): BlePlatformDisposition {
+  const ua = nav.userAgent || ''
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (typeof navigator !== 'undefined' && (navigator as any).maxTouchPoints > 1 && /Macintosh/.test(ua))
+  const isAndroid = /Android/.test(ua)
+  const hasBluetooth = typeof nav.bluetooth !== 'undefined'
+
+  if (isIOS) {
+    return {
+      supported: false,
+      hasBackgroundScan: false,
+      platform: 'ios',
+      reason: 'WebBluetooth is unsupported on iOS WebKit browsers. Falling back to Wi-Fi Island / Gateway relay.',
+    }
+  }
+
+  if (isAndroid) {
+    return {
+      supported: hasBluetooth,
+      hasBackgroundScan: false, // Chrome Android suspends background BLE scanning after ~5 seconds
+      platform: 'android',
+      reason: hasBluetooth
+        ? 'WebBluetooth supported with foreground discipline (background scanning suspended by OS).'
+        : 'WebBluetooth not available in current browser context.',
+    }
+  }
+
+  return {
+    supported: hasBluetooth,
+    hasBackgroundScan: false,
+    platform: 'desktop',
+    reason: hasBluetooth ? 'WebBluetooth available.' : 'WebBluetooth unsupported.',
+  }
+}
+

@@ -4,7 +4,14 @@ import { FeatureFlagProvider, useFeatureFlag } from './lib/featureFlags.js'
 import { WalletProvider } from './contexts/WalletContext.js'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import ProvenanceBadge from './components/ProvenanceBadge.jsx'
-import { NavSection, HeroSection } from './components/sections'
+import {
+  NavSection,
+  HeroSection,
+  TrustSection,
+  FeaturesSection,
+  MapSection,
+  FooterSection,
+} from './components/sections'
 import { colors, motion, spacing } from './theme/tokens'
 
 function AppContent() {
@@ -18,6 +25,10 @@ function AppContent() {
   const canaryMapClustering = useFeatureFlag('canary_map_clustering')
   const sliceNav = useFeatureFlag('slice_nav')
   const sliceHero = useFeatureFlag('slice_hero')
+  const sliceTrust = useFeatureFlag('slice_trust')
+  const sliceFeatures = useFeatureFlag('slice_features')
+  const sliceMap = useFeatureFlag('slice_map')
+  const sliceFooter = useFeatureFlag('slice_footer')
 
   useEffect(() => {
     const elements = document.querySelectorAll('[data-reveal]')
@@ -206,6 +217,26 @@ function AppContent() {
           )}
         </section>
       )}
+
+      {/* Strangler Slice 4: Trust (#899) */}
+      {sliceTrust ? (
+        <TrustSection revealIndex={1} visible={visibleElements.has(1)} />
+      ) : null}
+
+      {/* Strangler Slice 5: Features (#899) */}
+      {sliceFeatures ? (
+        <FeaturesSection revealIndex={2} visible={visibleElements.has(2)} />
+      ) : null}
+
+      {/* Strangler Slice 6: Map (#899) */}
+      {sliceMap ? (
+        <MapSection revealIndex={3} visible={visibleElements.has(3)} />
+      ) : null}
+
+      {/* Strangler Slice 3: Footer (#899) */}
+      {sliceFooter ? (
+        <FooterSection revealIndex={4} visible={visibleElements.has(4)} />
+      ) : null}
     </div>
   )
 }

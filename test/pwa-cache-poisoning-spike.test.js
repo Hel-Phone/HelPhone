@@ -218,4 +218,87 @@ describe("ISP-092: PWA Cache Poisoning & Map Tile Integrity Spike", () => {
       ).toBe(false);
     });
   });
+
+  describe("Issue #898: Navigation Response Integrity Validation", () => {
+    it("should strictly reject opaque responses (status 0) for navigations", () => {
+      const result = manager.validateNavigationResponse({
+        status: 0,
+        url: "https://helphone.com/",
+        headers: {},
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.code).toBe("STATUS_OPAQUE");
+      expect(telemetryEvents.some((e) => e.type === "NAVIGATION_OPAQUE_REJECTED")).toBe(true);
+    });
+
+    it("should reject non-HTML navigation responses (captive portal / JSON)", () => {
+      const result = manager.validateNavigationResponse({
+        status: 200,
+        url: "https://helphone.com/",
+        headers: { "content-type": "application/json" },
+        bodySize: 1500,
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.code).toBe("MIME_MISMATCH");
+    });
+
+    it("should accept valid HTML navigation documents with reasonable size", () => {
+      const result = manager.validateNavigationResponse({
+        status: 200,
+        url: "https://helphone.com/",
+        headers: { "content-type": "text/html; charset=utf-8" },
+        bodySize: 2400,
+      });
+
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  describe("Issue #898: Cache Quarantine Manager & Auto-Repair", () => {
+    let quarantineManager;
+
+    beforeEach(async () => {
+      const { CacheQuarantineManager } = await import("../server/lib/tileCacheIntegrity.js");
+      quarantineManager = new CacheQuarantineManager();
+    });
+
+    it("should quarantine poisoned responses and evict them from the target cache", async () => {
+      const deletedKeys = [];
+      const mockCache = {
+        delete: async (req) => {
+          deletedKeys.push(req);
+          return true;
+        },
+      };
+
+      const entry = await quarantineManager.quarantine(
+        mockCache,
+        "https://api.mapbox.com/v4/poisoned.vector.pbf",
+        "Corrupted tile payload",
+        "STATUS_OPAQUE"
+      );
+
+      expect(entry.url).toBe("https://api.mapbox.com/v4/poisoned.vector.pbf");
+      expect(deletedKeys).toContain("https://api.mapbox.com/v4/poisoned.vector.pbf");
+      const metrics = quarantineManager.getMetrics();
+      expect(metrics.quarantinedCount).toBe(1);
+      expect(metrics.opaqueRejectedCount).toBe(1);
+      expect(metrics.integrityViolations).toBe(1);
+    });
+
+    it("should recover gracefully using offline fallback without manual user cache clearance", async () => {
+      const fallbackResponse = { status: 200, body: "safe-offline-tile" };
+      const outcome = await quarantineManager.repair(
+        null,
+        "https://api.mapbox.com/v4/offline.vector.pbf",
+        fallbackResponse
+      );
+
+      expect(outcome.repaired).toBe(true);
+      expect(outcome.isFallback).toBe(true);
+      expect(quarantineManager.getMetrics().repairedCount).toBe(1);
+    });
+  });
 });

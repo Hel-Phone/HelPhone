@@ -220,4 +220,178 @@ export class TileCacheIntegrityManager {
   clearAnomalies() {
     this.anomalies = [];
   }
+
+  /**
+   * Validates an incoming HTTP navigation (HTML/app-shell) response (#898).
+   * Strictly rejects opaque responses (status 0), non-200 codes, captive portals,
+   * non-HTML MIME types, and payload size bounds.
+   */
+  validateNavigationResponse(metadata) {
+    const { status, statusText, headers = {}, bodySize, url } = metadata;
+
+    if (status === 0) {
+      const anomaly = {
+        type: "NAVIGATION_OPAQUE_REJECTED",
+        url,
+        status,
+        timestamp: Date.now(),
+        reason: "Navigation opaque response (status 0) rejected: prevents permanent offline shell poisoning",
+      };
+      this._recordAnomaly(anomaly);
+      return { valid: false, reason: anomaly.reason, code: "STATUS_OPAQUE" };
+    }
+
+    if (status !== 200) {
+      return {
+        valid: false,
+        reason: `Non-200 navigation status: ${status} ${statusText || ""}`.trim(),
+        code: "STATUS_NON_200",
+      };
+    }
+
+    const rawContentType = headers["content-type"] || headers["Content-Type"] || "";
+    const mime = rawContentType.split(";")[0].trim().toLowerCase();
+
+    if (!mime.includes("text/html")) {
+      const anomaly = {
+        type: "NAVIGATION_MIME_MISMATCH",
+        url,
+        mime,
+        timestamp: Date.now(),
+        reason: `Disallowed navigation MIME type: "${mime}". Expected text/html.`,
+      };
+      this._recordAnomaly(anomaly);
+      return { valid: false, reason: anomaly.reason, code: "MIME_MISMATCH" };
+    }
+
+    if (typeof bodySize === "number") {
+      if (bodySize < 50) {
+        const anomaly = {
+          type: "NAVIGATION_UNDERSIZED",
+          url,
+          bodySize,
+          timestamp: Date.now(),
+          reason: "Navigation document body size too small (<50 bytes); suspected truncated stub",
+        };
+        this._recordAnomaly(anomaly);
+        return { valid: false, reason: anomaly.reason, code: "UNDERSIZED" };
+      }
+
+      if (bodySize > 5 * 1024 * 1024) {
+        // 5MB cap on app shell
+        const anomaly = {
+          type: "NAVIGATION_OVERSIZED",
+          url,
+          bodySize,
+          timestamp: Date.now(),
+          reason: "Navigation document body size exceeds 5MB cap",
+        };
+        this._recordAnomaly(anomaly);
+        return { valid: false, reason: anomaly.reason, code: "OVERSIZED" };
+      }
+    }
+
+    return { valid: true };
+  }
 }
+
+/**
+ * Cache Quarantine & Auto-Repair Manager (#898).
+ * Isolates and purges poisoned responses without requiring manual cache wipes.
+ * Tracks observable integrity metrics for security observability.
+ */
+export class CacheQuarantineManager {
+  constructor(options = {}) {
+    this.quarantineCacheName = options.quarantineCacheName || "cache-quarantine-v1";
+    this.quarantinedEntries = new Map();
+    this.metrics = {
+      quarantinedCount: 0,
+      repairedCount: 0,
+      opaqueRejectedCount: 0,
+      mimeMismatchCount: 0,
+      oversizedCount: 0,
+      integrityViolations: 0,
+    };
+  }
+
+  /**
+   * Quarantines an invalid/poisoned entry and immediately evicts it from target cache.
+   */
+  async quarantine(targetCache, request, reason, code) {
+    this.metrics.quarantinedCount++;
+    this.metrics.integrityViolations++;
+
+    if (code === "STATUS_OPAQUE") this.metrics.opaqueRejectedCount++;
+    if (code === "MIME_MISMATCH") this.metrics.mimeMismatchCount++;
+    if (code === "OVERSIZED") this.metrics.oversizedCount++;
+
+    const url = typeof request === "string" ? request : request.url;
+    const entry = {
+      url,
+      code,
+      reason,
+      timestamp: Date.now(),
+    };
+    this.quarantinedEntries.set(url, entry);
+
+    if (targetCache && typeof targetCache.delete === "function") {
+      try {
+        await targetCache.delete(request);
+      } catch {
+        // deletion error should not crash
+      }
+    }
+
+    return entry;
+  }
+
+  /**
+   * Automatically attempts recovery/repair of a poisoned resource by fetching fresh
+   * from the network with cache-busting revalidation or falling back to safe offline asset.
+   */
+  async repair(targetCache, request, fallbackResponse = null) {
+    try {
+      const url = typeof request === "string" ? request : request.url;
+      const networkResponse = await fetch(request, { cache: "reload" });
+
+      if (networkResponse && networkResponse.status === 200) {
+        if (targetCache && typeof targetCache.put === "function") {
+          await targetCache.put(request, networkResponse.clone());
+        }
+        this.quarantinedEntries.delete(url);
+        this.metrics.repairedCount++;
+        return { repaired: true, response: networkResponse };
+      }
+    } catch {
+      // Network fetch failed during repair; use safe offline fallback
+    }
+
+    if (fallbackResponse) {
+      this.metrics.repairedCount++;
+      return { repaired: true, response: fallbackResponse, isFallback: true };
+    }
+
+    return { repaired: false, response: null };
+  }
+
+  getQuarantinedEntries() {
+    return Array.from(this.quarantinedEntries.values());
+  }
+
+  getMetrics() {
+    return { ...this.metrics };
+  }
+
+  resetMetrics() {
+    this.metrics = {
+      quarantinedCount: 0,
+      repairedCount: 0,
+      opaqueRejectedCount: 0,
+      mimeMismatchCount: 0,
+      oversizedCount: 0,
+      integrityViolations: 0,
+    };
+    this.quarantinedEntries.clear();
+  }
+}
+

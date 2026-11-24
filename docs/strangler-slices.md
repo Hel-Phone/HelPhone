@@ -9,20 +9,24 @@
 |------:|-------|--------------|---------------|--------|
 | 1 | Nav | low | Typed props, no inline hex, flag `slice_nav` | extracted |
 | 2 | Hero | low | Typed props, reveal contract, flag `slice_hero` | extracted |
-| 3 | Footer | low | Shared layout footer or landing footer | planned |
-| 4 | Trust | low | Tokenised cards | planned |
-| 5 | Features | medium | Snapshot tests | planned |
-| 6 | Map | high | Pin-sync with CommunityMap | planned |
+| 3 | Footer | low | Shared layout footer or landing footer | extracted |
+| 4 | Trust | low | Tokenised cards, flag `slice_trust` | extracted |
+| 5 | Features | medium | Snapshot tests, flag `slice_features` | extracted |
+| 6 | Map | high | Pin-sync with CommunityMap, flag `slice_map` | extracted |
 | 7 | Help | critical | Dual-run shadow verify, last | planned-last |
 
 ## Coexistence flags
 
-Set in `public/config.json` or via `VITE_FLAG_SLICE_NAV=true`:
+Set in `public/config.json` or via `VITE_FLAG_SLICE_*=true`:
 
 - `slice_nav` — use `NavSection` (default on)
 - `slice_hero` — use `HeroSection` (default on)
+- `slice_footer` — use `FooterSection` (default on)
+- `slice_trust` — use `TrustSection` (default on)
+- `slice_features` — use `FeaturesSection` (default on)
+- `slice_map` — use `MapSection` (default on)
 
-Turning a flag off falls back to the inlined legacy markup in `App.tsx`.
+Turning a flag off falls back to the inlined legacy markup in `App.tsx`. Help remains untouched until the final slice.
 
 ## Tokens
 

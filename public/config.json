@@ -93,6 +93,46 @@
         "environments": ["production", "staging", "development"]
       }
     },
+    "slice_footer": {
+      "enabled": true,
+      "rolloutPercentage": 100,
+      "canaryStage": "ga_100",
+      "owner": "@helphone-ui-owner",
+      "expiresAt": "2027-06-01T00:00:00Z",
+      "targets": {
+        "environments": ["production", "staging", "development"]
+      }
+    },
+    "slice_trust": {
+      "enabled": true,
+      "rolloutPercentage": 100,
+      "canaryStage": "ga_100",
+      "owner": "@helphone-ui-owner",
+      "expiresAt": "2027-06-01T00:00:00Z",
+      "targets": {
+        "environments": ["production", "staging", "development"]
+      }
+    },
+    "slice_features": {
+      "enabled": true,
+      "rolloutPercentage": 100,
+      "canaryStage": "ga_100",
+      "owner": "@helphone-ui-owner",
+      "expiresAt": "2027-06-01T00:00:00Z",
+      "targets": {
+        "environments": ["production", "staging", "development"]
+      }
+    },
+    "slice_map": {
+      "enabled": true,
+      "rolloutPercentage": 100,
+      "canaryStage": "ga_100",
+      "owner": "@helphone-ui-owner",
+      "expiresAt": "2027-06-01T00:00:00Z",
+      "targets": {
+        "environments": ["production", "staging", "development"]
+      }
+    },
     "multilingualSearchV2": {
       "enabled": true,
       "rolloutPercentage": 100,

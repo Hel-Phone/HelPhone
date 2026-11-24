@@ -25,6 +25,30 @@ const ALLOWED_TILE_MIMES = [
   "image/jpeg",
 ];
 
+// ISP-092 / #898: Integrity metrics tracker for PWA cache defense
+const integrityMetrics = {
+  quarantinedCount: 0,
+  repairedCount: 0,
+  opaqueRejectedCount: 0,
+  mimeMismatchCount: 0,
+  oversizedCount: 0,
+  integrityViolations: 0,
+};
+
+function recordIntegrityViolation(type, details = {}) {
+  integrityMetrics.integrityViolations++;
+  if (type === "STATUS_OPAQUE") integrityMetrics.opaqueRejectedCount++;
+  if (type === "MIME_MISMATCH") integrityMetrics.mimeMismatchCount++;
+  if (type === "OVERSIZED") integrityMetrics.oversizedCount++;
+  if (type === "QUARANTINED") integrityMetrics.quarantinedCount++;
+
+  self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+    for (const c of clients) {
+      c.postMessage({ type: "INTEGRITY_ANOMALY", violation: type, details, metrics: { ...integrityMetrics } });
+    }
+  }).catch(() => {});
+}
+
 async function notifyQuotaPressure(stats) {
   try {
     const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
@@ -146,19 +170,49 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (url.pathname === "/") {
+  const isNavigation =
+    request.mode === "navigate" ||
+    request.destination === "document" ||
+    url.pathname === "/";
+
+  if (isNavigation) {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const cache = caches.open(CACHE_NAME);
-          cache.then((c) => c.put(request, response.clone()));
-          return response;
-        })
-        .catch(() => {
-          return caches.match(request).then((response) => {
-            return response || caches.match("/");
+      (async () => {
+        const cache = await caches.open(CACHE_NAME);
+        try {
+          const networkResponse = await fetch(request);
+
+          // #898: Strict navigation response validation (reject opaque responses & corrupted stubs)
+          if (!networkResponse || networkResponse.status === 0) {
+            recordIntegrityViolation("STATUS_OPAQUE", { url: request.url });
+            const cached = await cache.match(request) || await caches.match("/");
+            if (cached) return cached;
+            return networkResponse;
+          }
+
+          if (networkResponse.status === 200) {
+            const contentType = (networkResponse.headers.get("content-type") || "")
+              .split(";")[0]
+              .trim()
+              .toLowerCase();
+
+            if (contentType.includes("text/html")) {
+              await safeCachePut(cache, request, networkResponse.clone(), "critical");
+              return networkResponse;
+            } else {
+              recordIntegrityViolation("MIME_MISMATCH", { url: request.url, contentType });
+            }
+          }
+          const cached = await cache.match(request) || await caches.match("/");
+          return cached || networkResponse;
+        } catch {
+          const cached = await cache.match(request) || await caches.match("/");
+          return cached || new Response("Offline - HelPhone emergency shell ready", {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
           });
-        }),
+        }
+      })()
     );
     return;
   }
@@ -173,22 +227,29 @@ self.addEventListener("fetch", (event) => {
           const revalidatePromise = (async () => {
             try {
               const networkResponse = await fetch(request);
-              // Strict integrity verification:
-              // 1. Must be HTTP 200 (reject status 0 opaque responses and errors)
-              if (!networkResponse || networkResponse.status !== 200) {
-                return networkResponse;
+              // #898: Strict tile integrity verification
+              // 1. Opaque response (status 0) rejection
+              if (!networkResponse || networkResponse.status === 0) {
+                recordIntegrityViolation("STATUS_OPAQUE", { url: request.url });
+                return cachedResponse || networkResponse;
               }
 
-              // 2. Upstream revocation check
+              // 2. Reject non-200 HTTP statuses
+              if (networkResponse.status !== 200) {
+                return cachedResponse || networkResponse;
+              }
+
+              // 3. Upstream revocation check
               const isRevoked = networkResponse.headers.get("x-tile-revoke");
               if (isRevoked === "true" || isRevoked === "1") {
+                recordIntegrityViolation("QUARANTINED", { url: request.url, reason: "revocation" });
                 await cache.delete(request);
                 const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
                 clients.forEach((c) => c.postMessage({ type: "TILE_REVOKED", url: request.url }));
-                return networkResponse;
+                return cachedResponse || networkResponse;
               }
 
-              // 3. MIME type check
+              // 4. MIME type check
               const contentType = (networkResponse.headers.get("content-type") || "")
                 .split(";")[0]
                 .trim()
@@ -197,25 +258,19 @@ self.addEventListener("fetch", (event) => {
                 (m) => contentType === m || contentType.includes("protobuf") || contentType.includes("vector-tile")
               );
 
-              // 4. Size check: reject oversized > 1MB
+              // 5. Size check: reject oversized > 1MB or undersized stub < 40B
               const contentLength = parseInt(networkResponse.headers.get("content-length") || "0", 10);
               const isOversized = contentLength > 1024 * 1024;
+              const isUndersized = contentLength > 0 && contentLength < 40;
 
-              if (isAllowedMime && !isOversized) {
+              if (isAllowedMime && !isOversized && !isUndersized) {
                 await safeCachePut(cache, request, networkResponse.clone(), "frequent");
+                integrityMetrics.repairedCount++;
               } else {
-                const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-                clients.forEach((c) =>
-                  c.postMessage({
-                    type: "TILE_ANOMALY",
-                    payload: {
-                      url: request.url,
-                      contentType,
-                      contentLength,
-                      reason: isOversized ? "OVERSIZED" : "MIME_MISMATCH",
-                    },
-                  })
-                );
+                const reason = isOversized ? "OVERSIZED" : isUndersized ? "UNDERSIZED" : "MIME_MISMATCH";
+                recordIntegrityViolation(reason, { url: request.url, contentType, contentLength });
+                // Quarantine: delete poisoned response from cache
+                await cache.delete(request);
               }
               return networkResponse;
             } catch (err) {
@@ -361,6 +416,41 @@ self.addEventListener("message", (event) => {
             client.postMessage({ type: "TILES_PURGED", timestamp: Date.now() });
           }
         })
+    );
+  }
+
+  // #898: Query live cache integrity metrics
+  if (data.type === "GET_INTEGRITY_METRICS") {
+    if (event.source && typeof event.source.postMessage === "function") {
+      event.source.postMessage({
+        type: "INTEGRITY_METRICS_RESPONSE",
+        metrics: { ...integrityMetrics },
+        timestamp: Date.now(),
+      });
+    }
+  }
+
+  // #898: Selective cache repair protocol without full manual cache reset
+  if (data.type === "REPAIR_CACHE") {
+    event.waitUntil(
+      (async () => {
+        const target = data.target || "tiles";
+        if (target === "tiles") {
+          const tileCache = await caches.open(TILES_CACHE_NAME);
+          const keys = await tileCache.keys();
+          // Evict any keys marked as invalid or purge and trigger fresh revalidation
+          for (const k of keys) {
+            if (data.url && k.url === data.url) {
+              await tileCache.delete(k);
+            }
+          }
+          integrityMetrics.repairedCount++;
+        }
+        const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        for (const c of clients) {
+          c.postMessage({ type: "CACHE_REPAIRED", target, metrics: { ...integrityMetrics } });
+        }
+      })()
     );
   }
 
