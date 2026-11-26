@@ -1,0 +1,134 @@
+{
+  "src/lib/a11yMotion.js": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/ariaManager.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/assetManager.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/bleRelay.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/buildManifestIntegrity.js": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/comboboxStore.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/crdtAdvanced.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/dispatchQueue.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/env.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/etaEstimate.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/field/statusCodes.js": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/focusTrap.js": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/foldableScreen.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/fontAssetSubsetting.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/htmlSanitizer.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/keyBackup.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/keyRotation.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/mainThreadOptimization.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/memoryLeakFixes.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/powerManager.js": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/provers.js": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/raceGate.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/routerConfig.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/sessionKey.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/soroban-state-mgmt.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/subscriptions.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/syncManager.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/telemetryRedactor.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/txBatcher.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/webrtc.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "src/lib/worker-manager.js": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "server/db/indexOptimizer.ts": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  },
+  "server/db/partitioning.js": {
+    "state": "prototype-only",
+    "note": "No production import; integration pending"
+  }
+}
