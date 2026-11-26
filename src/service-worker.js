@@ -7,6 +7,9 @@ import { createPartialResponse } from "workbox-range-requests";
 import { AssetManager } from "./lib/assetManager.ts";
 import { TILE_CACHE_PREFIX as OFFLINE_TILE_CACHE_PREFIX, createOfflineTileHandler } from "./lib/offlineTileHandler.js";
 import { TRUSTED_TILE_KEYS } from "./lib/tileTrust.js";
+// #898: Cache poisoning defenses
+import { isOpaqueResponse, verifyCachedResponse } from "./lib/cacheIntegrity.ts";
+import { quarantineResponse, getQuarantineStats } from "./lib/cacheQuarantine.ts";
 
 cleanupOutdatedCaches();
 
@@ -92,10 +95,26 @@ async function evictTileOrEphemeralCaches() {
   }
 }
 
-async function safeCachePut(cache, request, response, tier = "frequent") {
+async function safeCachePut(cache, request, response, tier = "frequent", integrity = null) {
   try {
-    const blob = await response.clone().blob();
     const url = typeof request === "string" ? request : request.url;
+
+    // #898: Reject opaque responses (cannot verify content)
+    if (isOpaqueResponse(response)) {
+      await quarantineResponse(url, "opaque-response");
+      return;
+    }
+
+    // #898: Verify integrity if provided
+    if (integrity) {
+      const verified = await verifyCachedResponse(response, integrity);
+      if (!verified.valid) {
+        await quarantineResponse(url, verified.reason || "hash-mismatch");
+        return;
+      }
+    }
+
+    const blob = await response.clone().blob();
     const priority = tier === "critical" ? 0 : tier === "frequent" ? 1 : 2;
     await assetManager.cacheAsset(
       { url, size: blob.size, type: tier, hash: "", priority },
@@ -114,6 +133,10 @@ async function safeCachePut(cache, request, response, tier = "frequent") {
           // Critical asset still held in AssetManager persistent tier
         }
       }
+    } else {
+      // Other errors: log and potentially quarantine
+      const url = typeof request === "string" ? request : request.url;
+      await quarantineResponse(url, "cache-put-failed");
     }
   }
 }
