@@ -13,20 +13,20 @@ const T0: u64 = 1_000_000;
 struct Setup<'a> {
     dao: HelPhoneDaoClient<'a>,
     admin: Address,
-    gov: token::Client<'a>,
+    gov: Address,
     reserve: token::Client<'a>,
 }
 
 fn setup(env: &Env) -> Setup<'_> {
     env.mock_all_auths();
     let admin = Address::generate(env);
-    let gov = env.register_stellar_asset_contract_v2(admin.clone()).address();
+    let gov = env.register(MockGovToken, ());
     let reserve = env.register_stellar_asset_contract_v2(admin.clone()).address();
     let id = env.register(HelPhoneDao, (admin.clone(), gov.clone()));
     Setup {
         dao: HelPhoneDaoClient::new(env, &id),
         admin,
-        gov: token::Client::new(env, &gov),
+        gov,
         reserve: token::Client::new(env, &reserve),
     }
 }
@@ -42,7 +42,7 @@ fn s(env: &Env, v: &str) -> String {
 /// Voter holding the whole voting supply, so any For vote passes quorum.
 fn voter(env: &Env, t: &Setup) -> Address {
     let v = Address::generate(env);
-    mint(env, &t.gov, &v, 1_000);
+    MockGovTokenClient::new(env, &t.gov).set_balance(&v, &1_000);
     t.dao.set_voting_supply(&t.admin, &1_000);
     v
 }
@@ -79,6 +79,9 @@ impl MockGovToken {
     pub fn balance(env: Env, id: Address) -> i128 {
         env.storage().instance().get(&id).unwrap_or(0)
     }
+    pub fn balance_at(env: Env, id: Address, _ledger: u32) -> i128 {
+        env.storage().instance().get(&id).unwrap_or(0)
+    }
     pub fn total_supply(_env: Env) -> i128 {
         1_000
     }
@@ -113,7 +116,7 @@ fn constructor_sets_admin_and_token() {
     let env = Env::default();
     let t = setup(&env);
     assert_eq!(t.dao.get_admin(), Some(t.admin.clone()));
-    assert_eq!(t.dao.get_governance_token(), Some(t.gov.address.clone()));
+    assert_eq!(t.dao.get_governance_token(), Some(t.gov.clone()));
     assert_eq!(t.dao.get_proposal_count(), 0);
 }
 
@@ -122,6 +125,10 @@ fn governance_params_are_correct() {
     let env = Env::default();
     let t = setup(&env);
     let (voting_period, execution_delay, quorum, pass_threshold) = t.dao.get_governance_params();
+    assert_eq!(voting_period, 3 * 24 * 60 * 60);
+    assert_eq!(execution_delay, 48 * 60 * 60);
+    assert_eq!(quorum, 20);
+    assert_eq!(pass_threshold, 50);
 }
 
 #[test]
@@ -212,6 +219,20 @@ fn proposal_without_quorum_or_majority_fails() {
 }
 
 #[test]
+fn vote_rotation_preserves_snapshot_weight() {
+    let c = ctx();
+    let voter = holder(&c, 300);
+    let id = propose(&c, &voter);
+    c.dao.cast_vote(&voter, &id, &VoteDirection::For);
+    c.dao.rotate_vote(&voter, &id, &VoteDirection::Against);
+    let proposal = c.dao.get_proposal(&id).unwrap();
+    assert_eq!(proposal.for_votes, 0);
+    assert_eq!(proposal.against_votes, 300);
+    assert_eq!(c.dao.get_vote(&id, &voter).unwrap().weight, 300);
+    assert_eq!(c.dao.get_quorum_requirement(&id), (1_000, 200));
+}
+
+#[test]
 fn voting_rules_are_enforced() {
     let c = ctx();
     let voter = holder(&c, 300);
@@ -295,12 +316,6 @@ fn quote_requires_an_oracle() {
     let a = Address::generate(&c.env);
     let b = Address::generate(&c.env);
     assert_eq!(c.dao.try_quote_conversion(&a, &b, &100), Err(Ok(DaoError::OracleNotSet)));
-}
-
-    assert_eq!(voting_period, 3 * 24 * 60 * 60); // 3 days
-    assert_eq!(execution_delay, 48 * 60 * 60);
-    assert_eq!(quorum, 20); // 20%
-    assert_eq!(pass_threshold, 50); // 50%
 }
 
 #[test]
@@ -430,7 +445,7 @@ fn rejects_bad_sustainability_inputs() {
 }
 
 #[test]
-fn fn proposal_status_values() {
+fn proposal_status_values() {
     assert_eq!(ProposalStatus::Active, ProposalStatus::Active);
     assert_eq!(ProposalStatus::Passed, ProposalStatus::Passed);
     assert_eq!(ProposalStatus::Failed, ProposalStatus::Failed);

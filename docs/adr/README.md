@@ -115,7 +115,7 @@ cp docs/adr/ADR-000-template.md docs/adr/ADR-NNN-short-title.md
 | Maps / WebGPU | ADR-008 | Shader cross-browser fallback |
 | Dispatch / WS | ADR-003 | Priority queue under overload (→ADR-020) |
 | Telemetry | ADR-014 | WASM reader versioning |
-| DAO / Treasury | ADR-015, ADR-021 | Governance quorum calculation |
+| DAO / Treasury | ADR-015, ADR-021, ADR-028 | — |
 | Federation | ADR-018 | Trust-anchor bootstrapping |
 | Legal / Compulsion | ADR-019 | Per-jurisdiction envelopes |
 | Triage Ethics | ADR-020 | Liability sign-off |

@@ -25,6 +25,7 @@ const PASS_THRESHOLD_PCT: u32 = 50; // >50% of votes to pass
 #[contractclient(name = "GovTokenClient")]
 pub trait GovToken {
     fn balance(env: Env, id: Address) -> i128;
+    fn balance_at(env: Env, id: Address, ledger: u32) -> i128;
     fn total_supply(env: Env) -> i128;
 }
 
@@ -225,6 +226,7 @@ fn key_proposal_count() -> Symbol {
 }
 fn key_executed_set() -> Symbol {
     symbol_short!("execd")
+}
 fn key_voting_supply() -> Symbol {
     symbol_short!("vsupply")
 }
@@ -469,10 +471,13 @@ impl HelPhoneDao {
             .get(&DataKey::TokenSnapshot(proposal_id))
             .ok_or(DaoError::InvalidProposal)?;
 
-        let weight = token_client.balance(&voter);
+        let weight = token_client.balance_at(&voter, &snapshot.snapshot_ledger);
 
         if weight <= 0 {
             return Err(DaoError::NotTokenHolder);
+        }
+        if weight > snapshot.total_supply {
+            return Err(DaoError::InvalidProposal);
         }
 
         // Record vote
@@ -486,9 +491,9 @@ impl HelPhoneDao {
 
         // Update proposal tallies
         match direction {
-            VoteDirection::For => proposal.for_votes += weight,
-            VoteDirection::Against => proposal.against_votes += weight,
-            VoteDirection::Abstain => proposal.abstain_votes += weight,
+            VoteDirection::For => proposal.for_votes = proposal.for_votes.checked_add(weight).ok_or(DaoError::Overflow)?,
+            VoteDirection::Against => proposal.against_votes = proposal.against_votes.checked_add(weight).ok_or(DaoError::Overflow)?,
+            VoteDirection::Abstain => proposal.abstain_votes = proposal.abstain_votes.checked_add(weight).ok_or(DaoError::Overflow)?,
         }
         env.storage()
             .persistent()
@@ -502,6 +507,34 @@ impl HelPhoneDao {
         }
         .publish(&env);
 
+        Ok(())
+    }
+
+    /// Change an existing vote without changing its snapshot weight.
+    pub fn rotate_vote(env: Env, voter: Address, proposal_id: u64, direction: VoteDirection) -> Result<(), DaoError> {
+        voter.require_auth();
+        let mut proposal: Proposal = env.storage().persistent().get(&DataKey::Proposal(proposal_id)).ok_or(DaoError::ProposalNotFound)?;
+        if proposal.status != ProposalStatus::Active { return Err(DaoError::VotingClosed); }
+        let now = env.ledger().timestamp();
+        if now < proposal.voting_starts || now > proposal.voting_ends { return Err(DaoError::VotingClosed); }
+        let vote_key = DataKey::Vote(proposal_id, voter.clone());
+        let mut record: VoteRecord = env.storage().persistent().get(&vote_key).ok_or(DaoError::NotTokenHolder)?;
+        if record.direction == direction { return Ok(()); }
+        match record.direction {
+            VoteDirection::For => proposal.for_votes -= record.weight,
+            VoteDirection::Against => proposal.against_votes -= record.weight,
+            VoteDirection::Abstain => proposal.abstain_votes -= record.weight,
+        }
+        match direction.clone() {
+            VoteDirection::For => proposal.for_votes = proposal.for_votes.checked_add(record.weight).ok_or(DaoError::Overflow)?,
+            VoteDirection::Against => proposal.against_votes = proposal.against_votes.checked_add(record.weight).ok_or(DaoError::Overflow)?,
+            VoteDirection::Abstain => proposal.abstain_votes = proposal.abstain_votes.checked_add(record.weight).ok_or(DaoError::Overflow)?,
+        }
+        record.direction = direction.clone();
+        record.voted_at = now;
+        env.storage().persistent().set(&vote_key, &record);
+        env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+        VoteCastEvent { proposal_id: &proposal_id, voter: &voter, direction: &direction, weight: &record.weight }.publish(&env);
         Ok(())
     }
 
@@ -850,6 +883,11 @@ impl HelPhoneDao {
             .persistent()
             .get(&DataKey::TotalSupplyAt(proposal_id))
             .unwrap_or(0)
+    }
+
+    pub fn get_quorum_requirement(env: Env, proposal_id: u64) -> (i128, i128) {
+        let supply = env.storage().persistent().get(&DataKey::TotalSupplyAt(proposal_id)).unwrap_or(0);
+        (supply, supply * (QUORUM_THRESHOLD_PCT as i128) / 100)
     }
 
     /// Read: get list of executed proposal IDs.
