@@ -14,7 +14,7 @@ import {
   parseBatch as jsParseBatch,
   priorityFor,
 } from './binaryParser.js';
-import { WasmViewCache } from '../lib/wasmMemory.js';
+import { WasmViewCache } from '../lib/wasmMemory';
 import { loadVerifiedWasm, WasmIntegrityError } from './wasmLoader.js';
 
 const PAGE = 65536;

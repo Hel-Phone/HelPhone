@@ -53,6 +53,14 @@ command-internal: 7 days). Delete expired bundles per ISP-128 retention.
 Break-glass access is recorded in `audit-log.json` inside the bundle and
 must be reconciled against `docs/legal-compliance.md` audit requirements.
 
+Incident tapes (`scripts/build-incident-tape.js`) follow the same tier expiry
+and can be signed with a maintainer key (`--sign-key <pem> --key-id <id>`).
+`npm run bundle:verify` enforces bundle and incident-tape expiry as well as
+tape signatures. Scheduled retention sweeps (`scripts/sweep-incident-tapes.js`,
+`.github/workflows/tape-retention.yml`) move expired tapes to `.quarantine/`
+with JSONL audit events (`retention-audit.jsonl`), keeping them reversible
+within the 7-day grace window via `--restore <filename>` before permanent purge.
+
 ## Escalation order
 
 1. `collect --tier volunteer-safe` — share with responders/volunteers.
@@ -239,4 +247,63 @@ A compromised Mapbox CDN or adversarial proxy serving corrupted, manipulated, or
    - On SW activation, old version caches (`tiles-v1`) are automatically evicted.
 4. **Field Fallback**:
    - When CDN upstream is untrusted, switch `CommunityMap.jsx` to offline SVG fallback mode until new tileset hashes are attested.
+
+## Chaos rehearsal record (#769, #791)
+
+Fault injection is **opt-in** (`CHAOS_ENABLED=true`) and is impossible in
+production without the explicit `CHAOS_BREAK_GLASS` value. Startup arming lives
+in `server/lib/chaosEngine.js` (`armStartupChaos`), the bulkhead shed order is
+enforced by `server/middleware/chaos.js`, and the admin controls are under
+`POST /admin/chaos/{start,abort}` with `CHAOS_ADMIN_TOKEN`.
+
+Scheduled staging runs: `.github/workflows/chaos-rehearsal.yml` (weekly
+03:00 UTC Monday + manual dispatch). The rehearsal is `node scripts/chaos-run.js`.
+
+Recorded rehearsal (generated locally, 2026-11-24):
+
+| Scenario | Faults | P0 admitted | Rescuer heartbeat | Map tiles shed | Critical lane | Integrity | Leak guard | Rollback |
+|---|---|---|---|---|---|---|---|---|
+| RED_WEDDING | Redis outage, Postgres partition detach, Stellar RPC 429 storm, CPU quota throttle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| REDIS+POSTGRES+STELLAR | Redis outage, Postgres partition detach, Stellar RPC 429 storm | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| STELLAR+CPU | Stellar RPC 429 storm, CPU quota throttle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+Abort criteria remain those in `docs/spikes/769-multi-fault-chaos-bulkhead-report.md`:
+`chaosEngine.abort()` clears every fault and restores the CPU quota in one
+command; a non-zero indexer gap, CRDT resurrection or live SMS/mainnet side
+effect fails the run.
+
+## Zero-downtime deploys (#758)
+
+See `docs/zero-downtime-deploy-runbook.md` for the staged cutover, manual abort
+gate and rollback procedure. Rehearsal results are appended below.
+
+| Scenario | Result | WS handoffs | Rollback |
+|---|---|---|---|
+| Healthy staged deploy | COMPLETE | 3/3 | no |
+| Failed health check | ROLLED_BACK | n/a | automatic |
+| Manual abort gate | ROLLED_BACK | n/a | automatic |
+
+---
+
+## Automated Fire-Drill Runbooks (#952)
+
+`scripts/fire-drill.sh` automates the three operational graduation drills on an isolated `*_clone` or `*_drill` database (or `--dry-run` in CI via `.github/workflows/fire-drill.yml`):
+
+| Scenario | Max Duration | Success Criteria |
+| --- | --- | --- |
+| `lag-spike` | 120 s (`LAG_SPIKE_MAX_SECONDS`) | `indexer_lag_ledgers<=5_and_recovered_within_sla` |
+| `pool-exhaustion` | 90 s (`POOL_EXHAUSTION_MAX_SECONDS`) | `idle_connections_recovered_and_healthcheck_200` |
+| `indexer-backfill` | 180 s (`INDEXER_BACKFILL_MAX_SECONDS`) | `cursor_parity_verified_and_zero_missing_ledgers` |
+
+```bash
+# Preview the drill plan
+CLONE_DATABASE_URL=postgres://localhost:5432/helphone_drill bash scripts/fire-drill.sh --scenario all --plan
+
+# Run all scenarios in dry-run mode and record bus-factor graduation evidence
+bash scripts/fire-drill.sh --scenario all --dry-run --report artifacts/fire-drill-report.json
+node scripts/record-drill-evidence.js --report artifacts/fire-drill-report.json --archive --record-failure-task
+```
+
+- **Graduation evidence**: `docs/evidence/fire-drills/latest.json` (referenced by `docs/bus-factor-ledger.md` during quarterly refresh).
+- **Failure tracking**: Any failed drill automatically opens a tracked remediation task in `TODO.md` (and a GitHub issue when run in `.github/workflows/fire-drill.yml`).
 

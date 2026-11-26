@@ -185,6 +185,10 @@ export const typeDefs = /* GraphQL */ `
     assignResponder(input: AssignResponderInput!): AssignResult!
     syncFlush(input: SyncFlushInput!): SyncFlushResult!
   }
+
+  type Subscription {
+    event(incidentId: ID!, after: String): Event!
+  }
 `
 
 export const schema: GraphQLSchema = buildSchema(typeDefs)

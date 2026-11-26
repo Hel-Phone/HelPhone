@@ -313,3 +313,43 @@ export class BeaconPriorityQueue {
     return this.items.length
   }
 }
+
+// --- Platform-aware context culling (ISP-113 / #897) ---
+
+export interface BleContextCullingConfig {
+  maxFragmentMs: number
+  maxPartialMs: number
+}
+
+/**
+ * Platform-specific BLE background processing limits.
+ * iOS: VoIP handler ~10s budget (fragment 2s, reassembly 8s)
+ * Android: WorkManager safe ~10m (fragment 5s, reassembly 60s)
+ */
+export function getBleContextCulling(platform?: string): BleContextCullingConfig {
+  if (platform === 'ios') {
+    return { maxFragmentMs: 2_000, maxPartialMs: 8_000 }
+  }
+  if (platform === 'android') {
+    return { maxFragmentMs: 5_000, maxPartialMs: 60_000 }
+  }
+  return { maxFragmentMs: 5_000, maxPartialMs: 10_000 }
+}
+
+// --- Telemetry for relay metrics (ISP-113 / #897) ---
+
+export interface BleRelayMetric {
+  beaconId: string
+  sourceId: string
+  assemblyTimeMs: number
+  verifyTimeMs: number
+  relayDecision: DropReason | 'forward'
+  hopCount: number
+  timestamp: number
+}
+
+export function recordBleRelayMetric(metric: BleRelayMetric): void {
+  if (typeof window !== 'undefined' && window.__telemetry) {
+    window.__telemetry.recordEvent?.('ble-relay', metric)
+  }
+}

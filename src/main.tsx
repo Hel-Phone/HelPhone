@@ -16,6 +16,7 @@ import {
 } from "./lib/resourceHints";
 import { startHeapForensics } from "./lib/heapForensics";
 import { startFlagSync } from "./lib/featureFlags";
+import { bootReputationPinCheck } from "./lib/rankingIntegrity";
 import { trackOfflineGap } from "./lib/telemetry";
 import App from "./App";
 import "./App.css";
@@ -36,6 +37,8 @@ const Kiosk = lazy(loadKiosk);
 const ClusterLab = lazy(() => import("./components/WebGPUMap"));
 // Telemetry lab: backpressure drop ledger & binary decode benchmark (ADR-014 / ISP-032).
 const TelemetryLab = lazy(() => import("./components/TelemetryLab"));
+// ADR-022 calibration dashboard (this PR).
+const CalibrationDashboard = lazy(() => import("./pages/CalibrationDashboard"));
 
 function RouteFallback() {
   return (
@@ -58,6 +61,7 @@ function RouteFallback() {
 }
 
 initThemeEngine();
+bootReputationPinCheck();
 // Measure PBKDF2 latency off the critical path so a slow device is surfaced early.
 scheduleKeyDerivationBenchmark();
 
@@ -102,6 +106,7 @@ function render() {
                 <Route path="/lab/cluster-bench" element={<ClusterLab />} />
                 <Route path="/lab/telemetry" element={<TelemetryLab />} />
                 <Route path="/lab/telemetry-bench" element={<TelemetryLab />} />
+                <Route path="/lab/eta-calibration" element={<CalibrationDashboard />} />
               </Routes>
             </Suspense>
           </BrowserRouter>

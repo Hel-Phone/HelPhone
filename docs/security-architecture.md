@@ -30,6 +30,8 @@ scripts/security/license_policy.js  is shared with  scripts/security/license_com
 
 **Low label cardinality.** Request counters use the matched Express route template (`/api/responder-status/:address`), never the raw URL. Unmatched requests are bucketed as `unmatched`. That keeps addresses and nullifiers out of metric labels.
 
+**Wallet abuse metrics follow the same rule.** `helphone_dispatch_wallet_abuse_total` (ADR-020) labels are `reason` (a fixed enum: `ok`, `limit`, `backoff`, `verified_exempt`) and `level` (a bounded backoff level). The wallet used as the store key is never copied into a label — a code-level test asserts the rendered families contain no wallet address. Limits live in a `SharedLimitStore` so multi-process deployments can inject the Redis implementation.
+
 **Dashboard hardening.** The dashboard is static server-rendered HTML with every value HTML-escaped. It is served with `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'`, so it runs no scripts and makes no outbound fetches.
 
 ## Scoring

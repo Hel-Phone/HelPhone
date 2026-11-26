@@ -9,6 +9,7 @@
 import DataLoader from 'dataloader'
 import { GraphQLError, GraphQLScalarType, Kind, type ValueNode } from 'graphql'
 import type { AuthenticatedUser } from '../middleware/auth.js'
+import { hasUvTier, UV_TIER_INSUFFICIENT } from '../middleware/uvTier.js'
 import type { DomainEvent, DomainStore, Incident, Responder as DomainResponder } from '../lib/domainStore.ts'
 
 export type Row = Record<string, unknown>
@@ -49,6 +50,19 @@ export interface GraphQLContext {
   user?: AuthenticatedUser | null
   store?: DomainStore
   viewerId?: string
+}
+
+/**
+ * #924 / ADR-026: a passkey session without uv=true may not run sensitive
+ * mutations. Anonymous callers (the field sync path) and signature-header
+ * callers are not session-bound, so they pass through unchanged.
+ */
+function assertSessionUvTier(user: AuthenticatedUser | null | undefined): void {
+  if (user?.algorithm === 'webauthn' && !hasUvTier(user)) {
+    throw new GraphQLError(UV_TIER_INSUFFICIENT, {
+      extensions: { code: UV_TIER_INSUFFICIENT, http: { status: 403 } },
+    })
+  }
 }
 
 export function clampLimit(value: number | null | undefined, fallback: number): number {
@@ -398,6 +412,7 @@ export const resolvers = {
       args: { input: { incidentId: string; responderId: string; expectedVersion?: number } },
       context: GraphQLContext
     ) => {
+      assertSessionUvTier(context.user)
       const root = createRootValue()
       return root.assignResponder(args, context)
     },
@@ -406,6 +421,7 @@ export const resolvers = {
       args: { input: { incidentId: string; baseVersion: number; patch: Record<string, unknown> } },
       context: GraphQLContext
     ) => {
+      assertSessionUvTier(context.user)
       const root = createRootValue()
       return root.syncFlush(args, context)
     },

@@ -359,3 +359,160 @@ export function startFlagSync({
     }
   }
 }
+
+// ── Unified Remote + Field Flag Provenance (#943) ───────────────────────────
+// Precedence order (highest to lowest):
+//   1. env_override  (VITE_FLAG_*)
+//   2. remote_config (public/config.json via defaultEvaluator)
+//   3. field_local   (localStorage hp_feature_flags single-flag override)
+//   4. default       (field flag defaultOn, or false)
+
+export const FLAG_PRECEDENCE = Object.freeze([
+  'env_override',
+  'remote_config',
+  'field_local',
+  'default',
+] as const)
+
+export type FlagResolutionSource = (typeof FLAG_PRECEDENCE)[number]
+
+export interface FieldLayerInput {
+  override?: boolean | null
+  defaultOn?: boolean
+  version?: number | null
+}
+
+export interface UnifiedFlagResolution {
+  flagName: string
+  enabled: boolean
+  source: FlagResolutionSource
+  precedence: readonly FlagResolutionSource[]
+  provenance: {
+    remote: {
+      present: boolean
+      enabled: boolean
+      reason: string
+      version: string
+    }
+    field: {
+      present: boolean
+      enabled: boolean | null
+      defaultOn: boolean | null
+      version: number | null
+    }
+  }
+}
+
+/**
+ * Single unified resolver combining remote config.json (defaultEvaluator)
+ * and field localStorage flags with explicit, deterministic precedence.
+ */
+export function resolveUnifiedFlag(
+  flagName: string,
+  fieldLayer: FieldLayerInput = {},
+  userContext?: UserContext,
+  evaluator: FeatureFlagEvaluator = defaultEvaluator,
+): UnifiedFlagResolution {
+  const remoteEval = evaluator.evaluateFlag(flagName, userContext)
+  const remoteVersion = evaluator.getConfig()?.version ?? currentFlagVersion()
+  const remotePresent = remoteEval.reason !== 'default'
+
+  const fieldOverride = typeof fieldLayer.override === 'boolean' ? fieldLayer.override : null
+  const fieldDefault = typeof fieldLayer.defaultOn === 'boolean' ? fieldLayer.defaultOn : null
+  const fieldVersion = typeof fieldLayer.version === 'number' ? fieldLayer.version : null
+
+  let enabled = false
+  let source: FlagResolutionSource = 'default'
+
+  if (remoteEval.reason === 'env_override') {
+    enabled = remoteEval.enabled
+    source = 'env_override'
+  } else if (remotePresent) {
+    enabled = remoteEval.enabled
+    source = 'remote_config'
+  } else if (fieldOverride !== null) {
+    enabled = fieldOverride
+    source = 'field_local'
+  } else if (fieldDefault !== null) {
+    enabled = fieldDefault
+    source = 'default'
+  }
+
+  return {
+    flagName,
+    enabled,
+    source,
+    precedence: FLAG_PRECEDENCE,
+    provenance: {
+      remote: {
+        present: remotePresent,
+        enabled: remoteEval.enabled,
+        reason: remoteEval.reason,
+        version: remoteVersion,
+      },
+      field: {
+        present: fieldOverride !== null,
+        enabled: fieldOverride,
+        defaultOn: fieldDefault,
+        version: fieldVersion,
+      },
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// predictiveEtaV2 convenience helpers (ADR-022 / this PR).
+// Built on top of the unified resolver so both remote config and the
+// field-local override storage keep working. No existing API is changed.
+// ---------------------------------------------------------------------------
+
+export const FEATURE_FLAGS = {
+  predictiveEtaV2: 'predictiveEtaV2',
+} as const
+
+export type SimpleFeatureFlag = (typeof FEATURE_FLAGS)[keyof typeof FEATURE_FLAGS]
+
+const SIMPLE_STORAGE_PREFIX = 'helphone:feature:'
+
+function simpleStoredValue(flag: SimpleFeatureFlag): string | undefined {
+  try {
+    if (typeof localStorage === 'undefined') return undefined
+    return localStorage.getItem(SIMPLE_STORAGE_PREFIX + flag) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+function parseSimple(value: string | undefined): boolean {
+  if (value === undefined) return false
+  return value === '1' || value.toLowerCase() === 'true'
+}
+
+/** True only when explicitly enabled by env, remote config or an override. */
+export function isFeatureEnabled(flag: SimpleFeatureFlag): boolean {
+  const override = simpleStoredValue(flag)
+  if (override !== undefined) return parseSimple(override)
+  try {
+    const env = (import.meta as unknown as { env?: Record<string, unknown> })?.env
+    const envValue = env?.[`VITE_FEATURE_${flag.toUpperCase()}`]
+    if (envValue !== undefined && envValue !== null) return parseSimple(String(envValue))
+  } catch {
+    /* no import.meta.env in a plain Node runtime */
+  }
+  const unified = resolveUnifiedFlag(flag)
+  return unified.enabled && unified.source !== 'default'
+}
+
+export const isPredictiveEtaV2Enabled = (): boolean => isFeatureEnabled(FEATURE_FLAGS.predictiveEtaV2)
+
+/** Test/E2E helper. Pass `null` to clear an override. */
+export function setFeatureOverride(flag: SimpleFeatureFlag, value: boolean | null): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    const key = SIMPLE_STORAGE_PREFIX + flag
+    if (value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, value ? 'true' : 'false')
+  } catch {
+    /* storage disabled — flags stay at their env-derived defaults */
+  }
+}

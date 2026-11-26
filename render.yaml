@@ -11,8 +11,13 @@ services:
     # strict, packet-capturing gate (.github/workflows/ci.yml).
     buildCommand: bash scripts/monitor-build-egress.sh --allow-no-capture --log-dir /tmp/build-egress -- npm ci --ignore-scripts
     startCommand: npm run server
-    healthCheckPath: /health
-    autoDeploy: true
+    # /healthz is liveness; /readyz is the zero-downtime traffic gate
+    # (migrations applied + indexer lag within DEPLOY_MAX_INDEXER_LAG).
+    healthCheckPath: /healthz
+    # The release workflow (.github/workflows/zero-downtime-deploy.yml) drives
+    # drain → deploy → health → cutover → rollback; set autoDeploy false when
+    # the staged workflow owns cutover so two paths never race.
+    autoDeploy: false
     envVars:
       - key: NODE_VERSION
         value: "22"
@@ -26,9 +31,14 @@ services:
         value: fromEnv
         sync: false
       - key: SOROBAN_RPC_URL
-        value: "https://soroban-testnet.stellar.org"
+        value: fromEnv
+        sync: false
       - key: CONTRACT_ID
-        value: "CC325F37QW7N2F5M3QGHL4A4O7J2K9L0M1N2O3P4Q5R6S7T8U9V0"
+        value: fromEnv
+        sync: false
+      - key: STELLAR_NETWORK
+        value: fromEnv
+        sync: false
       # Rate-limit whitelist (#536): verified emergency-service subnets / API keys
       # are stored in Redis and managed via /admin/whitelist (see docs/security-runbook.md).
       - key: REDIS_URL
@@ -39,6 +49,16 @@ services:
       # Protect GET /metrics when the backend is exposed to the public internet.
       - key: METRICS_BEARER_TOKEN
         sync: false
+      # Zero-downtime deploy gates (#758): /readyz stays 503 until migrations
+      # are applied and the indexer is within this many ledgers of the head.
+      - key: DEPLOY_MAX_INDEXER_LAG
+        value: "50"
+      # SIGTERM drain deadline for WS clients (DEPLOY_DRAIN + resumeSeq).
+      - key: DEPLOY_DRAIN_TIMEOUT_MS
+        value: "15000"
+      # Set by the release workflow to enable the manual pre-cutover abort gate.
+      - key: DEPLOY_ABORT_GATE
+        value: "false"
       - key: WHITELIST_ADMIN_TOKEN
         sync: false
       # Number of proxy hops in front of the app so req.ip is the real client.
@@ -89,6 +109,11 @@ services:
         value: fromEnv
         sync: false
       - key: SOROBAN_RPC_URL
-        value: "https://soroban-testnet.stellar.org"
+        value: fromEnv
+        sync: false
       - key: CONTRACT_ID
-        value: "CC325F37QW7N2F5M3QGHL4A4O7J2K9L0M1N2O3P4Q5R6S7T8U9V0"
+        value: fromEnv
+        sync: false
+      - key: STELLAR_NETWORK
+        value: fromEnv
+        sync: false

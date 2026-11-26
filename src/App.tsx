@@ -4,7 +4,12 @@ import { FeatureFlagProvider, useFeatureFlag } from './lib/featureFlags.js'
 import { WalletProvider } from './contexts/WalletContext.js'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import ProvenanceBadge from './components/ProvenanceBadge.jsx'
+import DispatchDegradedBanner from './components/DispatchDegradedBanner.tsx'
 import { NavSection, HeroSection } from './components/sections'
+import { FooterSection } from './components/sections/FooterSection'
+import { TrustSection } from './components/sections/TrustSection'
+import { FeaturesSection } from './components/sections/FeaturesSection'
+import { MapSection } from './components/sections/MapSection'
 import { colors, motion, spacing } from './theme/tokens'
 
 function AppContent() {
@@ -18,6 +23,10 @@ function AppContent() {
   const canaryMapClustering = useFeatureFlag('canary_map_clustering')
   const sliceNav = useFeatureFlag('slice_nav')
   const sliceHero = useFeatureFlag('slice_hero')
+  const sliceFooter = useFeatureFlag('slice_footer')
+  const sliceTrust = useFeatureFlag('slice_trust')
+  const sliceFeatures = useFeatureFlag('slice_features')
+  const sliceMap = useFeatureFlag('slice_map')
 
   useEffect(() => {
     const elements = document.querySelectorAll('[data-reveal]')
@@ -57,6 +66,7 @@ function AppContent() {
 
   return (
     <div style={{ background: colors.background, color: colors.cream, minHeight: '100vh' }}>
+      <DispatchDegradedBanner />
       {sliceNav ? (
         <NavSection canaryActive={canaryMapClustering} backupActive={sorobanBackupEnabled} />
       ) : (

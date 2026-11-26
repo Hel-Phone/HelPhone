@@ -16,6 +16,7 @@ import {
 } from '@stellar/stellar-sdk'
 import { SorobanStateExporter, loadLatestSnapshot } from './indexer/exporter.js'
 import { authMiddleware } from './middleware/auth.js'
+import { requireUvTier } from './middleware/uvTier.js'
 import { createCspMiddleware, createHtmlHandler } from './middleware/csp.js'
 import {
   createHttp2PushMiddleware,
@@ -24,8 +25,13 @@ import {
 import { createPasskeyAuthRouter } from './routes/passkey-auth.js'
 import { createFederationRouter } from './routes/federation.js'
 import { createDispatchRouters } from './routes/dispatch.js'
+import { createDispatchPriorityMiddleware } from './middleware/dispatchPriority.js'
 import { syncRouter } from './routes/sync.js'
 import historyRouter from './routes/history.js'
+import { createDocsRouter } from './routes/docs.js'
+import { apiVersionMiddleware } from './middleware/apiVersion.ts'
+import { eventsRouter } from './routes/events.js'
+import { attachTelemetryWebSocket } from './telemetry.js'
 
 /* Cross-Origin-Opener-Policy: same-origin */
 /* Cross-Origin-Embedder-Policy: credentialless */
@@ -71,12 +77,20 @@ app.use(
 )
 if (process.env.NODE_ENV !== 'test') app.use(generalLimiter)
 app.use('/api/auth/passkey', createPasskeyAuthRouter())
+app.use(createDispatchPriorityMiddleware())
 const dispatchRouters = createDispatchRouters()
-app.use('/api/dispatch', dispatchRouters.api)
+const federationRouter = createFederationRouter()
+app.use('/api/v1/dispatch', apiVersionMiddleware('v1'), dispatchRouters.api)
+app.use('/api/v1/sync', apiVersionMiddleware('v1'), syncRouter)
+app.use('/api/v1/history', apiVersionMiddleware('v1'), historyRouter)
+app.use('/api/v1/federation', apiVersionMiddleware('v1'), federationRouter)
+app.use('/api/dispatch', apiVersionMiddleware('v0'), dispatchRouters.api)
 app.use('/metrics', dispatchRouters.metrics)
-app.use('/api/sync', syncRouter)
-app.use('/api/history', historyRouter)
-app.use('/api/federation', createFederationRouter())
+app.use('/api/sync', apiVersionMiddleware('v0'), syncRouter)
+app.use('/api/history', apiVersionMiddleware('v0'), historyRouter)
+app.use('/api/federation', apiVersionMiddleware('v0'), federationRouter)
+app.use('/docs', createDocsRouter())
+app.use('/api/events', eventsRouter)
 
 const stateExporter = new SorobanStateExporter()
 
@@ -112,7 +126,8 @@ app.get('/api/state/snapshots/latest', (_req: Request, res: Response) => {
 })
 
 // Secure Authenticated Endpoint Example using Cryptographic Auth Middleware
-app.post('/api/protected/action', authMiddleware, (req: Request, res: Response) => {
+// #924 / ADR-026: a sensitive action needs a UV-verified passkey session.
+app.post('/api/protected/action', authMiddleware, requireUvTier, (req: Request, res: Response) => {
   res.json({ success: true, message: 'Authenticated payload verified successfully', user: (req as any).authenticatedUser })
 })
 
@@ -153,5 +168,6 @@ if (process.env.NODE_ENV !== 'test') {
     if (getMaintenanceConfig().enabled) startMaintenanceScheduler()
     scheduleStateBackup()
   })
+  attachTelemetryWebSocket(server)
   applyKeepAliveTuning(server)
 }

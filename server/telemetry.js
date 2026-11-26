@@ -9,7 +9,55 @@
  *  - every drop is reason-coded, and the snapshot is exposed on /metrics.
  */
 
+import { createHash } from 'node:crypto';
+import { WebSocketServer } from 'ws';
+import { redactObject } from './lib/redact.js';
+import {
+  FILE_IDENTIFIER,
+  MAX_FRAME_BYTES,
+  MAX_OBJECTS_PER_FRAME,
+  SCHEMA_VERSION,
+  encodeTelemetryFrame,
+  verifyFrame,
+} from '../src/lib/telemetryFrame.js';
+
 const PRIORITY_RANK = { heartbeat: 1, normal: 2, critical: 3 };
+const PLAINTEXT_COORD_KEYS = new Set([
+  'lat',
+  'lng',
+  'lon',
+  'latitude',
+  'longitude',
+  'dispatch.lat',
+  'dispatch.lng',
+]);
+
+function hasPlaintextCoords(span) {
+  if (!span || typeof span !== 'object') return false;
+  if (span.location && typeof span.location === 'object') {
+    const loc = span.location;
+    if (loc.lat !== undefined || loc.lng !== undefined || loc.latitude !== undefined || loc.longitude !== undefined) {
+      return true;
+    }
+  }
+  const checkMap = (obj) => {
+    if (!obj || typeof obj !== 'object') return false;
+    for (const [k, v] of Object.entries(obj)) {
+      if (PLAINTEXT_COORD_KEYS.has(k.toLowerCase()) && v !== undefined && v !== null) return true;
+    }
+    return false;
+  };
+  return checkMap(span.attributes) || checkMap(span.data);
+}
+
+function verifyIngestChecksum(span) {
+  const expected = span.checksum ?? span.attributes?.['helphone.checksum'];
+  if (expected === undefined) return true;
+  if (typeof expected !== 'string' || !expected) return false;
+  const payloadSource = span.payload ?? (span.checksum !== undefined ? { ...span, checksum: undefined } : span.attributes);
+  const digest = createHash('sha256').update(JSON.stringify(payloadSource)).digest('hex');
+  return digest === expected;
+}
 
 function priorityOf(span) {
   const value = span?.priority;
@@ -114,14 +162,17 @@ export class TelemetryReceiver {
     let accepted = 0;
     let rejected = 0;
     for (const span of incoming) {
-      if (!span || typeof span.name !== 'string') {
+      if (!span || typeof span.name !== 'string' || hasPlaintextCoords(span) || !verifyIngestChecksum(span)) {
         this.droppedReasons.invalid++;
         this.dropped++;
         this.rejected++;
         rejected++;
         continue;
       }
-      if (!this.admit(span)) {
+      const sanitizedSpan = span.attributes
+        ? { ...span, attributes: redactObject(span.attributes) }
+        : span;
+      if (!this.admit(sanitizedSpan)) {
         rejected++;
       } else {
         accepted++;
@@ -305,25 +356,47 @@ export default TelemetryReceiver;
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { scrubText } from "./lib/redact.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { scrubText } from "./lib/redact.js";
+import { publishFlagSnapshot } from "./lib/redisPubSub.js";
+import { createOtelSampler, createTailSamplingExporter } from "./lib/otelSamplingEngine.js";
 
 let sdk;
+let samplingEngine;
 
-export function initializeTelemetry() {
+/** Register the quota engine so /metrics can expose its drop counters. */
+export function registerSamplingEngine(engine) {
+  samplingEngine = engine;
+}
+
+export function initializeTelemetry({ samplingEngine: engine } = {}) {
   if (sdk) return;
+  if (engine) registerSamplingEngine(engine);
   const configuredEndpoint = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
   const endpoint = configuredEndpoint
     ? configuredEndpoint.endsWith("/v1/traces")
       ? configuredEndpoint
       : `${configuredEndpoint.replace(/\/$/, "")}/v1/traces`
     : undefined;
+
+  // #759: the SDK sampler only suppresses noise. Every other span is recorded
+  // and the tail exporter makes the final quota/priority decision, so an error
+  // or P0 dispatch discovered late is never lost to quota exhaustion.
+  const sampler = engine ? createOtelSampler(engine) : undefined;
+  const exporter = endpoint
+    ? new OTLPTraceExporter({ url: endpoint })
+    : null;
+  const traceExporter = engine
+    ? createTailSamplingExporter(engine, exporter)
+    : (exporter || undefined);
+
   sdk = new NodeSDK({
     instrumentations: [getNodeAutoInstrumentations()],
-    ...(endpoint ? { traceExporter: new OTLPTraceExporter({ url: endpoint }) } : {}),
+    ...(sampler ? { sampler } : {}),
+    ...(traceExporter ? { traceExporter } : {}),
   });
   sdk.start();
 }
@@ -683,6 +756,42 @@ function fmtLabels(labels) {
   return e.length ? `{${e.map(([k, v]) => `${k}="${String(v).replaceAll("\\", "\\\\").replaceAll("\n", "\\n").replaceAll('"', '\\"')}"`).join(",")}}` : "";
 }
 
+/** #759: sampling/quota drop counters in Prometheus text format. */
+export function renderSamplingMetrics() {
+  if (!samplingEngine) return "";
+  const metrics = samplingEngine.getMetrics();
+  const lines = [];
+  const head = (name, type, helpText) => lines.push(
+    `# HELP ${name} ${helpText}`,
+    `# TYPE ${name} ${type}`,
+  );
+
+  head("helphone_otel_spans_dropped_total", "counter", "Spans shed by the sampling engine, by head-stage reason.");
+  for (const [reason, value] of Object.entries(metrics.byReason)) {
+    lines.push(`helphone_otel_spans_dropped_total{stage="head",reason="${reason}"} ${value}`);
+  }
+  head("helphone_otel_spans_exported_total", "counter", "Spans selected for export by the sampling engine.");
+  lines.push(`helphone_otel_spans_exported_total ${metrics.exportedTotal}`);
+  head("helphone_otel_spans_final_kept_total", "counter", "Spans kept after tail-stage evaluation.");
+  lines.push(`helphone_otel_spans_final_kept_total ${metrics.finalKept}`);
+  head("helphone_otel_spans_final_dropped_total", "counter", "Spans dropped after tail-stage evaluation.");
+  lines.push(`helphone_otel_spans_final_dropped_total ${metrics.finalDropped}`);
+  head("helphone_otel_spans_rescued_total", "counter", "Priority spans saved by tail sampling after a head-stage shed.");
+  lines.push(`helphone_otel_spans_rescued_total ${metrics.rescued}`);
+
+  head("helphone_otel_tenant_quota_exhausted_total", "counter", "Non-priority spans shed after a tenant quota was exhausted.");
+  const tenants = Object.entries(metrics.byTenant).sort((a, b) => b[1] - a[1]);
+  for (const [tenant, value] of tenants.slice(0, 20)) {
+    lines.push(`helphone_otel_tenant_quota_exhausted_total{tenant="${tenant}"} ${value}`);
+  }
+  if (tenants.length > 20) {
+    lines.push(`helphone_otel_tenant_quota_exhausted_total{tenant="other"} ${tenants.slice(20).reduce((sum, [, v]) => sum + v, 0)}`);
+  }
+  head("helphone_otel_exporter_circuit_active", "gauge", "1 while the OTLP exporter backoff circuit is tripped.");
+  lines.push(`helphone_otel_exporter_circuit_active ${metrics.circuitActive ? 1 : 0}`);
+  return `${lines.join("\n")}\n`;
+}
+
 /** Prometheus text for every telemetry family above; appended to /metrics. */
 export function renderTelemetryMetrics() {
   const lines = [];
@@ -711,11 +820,158 @@ export function renderTelemetryMetrics() {
     lines.push(`${h.name}_sum${fmtLabels(h.labels)} ${h.sum}`, `${h.name}_count${fmtLabels(h.labels)} ${h.count}`);
   }
   setGauge("helphone_flag_current_version", {}, Number(flagState.version));
-  return lines.length ? `${lines.join("\n")}\n` : "";
+  const sampling = renderSamplingMetrics();
+  const body = lines.length ? `${lines.join("\n")}\n` : "";
+  return `${body}${sampling}`;
 }
 
 export function resetTelemetryMetrics() {
   histograms.clear();
   counters.clear();
   gauges.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Binary map-frame encoder / WS relay (ADR-014 follow-up 2, this PR).
+// Sits alongside the OTLP receiver above; neither depends on the other.
+// ---------------------------------------------------------------------------
+
+export const TELEMETRY_WS_PATH = '/api/events/frame-stream';
+
+export const TELEMETRY_BUDGETS = Object.freeze({
+  maxObjectsPerFrame: MAX_OBJECTS_PER_FRAME,
+  maxFrameBytes: MAX_FRAME_BYTES,
+  maxFramesPerSecond: 30,
+  maxClients: 200,
+});
+
+/** Budgeted HPTL frame encoder. RangeError is always a dropped frame. */
+export function createFrameEncoder({ now = () => Date.now(), budgets = TELEMETRY_BUDGETS } = {}) {
+  let seq = 0;
+  let windowStart = now();
+  let framesInWindow = 0;
+  let dropped = 0;
+  let encoded = 0;
+  let bytes = 0;
+  let rangeErrors = 0;
+
+  return {
+    encode(objects, meta = {}) {
+      if (!Array.isArray(objects) || objects.length > budgets.maxObjectsPerFrame) {
+        dropped++;
+        return null;
+      }
+      const current = now();
+      if (current - windowStart >= 1000) {
+        windowStart = current;
+        framesInWindow = 0;
+      }
+      if (framesInWindow >= budgets.maxFramesPerSecond) {
+        dropped++;
+        return null;
+      }
+      try {
+        const frame = encodeTelemetryFrame(objects, {
+          tsSec: Math.floor(current / 1000),
+          seq: seq++,
+          ...meta,
+        });
+        if (frame.byteLength > budgets.maxFrameBytes) {
+          dropped++;
+          return null;
+        }
+        framesInWindow++;
+        encoded++;
+        bytes += frame.byteLength;
+        return frame;
+      } catch (err) {
+        if (err instanceof RangeError) {
+          rangeErrors++;
+          dropped++;
+          return null;
+        }
+        throw err;
+      }
+    },
+    stats() {
+      return {
+        encoded,
+        dropped,
+        rangeErrors,
+        bytes,
+        framesPerSecondBudget: budgets.maxFramesPerSecond,
+        maxObjectsPerFrame: budgets.maxObjectsPerFrame,
+        maxFrameBytes: budgets.maxFrameBytes,
+        identifier: FILE_IDENTIFIER,
+        schemaVersion: SCHEMA_VERSION,
+      };
+    },
+  };
+}
+
+/** Ingest gate: never throws, so a bad frame can simply be dropped. */
+export function verifyIngest(input, budgets = TELEMETRY_BUDGETS) {
+  return verifyFrame(input, { maxFrameBytes: budgets.maxFrameBytes });
+}
+
+/** Attach the binary frame stream to an existing HTTP server. */
+export function attachTelemetryWebSocket(server, { budgets = TELEMETRY_BUDGETS, logger = console } = {}) {
+  const wss = new WebSocketServer({
+    noServer: true,
+    path: TELEMETRY_WS_PATH,
+    maxPayload: budgets.maxFrameBytes,
+  });
+
+  const onUpgrade = (request, socket, head) => {
+    let pathname = '';
+    try {
+      pathname = new URL(request.url || '', 'http://localhost').pathname;
+    } catch {
+      return;
+    }
+    if (pathname !== TELEMETRY_WS_PATH) return;
+    if (wss.clients.size >= budgets.maxClients) {
+      socket.destroy();
+      return;
+    }
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      ws.binaryType = 'arraybuffer';
+      wss.emit('connection', ws, request);
+    });
+  };
+  server.on('upgrade', onUpgrade);
+
+  wss.on('connection', (ws) => {
+    ws.binaryType = 'arraybuffer';
+    ws.on('message', (data, isBinary) => {
+      if (!isBinary) return;
+      const result = verifyIngest(data, budgets);
+      if (!result.ok) {
+        logger.warn?.('[telemetry] dropped malformed ingest frame:', result.error);
+        return;
+      }
+      for (const peer of wss.clients) {
+        if (peer !== ws && peer.readyState === 1) peer.send(data, { binary: true });
+      }
+    });
+    ws.on('error', () => {});
+  });
+
+  return {
+    wss,
+    path: TELEMETRY_WS_PATH,
+    broadcast(frame) {
+      const bytes = frame instanceof Uint8Array ? frame : new Uint8Array(frame);
+      const payload = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      for (const client of wss.clients) {
+        if (client.readyState === 1) client.send(payload, { binary: true });
+      }
+    },
+    clientCount: () => wss.clients.size,
+    close() {
+      server.off('upgrade', onUpgrade);
+      for (const client of wss.clients) client.close();
+      return new Promise((resolve) => wss.close(resolve));
+    },
+  };
 }

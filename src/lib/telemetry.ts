@@ -11,6 +11,14 @@
  */
 
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import {
+  formatTraceparent,
+  parseTraceparent,
+  traceHeaders as wireTraceHeaders,
+  traceIdsFromTraceparent,
+  unwrapFromWorker as wireUnwrapFromWorker,
+  wrapForWorker as wireWrapForWorker,
+} from './traceWire.js';
 
 import {
   RingBuffer,
@@ -26,6 +34,18 @@ import {
   type NetworkClass,
   type NetworkProfile,
 } from './networkEstimator';
+import {
+  TelemetryRedactor,
+  hasPlaintextCoordinates,
+  redactTelemetryAttributes,
+  type AggregatedTelemetry,
+  type TelemetryEvent,
+} from './telemetryRedactor';
+
+// ADR-014 follow-up: binary map-frame transport (extends, not replaces, the
+// pipeline above). Kept in this module so consumers have one telemetry entry.
+import { verifyFrame } from './telemetryFrame.js';
+import type { Frame as MapFrame } from '../schemas/telemetry_generated.js';
 
 export type TelemetryDropReason =
   | RingDropReason
@@ -63,6 +83,9 @@ export interface TelemetryPipelineOptions {
   networkClass?: NetworkClass;
   exporter?: TelemetryExporter | null;
   outbox?: TelemetryOutbox | null;
+  redactor?: TelemetryRedactor;
+  drainIntervalMs?: number;
+  onAggregatedDrain?: (batches: AggregatedTelemetry[]) => void | Promise<void>;
   now?: () => number;
   autoStart?: boolean;
   ring?: Partial<RingBufferOptions>;
@@ -137,10 +160,13 @@ export function samplingRate(
 
 export class TelemetryPipeline {
   readonly ring: RingBuffer<TelemetrySpan>;
+  readonly redactor: TelemetryRedactor;
   private networkClass: NetworkClass;
   private profile: NetworkProfile;
   private exporter: TelemetryExporter | null;
   private outbox: TelemetryOutbox | null;
+  private readonly drainIntervalMs?: number;
+  private readonly onAggregatedDrain?: (batches: AggregatedTelemetry[]) => void | Promise<void>;
   private readonly now: () => number;
 
   private sequence = 0;
@@ -166,10 +192,13 @@ export class TelemetryPipeline {
       capacity: options.capacity ?? 2_048,
       ...(options.ring || {}),
     });
+    this.redactor = options.redactor ?? new TelemetryRedactor();
     this.networkClass = options.networkClass ?? '4g';
     this.profile = profileFor(this.networkClass);
     this.exporter = options.exporter ?? null;
     this.outbox = options.outbox ?? null;
+    this.drainIntervalMs = options.drainIntervalMs;
+    this.onAggregatedDrain = options.onAggregatedDrain;
     this.now = options.now ?? (() => Date.now());
     if (options.autoStart) this.start();
   }
@@ -201,13 +230,27 @@ export class TelemetryPipeline {
       return false;
     }
 
+    const ts = input.ts ?? this.now();
+    const rawAttrs = input.attributes;
+    if (rawAttrs && hasPlaintextCoordinates(rawAttrs)) {
+      const lat = Number(rawAttrs.lat ?? rawAttrs.latitude ?? rawAttrs['dispatch.lat']);
+      const lng = Number(rawAttrs.lng ?? rawAttrs.longitude ?? rawAttrs.lon ?? rawAttrs['dispatch.lng']);
+      const gpsEvent: TelemetryEvent = {
+        type: input.kind ?? input.name,
+        timestamp: ts,
+        ...(Number.isFinite(lat) && Number.isFinite(lng) ? { location: { lat, lng } } : {}),
+        data: rawAttrs,
+      };
+      void this.redactor.redactEvent(gpsEvent);
+    }
+
     const span: TelemetrySpan = {
       name: input.name,
       priority,
       kind: input.kind ?? input.name,
-      ts: input.ts ?? this.now(),
+      ts,
       durationMs: input.durationMs,
-      attributes: input.attributes,
+      attributes: redactTelemetryAttributes(rawAttrs),
       seq: this.sequence++,
     };
 
@@ -251,7 +294,24 @@ export class TelemetryPipeline {
       return { status: 'empty', count: 0 };
     }
 
-    const spans = frames.map((frame) => frame.payload);
+    const rawSpans = frames.map((frame) => frame.payload);
+    const spans: TelemetrySpan[] = [];
+    let rejectedCount = 0;
+    for (const span of rawSpans) {
+      if (hasPlaintextCoordinates(span.attributes)) {
+        rejectedCount++;
+        continue;
+      }
+      spans.push(span);
+    }
+    if (rejectedCount > 0) {
+      this.parseErrors += rejectedCount;
+      this.lastError = 'plaintext coordinates rejected on flush';
+    }
+    if (spans.length === 0) {
+      this.flushing = false;
+      return { status: 'failed', count: 0, error: this.lastError ?? 'redaction bypass detected' };
+    }
     this.inFlight += spans.length;
     try {
       if (this.profile.outboxOnly || this.networkClass === 'offline') {
@@ -322,12 +382,16 @@ export class TelemetryPipeline {
     if (this.started) return;
     this.started = true;
     this.reschedule();
+    if (this.drainIntervalMs && this.drainIntervalMs > 0) {
+      this.redactor.startDrainTimer(this.drainIntervalMs, this.onAggregatedDrain);
+    }
   }
 
   stop(): void {
     this.started = false;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.redactor.stopDrainTimer();
   }
 
   snapshot(): TelemetrySnapshot {
@@ -509,7 +573,7 @@ export function toOtlpJson(spans: TelemetrySpan[], serviceName = 'helphone-web')
               attributes: [
                 { key: 'helphone.priority', value: { stringValue: span.priority } },
                 { key: 'helphone.kind', value: { stringValue: span.kind } },
-                ...Object.entries(span.attributes || {}).map(([key, value]) => ({
+                ...Object.entries(redactTelemetryAttributes(span.attributes) || {}).map(([key, value]) => ({
                   key,
                   value:
                     typeof value === 'number'
@@ -541,6 +605,90 @@ function spanIdFor(seq: number): string {
 
 const tracer = trace.getTracer('helphone');
 
+// #791: the trace id recorded on the IDB crash draft must be the same one the
+// HTTP/worker hops carry. sessionStorage is the fallback when no span is
+// active (e.g. a draft autosave between dispatches).
+const TRACE_ID_KEY = 'otel_trace_id'
+const SPAN_ID_KEY = 'otel_span_id'
+
+function storage(): Storage | null {
+  try {
+    return typeof sessionStorage === 'undefined' ? null : sessionStorage
+  } catch {
+    return null
+  }
+}
+
+function rememberTrace(traceparent: string | null | undefined): void {
+  const ids = traceIdsFromTraceparent(traceparent)
+  const store = storage()
+  if (!ids || !store) return
+  try {
+    store.setItem(TRACE_ID_KEY, ids.traceId)
+    store.setItem(SPAN_ID_KEY, ids.spanId)
+  } catch {}
+}
+
+function storedTraceparent(): string | null {
+  const store = storage()
+  if (!store) return null
+  try {
+    const traceId = store.getItem(TRACE_ID_KEY)
+    const spanId = store.getItem(SPAN_ID_KEY)
+    return traceId && spanId ? formatTraceparent({ traceId, spanId }) : null
+  } catch {
+    return null
+  }
+}
+
+function traceparentFromSpanContext(ctx: { traceId: string; spanId: string; traceFlags: number | string }): string {
+  const flags = typeof ctx.traceFlags === 'string'
+    ? ctx.traceFlags
+    : Number(ctx.traceFlags).toString(16).padStart(2, '0')
+  return formatTraceparent({ traceId: ctx.traceId, spanId: ctx.spanId, flags })
+}
+
+/** Active OTel span, or the last trace remembered on this tab. */
+function activeTraceparent(): string | null {
+  const span = trace.getActiveSpan()
+  if (span) {
+    const traceparent = traceparentFromSpanContext(span.spanContext())
+    if (parseTraceparent(traceparent)) return traceparent
+  }
+  return storedTraceparent()
+}
+
+/** Trace ids for crash dumps (#791). Null when this tab has no trace yet. */
+export function currentTraceIds(): { traceId: string; spanId: string } | null {
+  return traceIdsFromTraceparent(activeTraceparent())
+}
+
+/**
+ * PWA → HTTP hop. Adds a child `traceparent` to outgoing request headers and
+ * remembers it so a crash dump joins to the same trace.
+ */
+export function traceHeaders(headers: Record<string, string> = {}): Record<string, string> {
+  const next = wireTraceHeaders(headers, activeTraceparent() ?? undefined)
+  rememberTrace(next.traceparent)
+  return next
+}
+
+/** Main thread → worker hop (#791). */
+export function wrapForWorker<T extends Record<string, unknown>>(message: T): T & Record<string, unknown> {
+  return wireWrapForWorker(message, activeTraceparent() ?? undefined) as T & Record<string, unknown>
+}
+
+/** Worker → main-thread hop (#791): records the worker span as a link. */
+export function unwrapFromWorker<T extends Record<string, unknown>>(message: T): {
+  message: T
+  trace: { v: number; traceId: string; spanId: string; traceparent: string; links: Array<{ traceId: string; spanId: string }> } | null
+} {
+  return wireUnwrapFromWorker(message) as {
+    message: T
+    trace: { v: number; traceId: string; spanId: string; traceparent: string; links: Array<{ traceId: string; spanId: string }> } | null
+  }
+}
+
 export interface ErrorContext {
   source: string;
   component?: string;
@@ -552,7 +700,7 @@ export interface ErrorContext {
 /**
  * Record an error with OTel context (Issue #746)
  */
-export function recordError(error: Error, ctx: ErrorContext = {}): void {
+export function recordError(error: Error, ctx: ErrorContext = { source: 'unknown' }): void {
   const span = tracer.startSpan('error.record');
 
   try {
@@ -564,12 +712,10 @@ export function recordError(error: Error, ctx: ErrorContext = {}): void {
       span.setAttribute(key, String(value));
     });
 
-    // Store trace ID for linking
+    // Store trace + span ids for linking crash dumps and later hops (#791)
+    rememberTrace(traceparentFromSpanContext(span.spanContext()));
     const activeSpan = trace.getActiveSpan();
-    if (activeSpan) {
-      const traceId = activeSpan.spanContext().traceId;
-      sessionStorage.setItem('otel_trace_id', traceId);
-    }
+    if (activeSpan) rememberTrace(traceparentFromSpanContext(activeSpan.spanContext()));
   } finally {
     span.end();
   }
@@ -643,6 +789,110 @@ export function trackAudioAlert(
   }
 }
 
+export const MAX_LONGTASK_NAME_LENGTH = 64;
+export const MAX_LONGTASK_TELEMETRY_EVENTS = 50;
+
+export interface LongTaskTelemetryEvent {
+  name: string;
+  durationMs: number;
+  startTime: number;
+  endTime: number;
+  severity: 'warning' | 'critical';
+  warningThresholdMs: number;
+  criticalThresholdMs: number;
+  route?: string;
+}
+
+const longTaskTelemetryBuffer: LongTaskTelemetryEvent[] = [];
+
+/**
+ * Record a bounded long-task telemetry breach event (#961).
+ * Bounds string lengths and retains at most MAX_LONGTASK_TELEMETRY_EVENTS entries.
+ */
+export function trackLongTask(
+  input: {
+    name: string;
+    durationMs: number;
+    startTime: number;
+    endTime?: number;
+    severity: 'warning' | 'critical';
+    warningThresholdMs: number;
+    criticalThresholdMs: number;
+    route?: string;
+  },
+  pipeline?: TelemetryPipeline | null,
+): LongTaskTelemetryEvent {
+  const boundedName = String(input.name || 'longtask').slice(0, MAX_LONGTASK_NAME_LENGTH);
+  const durationMs = Number.isFinite(input.durationMs) ? Math.max(0, Math.round(input.durationMs * 100) / 100) : 0;
+  const startTime = Number.isFinite(input.startTime) ? Math.max(0, Math.round(input.startTime * 100) / 100) : 0;
+  const endTime = Number.isFinite(input.endTime)
+    ? Math.max(startTime, Math.round((input.endTime as number) * 100) / 100)
+    : Math.round((startTime + durationMs) * 100) / 100;
+  const boundedRoute = input.route ? String(input.route).slice(0, 64) : undefined;
+
+  const event: LongTaskTelemetryEvent = {
+    name: boundedName,
+    durationMs,
+    startTime,
+    endTime,
+    severity: input.severity,
+    warningThresholdMs: input.warningThresholdMs,
+    criticalThresholdMs: input.criticalThresholdMs,
+    ...(boundedRoute ? { route: boundedRoute } : {}),
+  };
+
+  if (input.severity === 'critical') {
+    longTaskTelemetryBuffer.push(event);
+    while (longTaskTelemetryBuffer.length > MAX_LONGTASK_TELEMETRY_EVENTS) {
+      longTaskTelemetryBuffer.shift();
+    }
+  }
+
+  const span = tracer.startSpan('longtask.breach');
+  try {
+    span.setAttributes({
+      'longtask.name': event.name,
+      'longtask.duration_ms': event.durationMs,
+      'longtask.severity': event.severity,
+      'longtask.warning_threshold_ms': event.warningThresholdMs,
+      'longtask.critical_threshold_ms': event.criticalThresholdMs,
+      ...(event.route ? { 'longtask.route': event.route } : {}),
+    });
+    if (event.severity === 'critical') {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: 'critical long task' });
+    }
+  } finally {
+    span.end();
+  }
+
+  if (pipeline) {
+    pipeline.record({
+      name: 'longtask.breach',
+      kind: 'longtask',
+      priority: event.severity === 'critical' ? 'critical' : 'normal',
+      ts: event.startTime,
+      durationMs: event.durationMs,
+      attributes: {
+        taskName: event.name,
+        severity: event.severity,
+        warningThresholdMs: event.warningThresholdMs,
+        criticalThresholdMs: event.criticalThresholdMs,
+        ...(event.route ? { route: event.route } : {}),
+      },
+    });
+  }
+
+  return event;
+}
+
+export function getLongTaskTelemetryEvents(): LongTaskTelemetryEvent[] {
+  return [...longTaskTelemetryBuffer];
+}
+
+export function clearLongTaskTelemetryEvents(): void {
+  longTaskTelemetryBuffer.length = 0;
+}
+
 /**
  * Track video performance metrics (Issue #745)
  */
@@ -705,3 +955,92 @@ export function startBlobWorkerTrace(operationId: string): () => void {
 }
 
 export default TelemetryPipeline;
+
+// ---------------------------------------------------------------------------
+// Binary map-frame WebSocket client (ADR-014 follow-up 2, this PR).
+// Low-rate APIs stay JSON; high-rate positions arrive as HPTL FlatBuffers.
+// ---------------------------------------------------------------------------
+
+export interface TelemetryConfig {
+  transport: string
+  endpoint: string
+  binaryType: 'arraybuffer'
+  fileIdentifier: string
+  maxObjectsPerFrame: number
+  maxFrameBytes: number
+  maxFramesPerSecond: number
+  maxClients: number
+}
+
+export interface TelemetryClientOptions {
+  url: string
+  onFrame?: (frame: MapFrame) => void
+  onJson?: (message: unknown) => void
+  onDropped?: (reason: string) => void
+  onError?: (error: unknown) => void
+  /** Injected for tests; defaults to the global WebSocket constructor. */
+  WebSocketImpl?: typeof WebSocket
+}
+
+export interface TelemetryClient {
+  close: () => void
+  readonly socket: WebSocket | null
+}
+
+export const DEFAULT_FRAME_STREAM = '/api/events/frame-stream'
+
+/** Open the binary frame stream; malformed frames are dropped, never thrown. */
+export function createTelemetryClient(options: TelemetryClientOptions): TelemetryClient {
+  const Impl = options.WebSocketImpl ?? (typeof WebSocket !== 'undefined' ? WebSocket : null)
+  if (!Impl) return { close: () => {}, socket: null }
+
+  const socket = new Impl(options.url)
+  socket.binaryType = 'arraybuffer'
+
+  socket.onmessage = (event: MessageEvent) => {
+    const data = event.data
+    if (data instanceof ArrayBuffer) {
+      const result = verifyFrame(new Uint8Array(data))
+      if (!result.ok) {
+        options.onDropped?.(result.error ?? 'malformed frame')
+        return
+      }
+      options.onFrame?.(result.frame as MapFrame)
+      return
+    }
+    if (ArrayBuffer.isView(data)) {
+      const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+      const result = verifyFrame(view)
+      if (!result.ok) options.onDropped?.(result.error ?? 'malformed frame')
+      else options.onFrame?.(result.frame as MapFrame)
+      return
+    }
+    try {
+      options.onJson?.(JSON.parse(String(data)))
+    } catch {
+      options.onDropped?.('unparseable JSON control message')
+    }
+  }
+  socket.onerror = (error) => options.onError?.(error)
+
+  return { socket, close: () => socket.close() }
+}
+
+/** Fetch the JSON discovery/config document. */
+export async function fetchTelemetryConfig(baseUrl = ''): Promise<TelemetryConfig> {
+  const response = await fetch(`${baseUrl}/api/events/frames/config`, {
+    headers: { Accept: 'application/json' },
+  })
+  if (!response.ok) throw new Error(`telemetry config failed: ${response.status}`)
+  return (await response.json()) as TelemetryConfig
+}
+
+/** HTTP ingest fallback for clients without WebSocket support. */
+export async function postTelemetryFrame(frame: Uint8Array, baseUrl = ''): Promise<boolean> {
+  const response = await fetch(`${baseUrl}/api/events/frames`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: frame as unknown as BodyInit,
+  })
+  return response.status === 202
+}

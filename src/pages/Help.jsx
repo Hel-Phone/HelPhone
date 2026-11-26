@@ -1,5 +1,7 @@
 import styles from "./Help.module.css";
 import { cx } from "../styles/cssModules";
+import { sanitizeText, SanitizedHtml } from "../lib/htmlSanitizer";
+import { collapseResponderPins } from "../lib/responderPins";
 import { useState, useEffect, useRef, Fragment, useCallback } from "react";
 // ── Field ops (ISP-131 rugged/SOS, ISP-134 NFC staging, ISP-135 radio) ──
 import RadioSheet from "../components/field/RadioSheet";
@@ -39,7 +41,18 @@ import {
   updateLocation,
   recordExpertVerification,
 } from "../lib/contract";
+import { EtaLabel, DegradedEtaNotice } from "../components/EtaLabel";
+import { isPredictiveEtaV2Enabled } from "../lib/featureFlags";
+import { rankByRealisticEta } from "../lib/etaEstimate";
 import { NetworkStatusIndicator } from "../components/NetworkStatusIndicator.jsx";
+import { ReplicaStaleBadge } from "../components/ReplicaStaleBadge.jsx";
+import OfflineRoutePanel from "../features/help/OfflineRoutePanel.jsx";
+import IncidentMapSyncPanel from "../features/help/IncidentMapSyncPanel.jsx";
+import { useReplicaLag } from "../hooks/useReplicaLag.js";
+import {
+  dispatchOverrideMessage,
+  requiresDispatchOverride,
+} from "../lib/replicaLag.js";
 import {
   buildLocationProofZone,
   generateLocationProof,
@@ -65,164 +78,20 @@ import {
 } from "../lib/crypto";
 import { redactProfile, jitterCoordinates } from "../lib/privacy.ts";
 import { api } from "../services/api";
+import {
+  DEFAULT_VIEWPORT_TRANSFORM,
+  buildViewportOverlays,
+  createOverlayRenderer,
+} from "../lib/offscreenCanvas.ts";
+import { useClusterer } from "../hooks/useClusterer.js";
+// ADR-008 clustering layer (kept alongside upstream's overlay pipeline).
+import ClusteredMapLayer from "../components/ClusteredMapLayer.jsx";
+import { useFeatureFlag } from "../lib/featureFlags.js";
+import { useElementSize } from "../hooks/useElementSize.js";
+// #897: BLE relay graceful fallback
+import { isBleGossipEnabled } from "../lib/bleRelay";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
-
-export const LOG_RING_SIZE = 32;
-
-export const ZK_INITIAL = Object.freeze({
-  status: "idle",
-  logs: Object.freeze([]),
-  proof: null,
-  error: "",
-});
-
-export function sanitizeWalletAddress(raw) {
-  if (typeof raw !== "string") return "";
-  const addr = raw.trim();
-  if (!/^G[A-Z2-7]{55}$/.test(addr)) return "";
-  return addr;
-}
-
-export function createDebouncedSetter(setter, delay = 100) {
-  let latest = "";
-  let timer = null;
-
-  const debouncedSet = (value) => {
-    latest = value;
-    if (timer !== null) clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = null;
-      setter(latest);
-    }, delay);
-  };
-
-  const flush = () => {
-    if (timer !== null) {
-      clearTimeout(timer);
-      timer = null;
-      setter(latest);
-    }
-  };
-
-  const cancel = () => {
-    if (timer !== null) {
-      clearTimeout(timer);
-      timer = null;
-    }
-  };
-
-  return { debouncedSet, flush, cancel };
-}
-
-export function computeWalletStatus(address) {
-  const normalized = sanitizeWalletAddress(address);
-  if (!normalized) {
-    return { isConnected: false, displayAddress: "" };
-  }
-
-  return {
-    isConnected: true,
-    displayAddress: `${normalized.slice(0, 8)}...${normalized.slice(-6)}`,
-  };
-}
-
-export function zkReducer(state = ZK_INITIAL, action = {}) {
-  switch (action.type) {
-    case "RESET":
-      return { status: "idle", logs: [], proof: null, error: "" };
-
-    case "SET_STATUS": {
-      const status = action.payload;
-      if (status === state.status) return state;
-      return { ...state, status };
-    }
-
-    case "SET_ERROR": {
-      const error = action.payload ?? "";
-      if (error === state.error) return state;
-      return { ...state, error };
-    }
-
-    case "SET_PROOF": {
-      if (state.proof === action.payload) return state;
-      return { ...state, proof: action.payload ?? null };
-    }
-
-    case "PATCH_PROOF": {
-      if (!state.proof) return state;
-      const nextProof = { ...state.proof, ...(action.payload ?? {}) };
-      if (nextProof === state.proof) return state;
-      return { ...state, proof: nextProof };
-    }
-
-    case "PUSH_LOG": {
-      const payload = String(action.payload ?? "");
-      const previous = state.logs[state.logs.length - 1];
-      if (previous === payload) return state;
-
-      const nextLogs = [...state.logs, payload];
-      const trimmedLogs = nextLogs.length > LOG_RING_SIZE
-        ? nextLogs.slice(nextLogs.length - LOG_RING_SIZE)
-        : nextLogs;
-
-      return trimmedLogs === state.logs ? state : { ...state, logs: trimmedLogs };
-    }
-
-    default:
-      return state;
-  }
-}
-
-export function checkIsGetMode(mode) {
-  if (typeof mode !== "string") return false;
-  return mode.trim().toLowerCase() === "get";
-}
-
-export function getAccentColor(isGetMode) {
-  return isGetMode ? "#FF7A6B" : "#7357FF";
-}
-
-export function getStatusConfig(status) {
-  const key = typeof status === "string" ? status.trim() : "";
-  const map = {
-    Pending: { label: "WAITING FOR RESPONDER", color: "#a2a586" },
-    Enroute: { label: "RESPONDER ON THE WAY", color: "#7357FF" },
-    Resolved: { label: "RESOLVED", color: "#3F8487" },
-  };
-  return map[key] ?? { label: "UNKNOWN STATUS", color: "#a2a586" };
-}
-
-export function computeStep3Done(profile) {
-  if (!profile) return true;
-  return Boolean(profile.contact || profile.nickname);
-}
-
-export function computeUserCharacter(selected, profile) {
-  if (typeof selected === "string" && selected.trim()) {
-    return selected;
-  }
-
-  const pool = [
-    "runner",
-    "pacheco",
-    "growth",
-    "jumping-air",
-    "meela-pantalones",
-    "feliz",
-    "pondering",
-    "cube-leg",
-    "roboto",
-    "mechanical-love",
-    "looking-ahead",
-    "waiting",
-    "bueno",
-  ];
-
-  const seed = String(profile?.nickname ?? "helphone");
-  const index = Array.from(seed).reduce((sum, char) => sum + char.charCodeAt(0), 0) % pool.length;
-  return pool[index];
-}
 
 const MAP_STYLES = [
   {
@@ -504,6 +373,7 @@ export function saveMyRequestId(id) {
     try {
       localStorage.setItem(MY_REQUESTS_KEY, JSON.stringify(ids.slice(0, 20)));
     } catch {
+      // Storage may be disabled (private mode); the in-memory list still works.
     }
   }
 }
@@ -1028,11 +898,13 @@ function TrackingScreen({
   requesterLng,
   requesterChar,
   etaSeconds,
+  mapboxFailed = false,
   isArrived,
   isResponderView,
   isMarkingArrived,
   onMarkArrived,
   onResolve,
+  overlayActive = false,
 }) {
   const dist =
     requesterLat != null && responderLat != null
@@ -1052,7 +924,7 @@ function TrackingScreen({
           lat={responderLat}
           lng={responderLng}
         >
-          {!isArrived && (
+          {!isArrived && !overlayActive && (
             <div
               style={{
                 position: "absolute",
@@ -1215,7 +1087,9 @@ function TrackingScreen({
                 ETA
               </div>
               <div style={{ fontSize: "11px", color: "#F4ECDC" }}>
-                {isArrived ? "Arrived" : etaMin != null ? `${etaMin} min` : "—"}
+                {isArrived ? "Arrived" : etaMin != null ? (
+                  <EtaLabel etaSeconds={etaSeconds} degraded={!etaSeconds || mapboxFailed} />
+                ) : "—"}
               </div>
             </div>
             <div
@@ -1246,6 +1120,8 @@ function TrackingScreen({
               </div>
             </div>
           </div>
+
+          <DegradedEtaNotice etaSeconds={etaSeconds} degraded={!etaSeconds || mapboxFailed} />
 
           <div style={{ display: "flex", gap: "8px" }}>
             {isResponderView && !isArrived && (
@@ -1501,6 +1377,17 @@ export function sanitizeWalletAddress(raw) {
   return addr;
 }
 
+export function computeStep3Done(profile) {
+  if (!profile) return true;
+  return Boolean(profile.nickname || profile.contact || true);
+}
+
+export function computeUserCharacter(selectedChar, profile) {
+  if (selectedChar) return selectedChar;
+  const nickname = profile?.nickname || "me";
+  return pickChar("default", nickname);
+}
+
 const PHONE_REGEX = /^\+?[1-9]\d{1,14}$/;
 const TELEGRAM_REGEX = /^@[A-Za-z0-9_]{5,32}$/;
 const CONTACT_ALLOWLIST = [PHONE_REGEX, TELEGRAM_REGEX];
@@ -1517,17 +1404,6 @@ export function validateContact(value) {
     };
   }
   return { valid: true, error: "" };
-}
-
-export function computeStep3Done(profile) {
-  if (!profile) return true;
-  return Boolean(profile.nickname || profile.contact || true);
-}
-
-export function computeUserCharacter(selectedChar, profile) {
-  if (selectedChar) return selectedChar;
-  const nickname = profile?.nickname || "me";
-  return pickChar("default", nickname);
 }
 
 export const STATUS_CONFIG = {
@@ -1680,6 +1556,7 @@ export function safeToggleClass(
 }
 
 export default function Help() {
+  const replicaLagMs = useReplicaLag();
   const [mode, setMode] = useState("get");
 
   const [profile, setProfile] = useState(() => {
@@ -1708,6 +1585,11 @@ export default function Help() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [responders, setResponders] = useState([]);
+  const [mapboxFailed, setMapboxFailed] = useState(false);
+  const locationRef = useRef(location);
+  locationRef.current = location;
+  const mapboxFailedRef = useRef(mapboxFailed);
+  mapboxFailedRef.current = mapboxFailed;
   const [popupMarker, setPopupMarker] = useState(null);
   const [selectedChar, setSelectedChar] = useState(null);
   const [mapStyleIndex, setMapStyleIndex] = useState(0);
@@ -1719,6 +1601,16 @@ export default function Help() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(null);
 
   const [openRequests, setOpenRequests] = useState([]);
+  // ADR-008: the canary renders clustered markers only; raw pins stay on the
+  // default path. The cluster grid follows the settled Mapbox view state.
+  const mapClusteringEnabled = useFeatureFlag("canary_map_clustering");
+  const mapContainerRef = useRef(null);
+  const mapSize = useElementSize(mapContainerRef);
+  const [mapViewState, setMapViewState] = useState({
+    longitude: DEFAULT_CENTER[1],
+    latitude: DEFAULT_CENTER[0],
+    zoom: 2,
+  });
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [offerSubmitting, setOfferSubmitting] = useState(false);
   const [lastOfferReceipt, setLastOfferReceipt] = useState(null);
@@ -1732,6 +1624,102 @@ export default function Help() {
   const [zkLogs, setZkLogs] = useState([]);
   const [zkProof, setZkProof] = useState(null);
   const [zkError, setZkError] = useState("");
+  const [mapViewport, setMapViewport] = useState(DEFAULT_VIEWPORT_TRANSFORM);
+  const [overlayMountKey, setOverlayMountKey] = useState(0);
+  const [overlayForceMain, setOverlayForceMain] = useState(false);
+  const overlayCanvasRef = useRef(null);
+  const overlayRendererRef = useRef(null);
+  const overlayRendererCanvasRef = useRef(null);
+
+  const clusterPoints = [
+    ...(location && Number.isFinite(location[0]) && Number.isFinite(location[1])
+      ? [
+          {
+            id: "self",
+            lat: location[0],
+            lng: location[1],
+            kind: mode === "get" ? "pending" : "responder",
+          },
+        ]
+      : []),
+    // #922: one pin per responder DID, not per contract slot.
+    ...collapseResponderPins(responders, { arrived: responderArrived }).map((pin) => ({
+      id: pin.id,
+      lat: pin.lat,
+      lng: pin.lng,
+      kind: pin.kind,
+    })),
+    ...openRequests
+      .filter((req) => req && Number.isFinite(req.lat) && Number.isFinite(req.lng))
+      .map((req) => ({
+        id: `req-${req.id}`,
+        lat: req.lat,
+        lng: req.lng,
+        kind: "pending",
+      })),
+  ];
+
+  const { clusters: mapClusters } = useClusterer(
+    clusterPoints,
+    mapViewport.zoom ?? 2,
+    mapViewport.bounds ?? DEFAULT_VIEWPORT_TRANSFORM.bounds,
+    {
+      scale: mapViewport.scale,
+      offsetX: mapViewport.offsetX,
+      offsetY: mapViewport.offsetY,
+    },
+  );
+
+  const helpOverlays = buildViewportOverlays({
+    points: clusterPoints,
+    clusters: mapClusters,
+    size: { width: 1140, height: 540 },
+    transform: mapViewport,
+  });
+  const hasHelpOverlays = helpOverlays.length > 0;
+
+  useEffect(() => {
+    const canvas = overlayCanvasRef.current;
+    if (!hasHelpOverlays || !canvas) return undefined;
+    let renderer = overlayRendererRef.current;
+    if (overlayRendererCanvasRef.current !== canvas) {
+      if (renderer) renderer.destroy();
+      overlayRendererRef.current = null;
+      overlayRendererCanvasRef.current = null;
+      try {
+        renderer = createOverlayRenderer(canvas, {
+          width: 1140,
+          height: 540,
+          dpr: Math.min((typeof window !== "undefined" && window.devicePixelRatio) || 1, 2),
+          forceMainThread: overlayForceMain,
+          onError: () => {
+            setOverlayForceMain(true);
+            setOverlayMountKey((k) => k + 1);
+          },
+        });
+      } catch {
+        if (!overlayForceMain) {
+          setOverlayForceMain(true);
+          setOverlayMountKey((k) => k + 1);
+        }
+        return undefined;
+      }
+      overlayRendererRef.current = renderer;
+      overlayRendererCanvasRef.current = canvas;
+    }
+    return () => {
+      if (overlayRendererRef.current === renderer && renderer) {
+        renderer.destroy();
+        overlayRendererRef.current = null;
+        overlayRendererCanvasRef.current = null;
+      }
+    };
+  }, [hasHelpOverlays, overlayMountKey, overlayForceMain]);
+
+  useEffect(() => {
+    overlayRendererRef.current?.setOverlays(helpOverlays);
+    overlayRendererRef.current?.setViewport?.(mapViewport);
+  }, [helpOverlays, mapViewport, overlayMountKey, overlayForceMain]);
 
   const [walletAddress, setWalletAddress] = useState("");
   const activeWalletAddress = walletAddress;
@@ -1797,6 +1785,9 @@ export default function Help() {
     canAutoDispatch: canSosAutoDispatch,
     onCommit: handleSosCommit,
     onNeedsConfirm: () => setShowSosSheet(true),
+    // Coordinates are not stored in the offline queue (PII redaction), so the
+    // drain reads the device's current fix when it sends.
+    getLocation: () => (location ? { lat: location[0], lng: location[1] } : null),
   });
 
   const styleSelectorRef = useRef(null);
@@ -1990,7 +1981,9 @@ export default function Help() {
             );
           });
         }
-      } catch (_) {}
+      } catch (_) {
+        // Best-effort fetch: keep the previous UI state on failure.
+      }
       loading = false;
     }
 
@@ -2250,6 +2243,15 @@ export default function Help() {
       setSubmitError("Connect your Stellar wallet first.");
       return;
     }
+    // ISP-065 severe lag: responders may be looking at outdated history, so the
+    // sender must confirm before the request goes out.
+    if (
+      requiresDispatchOverride(replicaLagMs) &&
+      !window.confirm(dispatchOverrideMessage(replicaLagMs))
+    ) {
+      setSubmitError("Dispatch cancelled. Try again once history catches up.");
+      return;
+    }
     setSubmitting(true);
     setSubmitError("");
     resetZkCheckpoint();
@@ -2475,12 +2477,21 @@ export default function Help() {
           if (mounted) {
             setResponders((prev) => {
               const idx = prev.findIndex((p) => p.responder === r.responder);
+              let next;
               if (idx >= 0) {
-                const next = [...prev];
+                next = [...prev];
                 next[idx] = r;
-                return next;
+              } else {
+                next = [...prev, r];
               }
-              return [...prev, r];
+              // Flag off: preserve today's insertion order byte-for-byte.
+              if (!isPredictiveEtaV2Enabled() || !locationRef.current) return next;
+              return rankByRealisticEta(next, {
+                lat: locationRef.current[0],
+                lng: locationRef.current[1],
+                trafficAware: !mapboxFailedRef.current,
+                mapboxFailed: mapboxFailedRef.current,
+              });
             });
             setRequestStatus("Enroute");
             setTrackingIndex(i);
@@ -2490,7 +2501,9 @@ export default function Help() {
         if (!found && mounted) {
           setResponders([]);
         }
-      } catch (_) {}
+      } catch (_) {
+        // Best-effort fetch: keep the previous UI state on failure.
+      }
     }
 
     poll();
@@ -2513,7 +2526,9 @@ export default function Help() {
           location[0],
           location[1],
         );
-      } catch (_) {}
+      } catch (_) {
+        // Best-effort fetch: keep the previous UI state on failure.
+      }
     }
     ping();
     const interval = setInterval(ping, 5000);
@@ -2537,7 +2552,9 @@ export default function Help() {
         if (mounted && req && req.lat != null && req.lng != null) {
           setRequesterLocation([req.lat, req.lng]);
         }
-      } catch {}
+      } catch {
+        // Best-effort fetch: keep the previous UI state on failure.
+      }
     }
     fetchRequester();
     const interval = setInterval(fetchRequester, 8000);
@@ -2569,7 +2586,9 @@ export default function Help() {
         );
         filtered.sort((a, b) => b.created_at - a.created_at);
         if (mounted) setMyRequests(filtered);
-      } catch (_) {}
+      } catch (_) {
+        // Best-effort fetch: keep the previous UI state on failure.
+      }
       if (mounted) setMyRequestsLoading(false);
     }
     fetchMyRequests();
@@ -2900,6 +2919,13 @@ export default function Help() {
                 ZK PRIVACY CHECKPOINT
               </span>
               <span
+                data-testid="zk-checkpoint-status"
+                data-pending={
+                  zkStatus === "proving" || zkStatus === "recording"
+                    ? "true"
+                    : "false"
+                }
+                data-finalized={zkStatus === "recorded" ? "true" : "false"}
                 style={{
                   marginLeft: "auto",
                   padding: "2px 7px",
@@ -3045,6 +3071,12 @@ export default function Help() {
           </div>
 
           <NetworkStatusIndicator />
+          <ReplicaStaleBadge lagMs={replicaLagMs} />
+
+          {/* #893: offline A* routing from the selected location (routingWorker). */}
+          <OfflineRoutePanel location={location} />
+          {/* #894: pruned state-vector CRDT sync of the shared incident map. */}
+          <IncidentMapSyncPanel location={location} />
 
           {isGetMode && (
             <>
@@ -3179,7 +3211,7 @@ export default function Help() {
                             color: "rgba(242,236,220,0.5)",
                           }}
                         >
-                          ETA {Math.round(responders[0].eta_seconds / 60)} min
+                          ETA <EtaLabel etaSeconds={responders[0].eta_seconds} degraded={mapboxFailed} />
                         </span>
                       )}
                   </div>
@@ -3224,10 +3256,7 @@ export default function Help() {
                         {responders[0].eta_seconds && !responderArrived && (
                           <>
                             {" "}
-                            · ETA {Math.round(
-                              responders[0].eta_seconds / 60,
-                            )}{" "}
-                            min
+                            · ETA <EtaLabel etaSeconds={responders[0].eta_seconds} degraded={mapboxFailed} />
                           </>
                         )}
                         {location && responders[0] && (
@@ -3818,7 +3847,7 @@ export default function Help() {
                           color: "#F4ECDC",
                         }}
                       >
-                        {selectedRequest.nickname || "Anonymous"}
+                        {sanitizeText(selectedRequest.nickname) || "Anonymous"}
                       </div>
                       {(() => {
                         const et = EMERGENCY_TYPES.find(
@@ -3842,7 +3871,7 @@ export default function Help() {
                           color: "rgba(242,236,220,0.4)",
                         }}
                       >
-                        {selectedRequest.contact || ""}
+                        {sanitizeText(selectedRequest.contact) || ""}
                       </div>
                     </div>
                     <button
@@ -3985,7 +4014,7 @@ export default function Help() {
                               color: "#F4ECDC",
                             }}
                           >
-                            {req.nickname || "Anonymous"}
+                            {sanitizeText(req.nickname) || "Anonymous"}
                           </div>
                           {(() => {
                             const et = EMERGENCY_TYPES.find(
@@ -4223,7 +4252,7 @@ export default function Help() {
         </div>
       </aside>
 
-      <div id="helphone-help-map" className={styles["hp-help-main"]} style={{ flex: 1, position: "relative" }}>
+      <div ref={mapContainerRef} id="helphone-help-map" className={styles["hp-help-main"]} style={{ flex: 1, position: "relative" }}>
         <Map
           mapboxAccessToken={MAPBOX_TOKEN}
           initialViewState={{
@@ -4233,10 +4262,26 @@ export default function Help() {
           }}
           style={{ width: "100%", height: "100%" }}
           mapStyle={MAP_STYLES[mapStyleIndex].url}
+          onError={() => setMapboxFailed(true)}
           onClick={(e) => {
             if (isGetMode && requestStatus === "idle" && e?.lngLat?.lat != null && e?.lngLat?.lng != null) {
               setLocation([e.lngLat.lat, e.lngLat.lng]);
             }
+          }}
+          onMove={(e) => {
+            const vs = e?.viewState;
+            // ADR-008: keep the clustering grid in sync with the camera.
+            if (vs) setMapViewState(vs);
+            if (!vs) return;
+            const z = Number.isFinite(vs.zoom) ? vs.zoom : 2;
+            const scale = Math.pow(2, Math.max(-4, Math.min(4, (z - 2) * 0.25)));
+            setMapViewport((prev) => ({
+              ...prev,
+              zoom: z,
+              scale,
+              offsetX: Number.isFinite(vs.longitude) ? -vs.longitude * 2 : 0,
+              offsetY: Number.isFinite(vs.latitude) ? vs.latitude * 2 : 0,
+            }));
           }}
         >
           {location && <MapController center={location} zoom={14} />}
@@ -4263,7 +4308,7 @@ export default function Help() {
                   {profile.nickname && (
                     <>
                       <br />
-                      {profile.nickname}
+                      {sanitizeText(profile.nickname)}
                     </>
                   )}
                 </Popup>
@@ -4294,7 +4339,7 @@ export default function Help() {
                   {profile.nickname && (
                     <>
                       <br />
-                      {profile.nickname}
+                      {sanitizeText(profile.nickname)}
                     </>
                   )}
                 </Popup>
@@ -4334,7 +4379,7 @@ export default function Help() {
                       {r.eta_seconds && (
                         <>
                           <br />
-                          ETA: {Math.round(r.eta_seconds / 60)} min
+                          ETA: <EtaLabel etaSeconds={r.eta_seconds} degraded={mapboxFailed} />
                         </>
                       )}
                     </Popup>
@@ -4344,7 +4389,7 @@ export default function Help() {
               </Fragment>
             ))}
 
-          {!isGetMode &&
+          {!mapClusteringEnabled && !isGetMode &&
             openRequests.map((req) => (
               <CharMarker
                 key={req.id}
@@ -4365,7 +4410,7 @@ export default function Help() {
                     closeButton={false}
                   >
                     <strong style={{ color: "#FF7A6B" }}>
-                      {req.nickname || "Anonymous"}
+                      {sanitizeText(req.nickname) || "Anonymous"}
                     </strong>
                     <br />
                     <span style={{ fontSize: "11px", color: "#a2a586" }}>
@@ -4386,8 +4431,10 @@ export default function Help() {
               requesterLng={location?.[1]}
               requesterChar={myChar}
               etaSeconds={responders[0].eta_seconds}
+              mapboxFailed={mapboxFailed}
               isArrived={responderArrived}
               isResponderView={false}
+              overlayActive={hasHelpOverlays}
               onResolve={async () => {
                 try {
                   await resolveRequest(
@@ -4417,13 +4464,47 @@ export default function Help() {
                 requesterLng={requesterLocation[1]}
                 requesterChar={pickChar("default", lastOfferReceipt.nickname)}
                 etaSeconds={null}
+                mapboxFailed={mapboxFailed}
                 isArrived={responderArrived}
                 isResponderView={true}
                 isMarkingArrived={arrivalSubmitting}
                 onMarkArrived={handleMarkArrived}
+                overlayActive={hasHelpOverlays}
               />
             )}
         </Map>
+        {hasHelpOverlays && (
+          <canvas
+            key={overlayMountKey}
+            ref={overlayCanvasRef}
+            aria-hidden="true"
+            data-testid="help-map-overlay-canvas"
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              pointerEvents: "none",
+            }}
+          />
+        )}
+
+        {mapClusteringEnabled && !isGetMode && openRequests.length > 0 && (
+          <ClusteredMapLayer
+            points={openRequests}
+            viewState={mapViewState}
+            width={mapSize.width}
+            height={mapSize.height}
+            onMarkerClick={(hit) => {
+              const req = openRequests[hit.index];
+              if (req) {
+                setSelectedRequest(req);
+                setPopupMarker(`req-${req.id}`);
+              }
+            }}
+            style={{ position: "absolute", inset: 0, zIndex: 5 }}
+          />
+        )}
 
         <div
           ref={styleSelectorRef}
@@ -4685,7 +4766,7 @@ export default function Help() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {profile.nickname || "Anonymous"}
+                      {sanitizeText(profile.nickname) || "Anonymous"}
                     </div>
                     <div
                       style={{

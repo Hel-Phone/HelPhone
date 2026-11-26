@@ -168,8 +168,8 @@ export class SQLCache {
     return cached ? JSON.parse(cached) : null;
   }
 
-  async set<T>(query: string, data: T, options: CacheOptions = {}): Promise<void> {
-    const key = this.generateKey(query);
+  async set<T>(query: string, data: T, options: CacheOptions & { params?: unknown[] } = {}): Promise<void> {
+    const key = this.generateKey(query, options.params);
     const ttl = options.ttl || 3600;
     await this.redis.setex(key, ttl, JSON.stringify(data));
   }
@@ -187,6 +187,54 @@ export class SQLCache {
     if (keys.length > 0) {
       await this.redis.del(...keys);
     }
+  }
+}
+
+export interface RedisCacheClient {
+  get(key: string): Promise<string | null>
+  setex(key: string, seconds: number, value: string): Promise<unknown>
+  incr(key: string): Promise<number>
+}
+
+/** Cross-process cache using an atomic entity generation for invalidation. */
+export class RedisNamespacedCache {
+  private hits = 0
+  private misses = 0
+
+  constructor(
+    private readonly redis: RedisCacheClient,
+    private readonly options: { prefix?: string; ttlSeconds?: number } = {},
+  ) {}
+
+  private versionKey(entity: string): string {
+    return `${this.options.prefix ?? 'domain-cache:'}version:${entity}`
+  }
+
+  private async key(source: CacheSource, entity: string): Promise<string> {
+    const version = await this.redis.get(this.versionKey(entity)) ?? '0'
+    return `${this.options.prefix ?? 'domain-cache:'}${namespacedKey(source, entity)}:${version}`
+  }
+
+  async get<T>(source: CacheSource, entity: string): Promise<T | undefined> {
+    const value = await this.redis.get(await this.key(source, entity))
+    if (value === null) {
+      this.misses++
+      return undefined
+    }
+    this.hits++
+    return JSON.parse(value) as T
+  }
+
+  async set<T>(source: CacheSource, entity: string, value: T): Promise<void> {
+    await this.redis.setex(await this.key(source, entity), this.options.ttlSeconds ?? 5, JSON.stringify(value))
+  }
+
+  async invalidate(entity: string): Promise<number> {
+    return this.redis.incr(this.versionKey(entity))
+  }
+
+  stats() {
+    return { hits: this.hits, misses: this.misses, hitRate: this.hits / Math.max(1, this.hits + this.misses) }
   }
 }
 

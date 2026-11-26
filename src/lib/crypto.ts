@@ -1013,7 +1013,7 @@ export interface FederatedEnvelope<T = unknown> {
     instanceId: string
     rotationCounter: number
   }
-  payloadType: 'dispatch' | 'ack' | 'status_update' | 'crdt_delta' | 'settlement_iou'
+  payloadType: 'dispatch' | 'ack' | 'status_update' | 'crdt_delta' | 'settlement_iou' | 'overload'
   payload: T
   idempotencyKey: string
   signature: string

@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createOverlayRenderer } from "../lib/offscreenCanvas.ts";
+import { CrossRouteResourceManager, MapboxGLResourceManager } from "../lib/memoryLeakFixes.ts";
+import { DEFAULT_LONG_TASK_THRESHOLDS, LongTaskMonitor } from "../lib/mainThreadOptimization.ts";
+import ClusteredMapLayer from "./ClusteredMapLayer.jsx";
 
 const MAP_WIDTH = 1140;
 const MAP_HEIGHT = 540;
@@ -10,13 +13,46 @@ const MAP_HEIGHT = 540;
  * so the animation is unaffected by main-thread work. `onRenderStats` receives
  * the measured frame rate once per second.
  */
-export default function CommunityMap({ overlays, onRenderStats }) {
+export default function CommunityMap({
+  // ADR-008: when live incident points are supplied, render clustered markers
+  // instead of raw pins. The SVG below stays the decorative base map.
+  points = null,
+  viewState = { longitude: 0, latitude: 20, zoom: 2 },
+  width = MAP_WIDTH,
+  height = MAP_HEIGHT,
+  onMarkerClick,
+  overlays,
+  onRenderStats,
+  viewportTransform,
+  mapInstance,
+  resourceManager,
+  longTaskThresholds = DEFAULT_LONG_TASK_THRESHOLDS,
+  onLongTask,
+  onLongTaskTelemetry,
+  ...clusterOptions
+}) {
   const canvasRef = useRef(null);
   const rendererRef = useRef(null);
   const rendererCanvasRef = useRef(null);
   const rendererGenerationRef = useRef(0);
   const statsRef = useRef(onRenderStats);
   statsRef.current = onRenderStats;
+  const longTaskCallbackRef = useRef(onLongTask);
+  longTaskCallbackRef.current = onLongTask;
+  const longTaskTelemetryRef = useRef(onLongTaskTelemetry);
+  longTaskTelemetryRef.current = onLongTaskTelemetry;
+  const resourceManagerRef = useRef(null);
+  if (!resourceManagerRef.current) {
+    resourceManagerRef.current = resourceManager ?? new CrossRouteResourceManager();
+  }
+  const getMapboxManager = () => {
+    const mgr = resourceManager ?? resourceManagerRef.current;
+    return typeof mgr?.getMapboxManager === "function"
+      ? mgr.getMapboxManager()
+      : mgr instanceof MapboxGLResourceManager
+        ? mgr
+        : resourceManagerRef.current.getMapboxManager();
+  };
   // A canvas whose control was transferred can't be reused; bump the key to
   // remount a fresh one in main-thread mode if the worker dies.
   const [mountKey, setMountKey] = useState(0);
@@ -26,7 +62,33 @@ export default function CommunityMap({ overlays, onRenderStats }) {
   const hasOverlay = overlays !== undefined;
 
   useEffect(() => {
+    const mapboxMgr = getMapboxManager();
+    if (mapInstance) {
+      mapboxMgr.setMap(mapInstance);
+    }
+    return () => {
+      if (mapInstance) {
+        mapboxMgr.dispose();
+      }
+    };
+  }, [mapInstance]);
+
+  useEffect(() => {
+    const monitor = new LongTaskMonitor(longTaskThresholds, {
+      route: "/help",
+      onTelemetry: (evt) => longTaskTelemetryRef.current?.(evt),
+    });
+    monitor.startMonitoring((metrics) => {
+      longTaskCallbackRef.current?.(metrics);
+    });
+    return () => {
+      monitor.stopMonitoring();
+    };
+  }, [longTaskThresholds?.warningMs, longTaskThresholds?.criticalMs]);
+
+  useEffect(() => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+    const mapboxMgr = getMapboxManager();
     const handleSwMessage = (event) => {
       const data = event.data || {};
       if (data.type === "TILE_REVOKED") {
@@ -45,6 +107,7 @@ export default function CommunityMap({ overlays, onRenderStats }) {
       }
     };
     navigator.serviceWorker.addEventListener("message", handleSwMessage);
+    mapboxMgr.registerEventListener("message", handleSwMessage, navigator.serviceWorker);
     return () => navigator.serviceWorker.removeEventListener("message", handleSwMessage);
   }, []);
 
@@ -59,9 +122,13 @@ export default function CommunityMap({ overlays, onRenderStats }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!hasOverlay || !canvas) return undefined;
+    const mapboxMgr = getMapboxManager();
     let renderer = rendererRef.current;
     if (rendererCanvasRef.current !== canvas) {
-      if (renderer) renderer.destroy();
+      if (renderer) {
+        mapboxMgr.unregisterOverlay(renderer);
+        renderer.destroy();
+      }
       rendererRef.current = null;
       rendererCanvasRef.current = null;
       try {
@@ -85,13 +152,14 @@ export default function CommunityMap({ overlays, onRenderStats }) {
       }
       rendererRef.current = renderer;
       rendererCanvasRef.current = canvas;
+      mapboxMgr.registerOverlay(renderer);
     }
     const generation = ++rendererGenerationRef.current;
     return () => {
       queueMicrotask(() => {
         if (rendererGenerationRef.current !== generation) return;
         if (rendererRef.current === renderer) {
-          renderer.destroy();
+          mapboxMgr.dispose();
           rendererRef.current = null;
           rendererCanvasRef.current = null;
         }
@@ -102,6 +170,12 @@ export default function CommunityMap({ overlays, onRenderStats }) {
   useEffect(() => {
     rendererRef.current?.setOverlays(overlays ?? []);
   }, [overlays, mountKey, forceMain]);
+
+  useEffect(() => {
+    if (viewportTransform) {
+      rendererRef.current?.setViewport?.(viewportTransform);
+    }
+  }, [viewportTransform, mountKey, forceMain]);
 
   return (
     <div style={{ position: "relative", width: "100%" }}>
@@ -314,6 +388,17 @@ export default function CommunityMap({ overlays, onRenderStats }) {
         REQUEST 04:12
       </text>
     </svg>
+    {points && (
+      <ClusteredMapLayer
+        points={points}
+        viewState={viewState}
+        width={width}
+        height={height}
+        onMarkerClick={onMarkerClick}
+        style={{ position: "absolute", inset: 0, zIndex: 6, pointerEvents: onMarkerClick ? "auto" : "none" }}
+        {...clusterOptions}
+      />
+    )}
     {hasOverlay && (
       <canvas
         key={mountKey}

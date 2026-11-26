@@ -84,7 +84,7 @@ export interface FederatedEnvelope<T = unknown> {
     instanceId: string;
     rotationCounter: number;     // Must match or exceed peer's active rotation counter
   };
-  payloadType: "dispatch" | "ack" | "status_update" | "crdt_delta" | "settlement_iou";
+  payloadType: "dispatch" | "ack" | "status_update" | "crdt_delta" | "settlement_iou" | "overload";
   payload: T;                    // Type-specific structured message payload
   idempotencyKey: string;        // Format: `${senderInstance}:${nonce}`
   signature: string;             // Signature over canonicalJson(envelopeWithoutSignature)
@@ -100,6 +100,27 @@ export interface FederatedEnvelope<T = unknown> {
 - Each deployment runs a rolling `ReplayCache` with a 300,000 ms (5-minute) retention window.
 - Any envelope whose timestamp drifts by $> 300$ seconds from the receiver's local clock is rejected immediately (`401 Envelope timestamp outside replay window`).
 - Duplicate nonces within the window trigger an explicit `409 Conflict: Replay detected`.
+
+### 4.2a Overload gossip & per-receive trust refresh (ADR-018/020 follow-up)
+
+An overloaded node sheds locally and gossips a signed `payloadType: "overload"`
+envelope to peers so they stop forwarding. If the peer is already shedding, the
+node sheds locally without gossiping back — this prevents a two-node gossip
+storm. A peer's shed signal is binding on the receiver. Life-critical
+(`type=medical|danger|critical`) messages are never shed.
+
+Routes: `POST /api/federation/overload` (ingest signed signal),
+`GET /api/federation/overload` (local + peer load state), and
+`POST /api/federation/test/overload` (chaos toggle).
+
+Every inbound envelope (dispatch, ack, CRDT delta, overload) is checked against
+the originating instance's **current** trust bundle on every receive: bundle
+signature and expiry/grace, `envelope.trustBundleRef.rotationCounter >=
+bundle.rotationCounter`, and revocations across all identity fields carried in
+the payload. No verification result is cached between receives, so an
+in-flight message from a revoked peer is rejected immediately after the new
+bundle is gossiped — within one rotation cycle. Shed messages are written to
+the dispatch audit stream with timestamp, tier and reason, never PII.
 
 ### 4.2 Transport Layer
 1. **Direct HTTP/HTTPS:** Standard REST endpoints mounted at `/api/federation/*`.

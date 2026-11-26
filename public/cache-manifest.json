@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "description": "Integrity manifest for static assets (#898). Built at deploy time.",
+  "entries": [
+    {
+      "path": "/index.html",
+      "hash": "sha384-placeholder-index",
+      "ttl": 3600
+    },
+    {
+      "path": "/assets/chars/runner.png",
+      "hash": "sha384-placeholder-runner",
+      "ttl": 2592000
+    },
+    {
+      "path": "/assets/chars/chilly.png",
+      "hash": "sha384-placeholder-chilly",
+      "ttl": 2592000
+    },
+    {
+      "path": "/tiles/mapbox-v1.pbf",
+      "hash": "sha384-placeholder-tiles",
+      "ttl": 604800
+    }
+  ],
+  "note": "Replace sha384-placeholder-* with actual values during build. ttl in seconds."
+}

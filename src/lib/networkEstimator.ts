@@ -23,6 +23,44 @@ export interface ProbeResult {
   ok: boolean;
   latencyMs: number;
   error?: string;
+  failureClass?: ProbeFailureClass;
+}
+
+/**
+ * Why an endpoint failed (#928). `ipv6-nat64` is the bucket for IPv6-only
+ * bearers: an IPv4-literal endpoint that fails at the network layer, or any
+ * endpoint that reports an unreachable-family error. DNS64 cannot translate a
+ * dotted-quad, so the failure is structural rather than transient.
+ */
+export type ProbeFailureClass = 'timeout' | 'http' | 'unhealthy' | 'ipv6-nat64' | 'network';
+
+const IPV4_LITERAL = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+const FAMILY_UNREACHABLE = /ENETUNREACH|EHOSTUNREACH|EAFNOSUPPORT/i;
+
+/** True for a dotted-quad host such as 203.0.113.10. */
+export function isIpv4LiteralHost(host: string): boolean {
+  return IPV4_LITERAL.test(host);
+}
+
+/** Classify a failed probe or request. Pure, so every bearer path can share it. */
+export function classifyProbeFailure(
+  url: string,
+  failure: { aborted?: boolean; status?: number; error?: string } = {},
+): ProbeFailureClass {
+  if (failure.aborted || failure.error === 'timeout') return 'timeout';
+  if (typeof failure.status === 'number') return 'http';
+  if (failure.error === 'node not healthy') return 'unhealthy';
+  if (FAMILY_UNREACHABLE.test(failure.error ?? '')) return 'ipv6-nat64';
+  if (isIpv4LiteralHost(hostOf(url))) return 'ipv6-nat64';
+  return 'network';
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
 }
 
 type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{
@@ -53,15 +91,23 @@ export async function probeEndpoint(url: string, opts: ProbeOptions = {}): Promi
       signal: controller.signal,
     });
     const latencyMs = Math.max(0, now() - start);
-    if (!res.ok) return { ok: false, latencyMs, error: `HTTP ${res.status}` };
+    if (!res.ok) {
+      return { ok: false, latencyMs, error: `HTTP ${res.status}`, failureClass: classifyProbeFailure(url, { status: res.status }) };
+    }
     const body = (await res.json()) as { result?: { status?: string }; error?: unknown };
     if (body?.error || body?.result?.status !== 'healthy') {
-      return { ok: false, latencyMs, error: 'node not healthy' };
+      return { ok: false, latencyMs, error: 'node not healthy', failureClass: 'unhealthy' };
     }
     return { ok: true, latencyMs };
   } catch (err) {
     const aborted = controller.signal.aborted;
-    return { ok: false, latencyMs: Math.max(0, now() - start), error: aborted ? 'timeout' : (err as Error).message };
+    const error = aborted ? 'timeout' : (err as Error).message;
+    return {
+      ok: false,
+      latencyMs: Math.max(0, now() - start),
+      error,
+      failureClass: classifyProbeFailure(url, { aborted, error }),
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -96,6 +142,7 @@ interface EndpointState {
   failures: number;
   checkedAt: number | null;
   error?: string;
+  failureClass?: ProbeFailureClass;
 }
 
 export interface EstimatorOptions {
@@ -159,6 +206,7 @@ export function createNetworkEstimator(opts: EstimatorOptions): NetworkEstimator
       lastCheckedAt: s.checkedAt,
       active: i === active,
       primary: i === 0,
+      failureClass: s.failures > 0 ? (s.failureClass ?? null) : null,
     }));
     return { activeLabel: endpoints[active].label, activeLatencyMs: endpoints[active].latencyMs, quality: quality(), endpoints };
   }
@@ -198,6 +246,7 @@ export function createNetworkEstimator(opts: EstimatorOptions): NetworkEstimator
       state.ewmaMs = state.ewmaMs === null ? result.latencyMs : EWMA_ALPHA * result.latencyMs + (1 - EWMA_ALPHA) * state.ewmaMs;
     } else {
       state.failures += 1;
+      state.failureClass = result.failureClass ?? 'network';
       if (state.failures >= threshold) state.healthy = false;
     }
   }
@@ -225,7 +274,12 @@ export function createNetworkEstimator(opts: EstimatorOptions): NetworkEstimator
     reportFailure(url) {
       const state = states.find((s) => s.url === url);
       if (!state) return;
-      record(state, { ok: false, latencyMs: 0, error: 'request failed' });
+      record(state, {
+        ok: false,
+        latencyMs: 0,
+        error: 'request failed',
+        failureClass: classifyProbeFailure(url, { error: 'request failed' }),
+      });
       reselect();
       publish();
     },

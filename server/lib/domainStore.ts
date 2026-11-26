@@ -83,6 +83,14 @@ export class DomainStore {
     if (options.seed !== false) this.seed();
   }
 
+  /** Replace the in-memory projection from a durable adapter snapshot. */
+  loadSnapshot(snapshot: { incidents: Incident[]; responders: Responder[]; events: DomainEvent[] }): void {
+    this.incidents = new Map(snapshot.incidents.map((item) => [item.id, { ...item }]))
+    this.responders = new Map(snapshot.responders.map((item) => [item.id, { ...item }]))
+    this.events = snapshot.events.map((item) => ({ ...item }))
+    this.resetQueryCount()
+  }
+
   /** Seed one incident with 40 responders + events, matching the issue repro. */
   seed(): void {
     this.incidents.clear();
@@ -156,6 +164,19 @@ export class DomainStore {
       nextCursor: items.length === limit && last ? last.id : null,
       hasNextPage: start + limit < all.length,
     };
+  }
+
+  /**
+   * Unresolved incidents, newest first, capped at `limit`. One query. Feeds the
+   * open-today slice and the SOS geofence gate.
+   */
+  listActiveIncidents(limit = 200): Incident[] {
+    this.queryCount++;
+    return [...this.incidents.values()]
+      .filter((incident) => incident.status !== 'resolved')
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+      .slice(0, Math.max(0, limit))
+      .map((incident) => ({ ...incident }));
   }
 
   /** One query: incident + responders (REST's hand-optimised join). */

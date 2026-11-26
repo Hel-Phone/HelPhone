@@ -147,6 +147,38 @@ constraints enforced at the engineering level:**
 | `src/service-worker.js` | Verify 503 Overloaded triggers polling fallback | PWA test | @helphone-pwa-owner | 2026-Q4 |
 | `docs/review-policy.md` | Add no-identity-priority rule to dispatch checklist | Doc update | @helphone-maintainers | 2026-Q4 |
 
+### Implementation decisions (ADR-020 follow-ups, 2026-11-24)
+
+The four P0/P1/P2 follow-up tasks are implemented on one branch. The engineering
+decisions that resolve ambiguity in the table above are:
+
+1. **Tier assignment is type-only.** `server/middleware/dispatchPriority.ts`
+   exposes the pure function `priorityForMessage(messageType, incidentType)`.
+   There is no argument for wallet, responder identity or reputation, and
+   `DispatchQueue.enqueue()` never inspects identity fields. A code-level test
+   asserts that adding wallet/reputation fields cannot change a tier.
+2. **"Drop oldest if full" applies to bounded tiers.** P1/P2/P3 drop the oldest
+   queued entry when their bound is reached; the incoming entry is kept. P0 has
+   no bound and is never dropped.
+3. **Memory budget is a frontend signal, not a P0 kill switch.** Reaching the
+   total budget (`public/config.json → dispatch.memoryBudgetItems`) sets
+   `helphone_dispatch_overloaded=1`, emits `503 Overloaded` with `Retry-After`,
+   and sheds non-P0 arrivals. Already-queued P0 work continues to drain. This
+   is the only behaviour consistent with Decision 2 (P0 is never shed).
+4. **Coalescing is key-based and audit-visible.** `LocUpd` entries carrying the
+   same opaque `coalesceKey` replace the older queued update; the replacement
+   is recorded as a shed event with reason `coalesced`.
+5. **Overload is transparent end-to-end.** `recordDispatchShed()` writes
+   timestamp/tier/reason only (allow-list; no request id, wallet or note), and
+   the PWA switches to bounded polling with a visible degraded banner on 503.
+   Polling is read-only, so reconnecting duplicates no submissions.
+6. **Requester-declared type is rate-limited, not re-triaged.** A wallet cycling
+   `type=medical` is throttled by `WalletRequestLimiter` with escalating
+   backoff in a shared (Redis-capable) store; abuse metric labels are fixed
+   enums (`reason`, bounded `level`) and never contain a wallet address.
+7. **Federation shedding is decided explicitly** in ADR-018, so a two-node
+   overload behaves identically on both nodes instead of amplifying gossip.
+
 ### Risks
 
 - **Miscategorisation:** The P0/P1 distinction is imperfect. Post-incident

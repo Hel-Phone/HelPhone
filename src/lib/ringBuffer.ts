@@ -3,6 +3,7 @@
  * and client-side view of the contract's bounded verification history (#531 / #797).
  */
 import type { ExpertVerificationWindow } from '../types/index';
+import { emitMemoryPressureEnvelope, recordRingBytes } from './heapForensics';
 
 // ===========================================================================
 // Verification Window & Audit Tape (#531 / #797)
@@ -55,6 +56,7 @@ export function createAuditTape(capacity = 64) {
     push(entry: AuditEntry): void {
       slots[total % capacity] = entry;
       total += 1;
+      recordRingBytes(Math.min(total, capacity) * 96);
     },
     entries(): AuditEntry[] {
       const w = verificationWindow(total, capacity);
@@ -334,6 +336,7 @@ export class RingBuffer<T = unknown> {
   }
 
   private updatePressure(): void {
+    recordRingBytes(this.size * 96);
     const occupancy = this.occupancy;
     let next: PressureLevel = this.pressure;
 
@@ -347,6 +350,13 @@ export class RingBuffer<T = unknown> {
   private setPressure(next: PressureLevel): void {
     if (next === this.pressure) return;
     this.pressure = next;
+    if (next === 'critical') {
+      try {
+        emitMemoryPressureEnvelope('heap_near_limit');
+      } catch {
+        // safe
+      }
+    }
     const event: PressureEvent = {
       level: next,
       occupancy: this.occupancy,

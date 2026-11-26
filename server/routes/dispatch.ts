@@ -21,6 +21,16 @@ import { PROMETHEUS_CONTENT_TYPE, renderPrometheus } from '../middleware/metrics
 import type { MetricFamily } from '../middleware/metrics.ts'
 import { getDomainStore, type DomainStore } from '../lib/domainStore.ts'
 import { getSqlCache, invalidateIncident } from '../lib/sqlCache.ts'
+import { DispatchQueue, toQueuePriority, type QueueMetrics, type ShedEvent } from '../../src/lib/dispatchQueue.ts'
+import { buildOpenTodaySlice } from '../lib/openTodaySlice.ts'
+import { haversineKm } from '../lib/geo.ts'
+import { loadDispatchConfig, type DispatchConfig } from '../lib/dispatchConfig.ts'
+import { recordDispatchShed } from '../indexer/auditStreamer.js'
+import {
+  WalletRequestLimiter,
+  abuseMetricFamilies,
+  walletOfRequest,
+} from '../middleware/rateLimiter.ts'
 
 // ── Zod Schemas for Incident REST surface ───────────────────────────────────
 
@@ -47,6 +57,17 @@ const ackSchema = z.object({
   expectedVersion: z.number().int().positive().optional(),
 })
 
+// Hardware SOS intake (#941). The key is the client's 10 s bucket: sos-<bucket>.
+const SOS_KEY_RE = /^sos-(\d{1,15})$/
+/** Auto-dispatch (no operator confirm) only within this radius of an unresolved incident. */
+const SOS_AUTO_DISPATCH_KM = 0.5
+const sosIntakeSchema = z.object({
+  idempotencyKey: z.string().regex(SOS_KEY_RE),
+  source: z.string().max(32).optional(),
+  force: z.boolean().default(false),
+  location: locationSchema.optional(),
+})
+
 function issuesOf(error: z.ZodError) {
   return error.issues.map((issue) => ({
     path: issue.path.join('.') || 'body',
@@ -60,6 +81,17 @@ function validationResponse(res: Response, issues: Array<{ path: string; message
 
 function conflictResponse(res: Response, serverVersion: number, mergeProposal: Record<string, unknown>) {
   return res.status(409).json({ conflict: true, serverVersion, mergeProposal })
+}
+
+/** ADR-020: overload is explicit (503 + Retry-After), never a silent drop. */
+function overloadedResponse(res: Response, retryAfterSeconds: number) {
+  res.set('Retry-After', String(retryAfterSeconds))
+  return res.status(503).json({
+    success: false,
+    error: 'Overloaded',
+    code: 'overloaded',
+    retryAfterSeconds,
+  })
 }
 
 // ── Encrypted Emergency Payload Relay ──────────────────────────────────────
@@ -158,6 +190,13 @@ export interface DispatchRouterOptions {
   store?: DispatchStore | DomainStore
   domainStore?: DomainStore
   enabled?: boolean
+  queue?: DispatchQueue
+  tickIntervalMs?: number
+  /** ADR-020 bounds/budgets; defaults come from public/config.json. */
+  config?: DispatchConfig
+  walletLimiter?: WalletRequestLimiter
+  /** Override the audit hook (tests can inject a spy). */
+  onShed?: (event: ShedEvent) => void
 }
 
 const FORBIDDEN_BODY_KEYS = new Set([
@@ -207,17 +246,20 @@ export interface DispatchMetricOptions {
   writes: number
   reads: number
   rateLimited: number
+  queueMetrics?: QueueMetrics
+  walletLimiter?: WalletRequestLimiter
 }
 
 export function dispatchMetricFamilies(opts: DispatchMetricOptions): MetricFamily[] {
   const s = opts.store.stats()
+  const qm = opts.queueMetrics
   const sample = (name: string, help: string, value: number) => ({
     name,
     help,
     type: 'counter' as const,
     samples: [{ labels: {}, value }],
   })
-  return [
+  const families: MetricFamily[] = [
     {
       name: 'helphone_dispatch_envelopes',
       help: 'Sealed emergency payload envelopes currently held by the relay.',
@@ -258,6 +300,50 @@ export function dispatchMetricFamilies(opts: DispatchMetricOptions): MetricFamil
       opts.rateLimited,
     ),
   ]
+  if (qm) {
+    families.push(
+      {
+        name: 'helphone_dispatch_queue_queued',
+        help: 'Current number of queued dispatch items.',
+        type: 'gauge',
+        samples: [{ labels: {}, value: qm.queued }],
+      },
+      {
+        name: 'helphone_dispatch_queue_critical',
+        help: 'Current number of queued P0 (critical) dispatch items.',
+        type: 'gauge',
+        samples: [{ labels: {}, value: qm.critical }],
+      },
+      {
+        name: 'helphone_dispatch_queue_max_wait_ms',
+        help: 'Maximum wait time (ms) among queued dispatch items.',
+        type: 'gauge',
+        samples: [{ labels: {}, value: qm.maxWaitTime }],
+      },
+      sample(
+        'helphone_dispatch_queue_stale_prevented_total',
+        'Count of stale updates skipped to prevent starving P0 requests.',
+        qm.stalePrevented,
+      ),
+      sample('helphone_dispatch_queue_shed_total', 'Messages shed by bounded tiers/coalescing.', qm.shed),
+      sample(
+        'helphone_dispatch_queue_overload_events_total',
+        'Times the memory budget was reached and 503 Overloaded was signalled.',
+        qm.overloadEvents,
+      ),
+      {
+        name: 'helphone_dispatch_overloaded',
+        help: 'Whether the dispatch queue is currently over its memory budget.',
+        type: 'gauge',
+        samples: [{ labels: {}, value: qm.overloaded ? 1 : 0 }],
+      },
+    )
+  }
+  if (opts.walletLimiter) {
+    // Low-cardinality abuse labels only (reason + bounded level), never a wallet.
+    families.push(...(abuseMetricFamilies(opts.walletLimiter) as MetricFamily[]))
+  }
+  return families
 }
 
 export function createWriteLimiter(limit: number, windowMs: number) {
@@ -285,19 +371,55 @@ export function createDispatchRouters(opts: DispatchRouterOptions = {}) {
 
   const enabled = opts.enabled ?? true
   const limiter = createWriteLimiter(WRITE_RATE_LIMIT, WRITE_RATE_WINDOW_MS)
+  const config = opts.config ?? loadDispatchConfig()
+  const walletLimiter =
+    opts.walletLimiter ??
+    new WalletRequestLimiter({
+      maxRequests: config.wallet.maxRequests,
+      windowMs: config.wallet.windowMs,
+      baseBackoffMs: config.wallet.baseBackoffMs,
+      maxBackoffMs: config.wallet.maxBackoffMs,
+      maxLevel: config.wallet.maxLevel,
+      escalationWindowMs: config.wallet.escalationWindowMs,
+      // Production mounts a real responder-credential verifier here; the
+      // default only honours an explicit, already-verified server-side flag.
+      isVerifiedResponder: (_wallet, req) => {
+        const body = req?.body as Record<string, unknown> | undefined
+        return body?.verifiedResponder === true || String(req?.headers['x-verified-responder']) === '1'
+      },
+    })
+  const handleShed = opts.onShed ?? ((event: ShedEvent) => void recordDispatchShed(event))
+  const queue =
+    opts.queue ??
+    new DispatchQueue({
+      bounds: config.bounds,
+      memoryBudgetItems: config.memoryBudgetItems,
+      onShed: handleShed,
+    })
 
-  const counters = { rejectedPlaintext: 0, rejectedMalformed: 0, writes: 0, reads: 0, rateLimited: 0 }
+  queue.onProcess(async (item) => {
+    const data = item.payload as { requestId?: string; envelope?: EncryptedEnvelope } | undefined
+    if (data?.requestId && data?.envelope) {
+      store.putEnvelope(data.requestId, data.envelope)
+    }
+  })
+  if (opts.tickIntervalMs && opts.tickIntervalMs > 0) {
+    queue.startTick(opts.tickIntervalMs)
+  } else if (process.env.NODE_ENV !== 'test') {
+    queue.startTick(100)
+  }
+
+  const counters = { rejectedPlaintext: 0, rejectedMalformed: 0, writes: 0, reads: 0, rateLimited: 0, overloaded: 0 }
 
   const api = Router()
 
   // ── Actionable slice for rapid join (<20s, <1MB) ─────────────────────
-  api.get('/open-today', (_req: Request, res: Response) => {
-    const active = [
-      { id: 'disp-today-1', status: 'open', geohash: 'u4pruydqqvj', team: 'alpha', server_received_at: new Date().toISOString() },
-      { id: 'disp-today-2', status: 'assigned', geohash: 'u4pruydqqvk', team: 'bravo', server_received_at: new Date().toISOString() },
-    ]
-    res.json(active)
-  })
+  // Unresolved incidents from the domain store, bounded by OPEN_TODAY_LIMIT and
+  // OPEN_TODAY_MAX_BYTES. Served as a plain array; crdtSync.js depends on that shape.
+  const sendOpenToday = (_req: Request, res: Response) => {
+    res.set('Cache-Control', 'no-store').json(buildOpenTodaySlice(domainStore))
+  }
+  api.get('/open-today', sendOpenToday)
 
   // ── Responder key registry (public keys only) ──────────────────────
   api.post('/keys', async (req: Request, res: Response) => {
@@ -406,12 +528,34 @@ export function createDispatchRouters(opts: DispatchRouterOptions = {}) {
       return
     }
 
+    const priority = req.priorityContext?.priority ?? toQueuePriority(req.headers['x-priority']?.toString())
+    const enqueued = queue.enqueue({
+      id: `envelope:${requestId}:${Date.now()}`,
+      priority,
+      payload: { requestId, envelope },
+      timestamp: req.priorityContext?.timestamp ?? Date.now(),
+      maxRetries: 3,
+      isUpdate: req.priorityContext?.isUpdate ?? false,
+      // Coalescing/tiering never reads this field; it is audit metadata only.
+      messageType: req.priorityContext?.messageType || 'RqCreated',
+    })
+    if (enqueued.overloaded) counters.overloaded += 1
+    if (!enqueued.accepted) {
+      // Lower-priority traffic is shed at the memory budget. P0 is accepted
+      // even when overloaded; it is never dropped.
+      return overloadedResponse(res, config.overloadedRetryAfterSeconds)
+    }
+
     const outcome = store.putEnvelope(requestId, envelope)
     if (!outcome.stored) {
       res.status(409).json({ success: false, error: outcome.reason ?? 'rejected' })
       return
     }
     counters.writes += 1
+    if (enqueued.overloaded) {
+      // Accepted P0 during overload: processed, but clients are told to slow down.
+      res.set('X-Overloaded', '1')
+    }
     res.set('Cache-Control', 'no-store').json({
       success: true,
       requestId,
@@ -482,13 +626,61 @@ export function createDispatchRouters(opts: DispatchRouterOptions = {}) {
 
   // ── Domain Incidents REST API ───────────────────────────────────────────
 
+  // ── Hardware SOS intake (#941) ──────────────────────────────────────
+  // Server-wide idempotency: every device that presses inside one 10 s bucket
+  // maps to the same incident id, and createIncident refuses a duplicate id, so
+  // two rugged devices cannot open two incidents for one press. Without operator
+  // confirm (force), the SOS is only accepted near an unresolved incident; anywhere
+  // else it is declined with 202 needs_confirm and no incident is created.
+  api.post('/sos', (req: Request, res: Response) => {
+    if (!enabled) {
+      res.status(503).json({ success: false, error: 'Encrypted dispatch is disabled.' })
+      return
+    }
+    const parsed = sosIntakeSchema.safeParse(req.body)
+    if (!parsed.success) {
+      return validationResponse(res, issuesOf(parsed.error))
+    }
+    const { idempotencyKey, force, location } = parsed.data
+    const bucket = SOS_KEY_RE.exec(idempotencyKey)?.[1] ?? ''
+    const incidentId = `SOS-${bucket}`
+
+    const existing = domainStore.getIncident(incidentId)
+    if (existing) {
+      return res.status(200).json({ status: 'duplicate', incident: existing })
+    }
+
+    if (location === undefined) {
+      if (!force) {
+        return res.status(202).json({ status: 'needs_confirm', idempotencyKey })
+      }
+      return validationResponse(res, [{ path: 'location', message: 'required to open an incident' }])
+    }
+
+    if (!force) {
+      const nearActive = domainStore
+        .listActiveIncidents(500)
+        .some((incident) => haversineKm(location, incident.location) <= SOS_AUTO_DISPATCH_KM)
+      if (!nearActive) {
+        return res.status(202).json({ status: 'needs_confirm', idempotencyKey })
+      }
+    }
+
+    try {
+      const incident = domainStore.createIncident({ id: incidentId, status: 'open', priority: 'critical', location })
+      invalidateIncident(incident.id)
+      return res.status(201).json({ status: 'created', incident })
+    } catch (error) {
+      if ((error as { code?: string }).code === 'conflict') {
+        return res.status(200).json({ status: 'duplicate', incident: domainStore.getIncident(incidentId) })
+      }
+      return res.status(500).json({ error: 'internal_error' })
+    }
+  })
+
   api.get('/', (req: Request, res: Response) => {
     if (req.query.slice === 'open-today') {
-      const active = [
-        { id: 'disp-today-1', status: 'open', geohash: 'u4pruydqqvj', team: 'alpha', server_received_at: new Date().toISOString() },
-        { id: 'disp-today-2', status: 'assigned', geohash: 'u4pruydqqvk', team: 'bravo', server_received_at: new Date().toISOString() },
-      ]
-      return res.json(active)
+      return sendOpenToday(req, res)
     }
 
     if (req.query.limit || req.query.cursor) {
@@ -505,7 +697,23 @@ export function createDispatchRouters(opts: DispatchRouterOptions = {}) {
     return res.json({ success: true, count: store.stats().requests })
   })
 
-  api.post('/', (req: Request, res: Response) => {
+  api.post('/', async (req: Request, res: Response) => {
+    // ADR-020 risk: requester-declared type can be gamed. Wallet-scoped limits
+    // with escalating backoff stop a wallet cycling type=medical from
+    // monopolising P0. Verified responders are exempt via the limiter predicate.
+    const walletDecision = await walletLimiter.check(walletOfRequest(req), req)
+    if (!walletDecision.allowed) {
+      res.set('Retry-After', String(Math.ceil(walletDecision.retryAfterMs / 1000)))
+      res.status(429).json({
+        success: false,
+        error: 'Wallet request limit exceeded — backoff in effect.',
+        code: 'wallet_backoff',
+        reason: walletDecision.reason,
+        backoffLevel: walletDecision.level,
+      })
+      return
+    }
+
     if (req.body?.location) {
       const parsed = createIncidentSchema.safeParse(req.body)
       if (!parsed.success) {
@@ -636,14 +844,27 @@ export function createDispatchRouters(opts: DispatchRouterOptions = {}) {
     }
   })
 
+  api.get('/queue/metrics', (_req: Request, res: Response) => {
+    res.set('Cache-Control', 'no-store').json(queue.getMetrics())
+  })
+
   const metrics = Router()
   metrics.get('/dispatch', (_req: Request, res: Response) => {
     res
       .set('Content-Type', PROMETHEUS_CONTENT_TYPE)
-      .send(renderPrometheus(dispatchMetricFamilies({ store, ...counters })))
+      .send(
+        renderPrometheus(
+          dispatchMetricFamilies({
+            store,
+            ...counters,
+            queueMetrics: queue.getMetrics(),
+            walletLimiter,
+          }),
+        ),
+      )
   })
 
-  return { api, metrics, store, limiter }
+  return { api, metrics, store, limiter, walletLimiter, queue, config }
 }
 
 export function createDispatchRouter(options: DispatchRouterOptions = {}): Router {

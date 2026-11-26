@@ -3,8 +3,15 @@
  *
  * Implements cross-instance dispatch, trust-bundle gossip, mutual authentication,
  * CRDT delta exchange, and IOU aid settlement without a central server.
+ *
+ * ADR-018 follow-up: overload handling is decided explicitly (local shed vs
+ * gossip). ADR-020 follow-up: shed decisions are reported with 503 Overloaded
+ * and written to the dispatch audit stream. Every inbound message is checked
+ * against the originating instance's CURRENT trust bundle (signature, freshness,
+ * rotation counter and revocations) on every receive.
  */
 import { Router, Request, Response } from 'express'
+import { federationVersionNegotiationMiddleware } from '../middleware/apiVersion.ts'
 import {
   createTrustBundle,
   verifyTrustBundle,
@@ -17,6 +24,7 @@ import { ReplayCache } from '../../src/lib/wsClient.js'
 import { parseFederatedEvent } from '../indexer/parser.js'
 import { recordHistoryEvent } from './history.js'
 import { localCrdtStore } from './sync.js'
+import { recordDispatchShed } from '../indexer/auditStreamer.js'
 import {
   issueCrossInstanceIou,
   netCrossInstanceIous,
@@ -31,16 +39,86 @@ export interface FederationRouterOptions {
   secretKey?: string
   publicKey?: string
   rotationCounter?: number
+  /** Live load signal for the local node (chaos drills inject this). */
+  isOverloaded?: () => boolean
+  /** peer instanceId -> overload ingestion URL, used to gossip shed signals. */
+  peerUrls?: Record<string, string>
+  /** Injectable transport for tests. */
+  gossipFetch?: typeof fetch
 }
 
-// In-memory peer state stores
-const peerTrustBundles = new Map<string, TrustBundle>()
-const replayCache = new ReplayCache(300_000)
-const iouStore = new Map<string, CrossInstanceIou>()
-const revocationAuditLog: Array<{ identity: string; revokedAt: number; sourceInstance: string }> = []
+export interface SheddingPolicy {
+  shedLocally: boolean
+  gossip: boolean
+  reason: 'nominal' | 'local_overload_gossip' | 'both_overloaded_local_shed' | 'peer_overload_honoured'
+}
+
+/**
+ * Two-node consistency rule:
+ *  - Only I am overloaded  -> shed locally AND gossip so the peer also backs off.
+ *  - Both overloaded       -> both shed locally; no gossip storm.
+ *  - Only peer overloaded  -> honour its signal and shed locally.
+ *  - Neither overloaded    -> process normally.
+ * P0 (life-critical) is exempt from shedding in all cases.
+ */
+export function resolveSheddingPolicy(localOverloaded: boolean, peerShedding: boolean): SheddingPolicy {
+  if (localOverloaded && !peerShedding) {
+    return { shedLocally: true, gossip: true, reason: 'local_overload_gossip' }
+  }
+  if (localOverloaded && peerShedding) {
+    return { shedLocally: true, gossip: false, reason: 'both_overloaded_local_shed' }
+  }
+  if (peerShedding) {
+    return { shedLocally: true, gossip: false, reason: 'peer_overload_honoured' }
+  }
+  return { shedLocally: false, gossip: false, reason: 'nominal' }
+}
+
+/** ADR-020 P0 messages are never shed across a federation boundary. */
+export function isLifeCriticalEnvelope(envelope: FederatedEnvelope): boolean {
+  const payload = (envelope.payload ?? {}) as Record<string, unknown>
+  return ['medical', 'danger', 'critical', 'p0'].some((value) => {
+    return (
+      String(payload.type ?? '').toLowerCase() === value ||
+      String(payload.priority ?? '').toLowerCase() === value ||
+      String(payload.severity ?? '').toLowerCase() === value
+    )
+  })
+}
+
+const REVOCATION_IDENTITY_FIELDS = [
+  'responder',
+  'responderAddress',
+  'responderId',
+  'nullifier',
+  'actor',
+  'signer',
+  'wallet',
+]
+
+/** Find the first payload identity revoked by the peer's current bundle. */
+export function revokedIdentityIn(envelope: FederatedEnvelope, bundle: TrustBundle): string | null {
+  const payload = (envelope.payload ?? {}) as Record<string, unknown>
+  for (const field of REVOCATION_IDENTITY_FIELDS) {
+    const value = payload[field]
+    if (typeof value === 'string' && value && isIdentityRevoked(value, bundle)) return value
+  }
+  return null
+}
+
+interface AuthorizedInbound {
+  peerBundle: TrustBundle
+  staleBundleFlag?: boolean
+}
+
+interface RejectedInbound {
+  status: number
+  error: string
+}
 
 export function createFederationRouter(options: FederationRouterOptions = {}) {
   const router = Router()
+  router.use(federationVersionNegotiationMiddleware())
 
   const instanceId = options.instanceId || process.env.INSTANCE_ID || 'helphone-instance-a'
   const domain = options.domain || process.env.FEDERATION_DOMAIN || 'instance-a.helphone.org'
@@ -49,9 +127,26 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
   const expertRegistryHash = '0xexp7890000000000000000000000000000000000000000000000000000000001'
   const localRevocations = new Set<string>()
 
+  // Per-router state: two nodes can be simulated in one process (chaos tests).
+  const peerTrustBundles = new Map<string, TrustBundle>()
+  const peerLoadSignals = new Map<
+    string,
+    { shedding: boolean; rotationCounter: number; receivedAt: number; envelopeId: string }
+  >()
+  const gossipLog: FederatedEnvelope[] = []
+  const shedAuditLog: Array<{ at: number; tier: string; reason: string; instance: string }> = []
+  const replayCache = new ReplayCache(300_000)
+  const iouStore = new Map<string, CrossInstanceIou>()
+  const revocationAuditLog: Array<{ identity: string; revokedAt: number; sourceInstance: string }> = []
+  let localOverloaded = false
+
   // Deterministic local authority keypair fallback for testing
   const secretKey = options.secretKey || process.env.FEDERATION_SECRET_KEY || '11'.repeat(32)
   const publicKey = options.publicKey || process.env.FEDERATION_PUBLIC_KEY || '04' + '22'.repeat(64)
+
+  function currentOverload(): boolean {
+    return options.isOverloaded?.() ?? localOverloaded
+  }
 
   async function getLocalTrustBundle(): Promise<TrustBundle> {
     return createTrustBundle({
@@ -64,6 +159,138 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
       secretKey,
       publicKey,
       ttlMs: 3600_000,
+    })
+  }
+
+  /**
+   * Re-verify every inbound envelope against the CURRENT peer bundle. No
+   * per-peer verification result is cached: a revocation gossiped one instant
+   * ago is effective on the very next receive.
+   */
+  function authorizeInbound(
+    envelope: FederatedEnvelope,
+    { checkReplay = true }: { checkReplay?: boolean } = {},
+  ): AuthorizedInbound | RejectedInbound {
+    if (!envelope || typeof envelope !== 'object') {
+      return { status: 400, error: 'Missing federated envelope' }
+    }
+    const peerBundle = peerTrustBundles.get(envelope.senderInstance)
+    if (!peerBundle) {
+      return {
+        status: 403,
+        error: `Untrusted peer instance '${envelope.senderInstance}': no trust bundle on record`,
+      }
+    }
+
+    const bundleCheck = verifyTrustBundle(peerBundle, envelope.senderPublicKey)
+    if (!bundleCheck.valid) {
+      return { status: 403, error: `Current peer trust bundle is not valid: ${bundleCheck.error}` }
+    }
+
+    if (
+      !envelope.trustBundleRef ||
+      envelope.trustBundleRef.instanceId !== envelope.senderInstance ||
+      envelope.trustBundleRef.rotationCounter < peerBundle.rotationCounter
+    ) {
+      return {
+        status: 403,
+        error: `Envelope references superseded trust root counter ${envelope.trustBundleRef?.rotationCounter} < ${peerBundle.rotationCounter}`,
+      }
+    }
+
+    const verifyOutcome = verifyFederatedEnvelope(envelope, peerBundle)
+    if (!verifyOutcome.verified) {
+      return { status: 401, error: `Envelope verification failed: ${verifyOutcome.error}` }
+    }
+
+    const revoked = revokedIdentityIn(envelope, peerBundle)
+    if (revoked) {
+      return {
+        status: 403,
+        error: `Identity '${revoked}' has been revoked by peer instance ${peerBundle.instanceId}`,
+      }
+    }
+
+    if (checkReplay && !replayCache.checkAndAdd(envelope.nonce, envelope.timestamp)) {
+      return { status: 409, error: `Replay detected: duplicate nonce '${envelope.nonce}' or expired replay window` }
+    }
+
+    return { peerBundle, staleBundleFlag: verifyOutcome.staleBundle }
+  }
+
+  async function signAck(original: FederatedEnvelope, payload: Record<string, unknown>) {
+    const localBundle = await getLocalTrustBundle()
+    return signFederatedEnvelope({
+      senderInstance: instanceId,
+      recipientInstance: original.senderInstance,
+      payloadType: 'ack' as const,
+      payload,
+      trustBundleRef: { instanceId, rotationCounter: localBundle.rotationCounter },
+      secretKey,
+      publicKey,
+    })
+  }
+
+  /** Broadcast a signed shed signal (ADR-018 gossip path). */
+  async function gossipShedSignal(targetInstance?: string): Promise<FederatedEnvelope> {
+    const localBundle = await getLocalTrustBundle()
+    const envelope = await signFederatedEnvelope({
+      senderInstance: instanceId,
+      recipientInstance: targetInstance ?? 'federation-peers',
+      payloadType: 'overload' as const,
+      payload: {
+        shedding: true,
+        rotationCounter: localBundle.rotationCounter,
+        at: Date.now(),
+      },
+      trustBundleRef: { instanceId, rotationCounter: localBundle.rotationCounter },
+      secretKey,
+      publicKey,
+    })
+    gossipLog.push(envelope)
+
+    const targets = targetInstance ? [targetInstance] : Object.keys(options.peerUrls ?? {})
+    const transport = options.gossipFetch ?? fetch
+    for (const target of targets) {
+      const url = options.peerUrls?.[target]
+      if (!url) continue
+      try {
+        await transport(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ envelope }),
+          signal: AbortSignal.timeout(2_000),
+        })
+      } catch {
+        // Gossip is best-effort; the local shed decision still stands.
+      }
+    }
+    return envelope
+  }
+
+  function recordLocalShed(envelope: FederatedEnvelope, reason: string): void {
+    shedAuditLog.push({ at: Date.now(), tier: isLifeCriticalEnvelope(envelope) ? 'P0' : 'P2', reason, instance: instanceId })
+    void recordDispatchShed({
+      tier: isLifeCriticalEnvelope(envelope) ? 'P0' : 'P2',
+      reason: 'overloaded',
+      messageType: envelope.payloadType,
+    })
+  }
+
+  function sheddingFor(envelope: FederatedEnvelope): SheddingPolicy {
+    const peerShedding = peerLoadSignals.get(envelope.senderInstance)?.shedding ?? false
+    const policy = resolveSheddingPolicy(currentOverload(), peerShedding)
+    if (policy.gossip) void gossipShedSignal(envelope.senderInstance)
+    return policy
+  }
+
+  function overloadedResponse(res: Response, policy: SheddingPolicy) {
+    res.set('Retry-After', '5')
+    return res.status(503).json({
+      success: false,
+      error: 'Overloaded',
+      code: 'overloaded',
+      sheddingPolicy: policy.reason,
     })
   }
 
@@ -98,7 +325,6 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
         return res.status(403).json({ success: false, error: verification.error })
       }
 
-      // Check if any identities were newly revoked in this bundle update
       const prevRevoked = new Set(existing?.revokedIdentities || [])
       for (const rev of incomingBundle.revokedIdentities || []) {
         if (!prevRevoked.has(rev)) {
@@ -110,6 +336,7 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
         }
       }
 
+      // Replace atomically: the next receive sees the new counter + revocations.
       peerTrustBundles.set(incomingBundle.instanceId, incomingBundle)
 
       res.json({
@@ -129,79 +356,34 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
   router.post('/dispatch', async (req: Request, res: Response) => {
     try {
       const envelope: FederatedEnvelope = req.body?.envelope
-      if (!envelope) {
-        return res.status(400).json({ success: false, error: 'Missing federated envelope' })
+      const auth = authorizeInbound(envelope)
+      if ('status' in auth) {
+        if (envelope) {
+          recordHistoryEvent(parseFederatedEvent(envelope, { verified: false, error: auth.error }))
+        }
+        return res.status(auth.status).json({ success: false, error: auth.error })
       }
 
-      const peerBundle = peerTrustBundles.get(envelope.senderInstance)
-      if (!peerBundle) {
-        return res.status(403).json({
-          success: false,
-          error: `Untrusted peer instance '${envelope.senderInstance}': no trust bundle on record`,
-        })
+      const policy = sheddingFor(envelope)
+      if (policy.shedLocally && !isLifeCriticalEnvelope(envelope)) {
+        recordLocalShed(envelope, policy.reason)
+        return overloadedResponse(res, policy)
       }
 
-      // 1. Replay window and nonce protection
-      if (!replayCache.checkAndAdd(envelope.nonce, envelope.timestamp)) {
-        return res.status(409).json({
-          success: false,
-          error: `Replay detected: duplicate nonce '${envelope.nonce}' or expired replay window`,
-        })
-      }
-
-      // 2. Cryptographic signature and envelope verification
-      const verifyOutcome = verifyFederatedEnvelope(envelope, peerBundle)
-      if (!verifyOutcome.verified) {
-        // Record failed attempt in history with custody marker and alert
-        recordHistoryEvent(
-          parseFederatedEvent(envelope, { verified: false, error: verifyOutcome.error })
-        )
-        return res.status(401).json({
-          success: false,
-          error: `Envelope verification failed: ${verifyOutcome.error}`,
-        })
-      }
-
-      // 3. Revocation check for foreign responder or sender nullifier
-      const responder = envelope.payload?.responder || envelope.payload?.responderAddress
-      if (responder && isIdentityRevoked(responder, peerBundle)) {
-        recordHistoryEvent(
-          parseFederatedEvent(envelope, { verified: false, error: `Responder ${responder} is revoked by peer` })
-        )
-        return res.status(403).json({
-          success: false,
-          error: `Responder '${responder}' has been revoked by peer instance ${peerBundle.instanceId}`,
-        })
-      }
-
-      // 4. Record foreign-origin dispatch in history with custody markers
       recordHistoryEvent(parseFederatedEvent(envelope, { verified: true }))
-
-      // 5. Build signed acknowledgement envelope
-      const localBundle = await getLocalTrustBundle()
-      const ackEnvelope = await signFederatedEnvelope({
-        senderInstance: instanceId,
-        recipientInstance: envelope.senderInstance,
-        payloadType: 'ack',
-        payload: {
-          originalEnvelopeId: envelope.envelopeId,
-          incidentId: envelope.payload?.incidentId || envelope.payload?.id,
-          status: 'acknowledged',
-          responderAssigned: responder || 'local-volunteer',
-          acknowledgedAt: Date.now(),
-        },
-        trustBundleRef: {
-          instanceId,
-          rotationCounter: localBundle.rotationCounter,
-        },
-        secretKey,
-        publicKey,
+      const ackEnvelope = await signAck(envelope, {
+        originalEnvelopeId: envelope.envelopeId,
+        incidentId: envelope.payload?.incidentId || envelope.payload?.id,
+        status: 'acknowledged',
+        responderAssigned: envelope.payload?.responder || envelope.payload?.responderAddress || 'local-volunteer',
+        acknowledgedAt: Date.now(),
       })
 
       res.json({
         success: true,
         message: 'Federated dispatch accepted and verified',
-        staleBundleFlag: verifyOutcome.staleBundle,
+        staleBundleFlag: auth.staleBundleFlag,
+        sheddingPolicy: policy.reason,
         ackEnvelope,
       })
     } catch (err: any) {
@@ -212,32 +394,26 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
   router.post('/ack', async (req: Request, res: Response) => {
     try {
       const envelope: FederatedEnvelope = req.body?.envelope
-      if (!envelope) {
-        return res.status(400).json({ success: false, error: 'Missing ack envelope' })
+      const auth = authorizeInbound(envelope)
+      if ('status' in auth) {
+        if (envelope) {
+          recordHistoryEvent(parseFederatedEvent(envelope, { verified: false, error: auth.error }))
+        }
+        return res.status(auth.status).json({ success: false, error: auth.error })
       }
 
-      const peerBundle = peerTrustBundles.get(envelope.senderInstance)
-      if (!peerBundle) {
-        return res.status(403).json({ success: false, error: 'Untrusted peer instance' })
+      const policy = sheddingFor(envelope)
+      if (policy.shedLocally && !isLifeCriticalEnvelope(envelope)) {
+        recordLocalShed(envelope, policy.reason)
+        return overloadedResponse(res, policy)
       }
 
-      if (!replayCache.checkAndAdd(envelope.nonce, envelope.timestamp)) {
-        return res.status(409).json({ success: false, error: 'Replay detected on ack envelope' })
-      }
-
-      const verifyOutcome = verifyFederatedEnvelope(envelope, peerBundle)
-      if (!verifyOutcome.verified) {
-        recordHistoryEvent(parseFederatedEvent(envelope, { verified: false, error: verifyOutcome.error }))
-        return res.status(401).json({ success: false, error: verifyOutcome.error })
-      }
-
-      // Record acknowledgement event in history with peer custody marker
       recordHistoryEvent(parseFederatedEvent(envelope, { verified: true }))
-
       res.json({
         success: true,
         message: 'Cross-instance acknowledgement observed and verified',
-        staleBundleFlag: verifyOutcome.staleBundle,
+        staleBundleFlag: auth.staleBundleFlag,
+        sheddingPolicy: policy.reason,
       })
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message })
@@ -252,15 +428,15 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
       if (!envelope || envelope.payloadType !== 'crdt_delta') {
         return res.status(400).json({ success: false, error: 'Invalid or missing crdt_delta envelope' })
       }
-
-      const peerBundle = peerTrustBundles.get(envelope.senderInstance)
-      if (!peerBundle) {
-        return res.status(403).json({ success: false, error: 'Unknown peer for CRDT sync' })
+      const auth = authorizeInbound(envelope)
+      if ('status' in auth) {
+        return res.status(auth.status).json({ success: false, error: auth.error })
       }
 
-      const verifyOutcome = verifyFederatedEnvelope(envelope, peerBundle)
-      if (!verifyOutcome.verified) {
-        return res.status(401).json({ success: false, error: verifyOutcome.error })
+      const policy = sheddingFor(envelope)
+      if (policy.shedLocally && !isLifeCriticalEnvelope(envelope)) {
+        recordLocalShed(envelope, policy.reason)
+        return overloadedResponse(res, policy)
       }
 
       const operations = envelope.payload?.operations || []
@@ -278,7 +454,6 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
 
       const localClock = localCrdtStore.clock
       const returnDeltas = localCrdtStore.delta(envelope.payload?.vectorClock || {})
-
       const localBundle = await getLocalTrustBundle()
       const responseEnvelope = await signFederatedEnvelope({
         senderInstance: instanceId,
@@ -288,19 +463,12 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
           operations: returnDeltas,
           vectorClock: localClock,
         },
-        trustBundleRef: {
-          instanceId,
-          rotationCounter: localBundle.rotationCounter,
-        },
+        trustBundleRef: { instanceId, rotationCounter: localBundle.rotationCounter },
         secretKey,
         publicKey,
       })
 
-      res.json({
-        success: true,
-        appliedCount: applied,
-        responseEnvelope,
-      })
+      res.json({ success: true, appliedCount: applied, responseEnvelope })
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message })
     }
@@ -334,7 +502,7 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
           creditorInstance || 'peer'
         )
         for (const u of updatedIous) {
-          iouStore.set(u.iouId, u)
+          iouStore.set(u.iou.iouId, u)
         }
         return res.json({ success: true, netResult, remainingIous: updatedIous })
       }
@@ -346,11 +514,7 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
         }
         const escalation = escalateUnpaidIouToDao(iou, defaultReason)
         iouStore.set(escalation.iou.iouId, escalation.iou)
-        return res.json({
-          success: true,
-          message: 'Defaulted IOU escalated to DAO proposal',
-          escalation,
-        })
+        return res.json({ success: true, message: 'Defaulted IOU escalated to DAO proposal', escalation })
       }
 
       res.status(400).json({ success: false, error: `Unknown action: ${action}` })
@@ -359,7 +523,52 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
     }
   })
 
-  // ── 5. Federation Status & Maintenance ─────────────────────────────────
+  // ── 5. Overload Gossip & Shedding Control ──────────────────────────────
+
+  /** Receive a signed shed signal from a peer. Same trust checks as any receive. */
+  router.post('/overload', async (req: Request, res: Response) => {
+    try {
+      const envelope: FederatedEnvelope = req.body?.envelope
+      if (!envelope || envelope.payloadType !== 'overload') {
+        return res.status(400).json({ success: false, error: 'Invalid or missing overload envelope' })
+      }
+      const auth = authorizeInbound(envelope)
+      if ('status' in auth) {
+        return res.status(auth.status).json({ success: false, error: auth.error })
+      }
+
+      peerLoadSignals.set(envelope.senderInstance, {
+        shedding: Boolean(envelope.payload?.shedding),
+        rotationCounter: envelope.trustBundleRef.rotationCounter,
+        receivedAt: Date.now(),
+        envelopeId: envelope.envelopeId,
+      })
+      void recordDispatchShed({ tier: 'P2', reason: 'peer_shed_signal', messageType: 'overload' })
+
+      const policy = resolveSheddingPolicy(currentOverload(), Boolean(envelope.payload?.shedding))
+      if (policy.gossip) void gossipShedSignal(envelope.senderInstance)
+      const ackEnvelope = await signAck(envelope, {
+        originalEnvelopeId: envelope.envelopeId,
+        shedding: Boolean(envelope.payload?.shedding),
+        acknowledgedAt: Date.now(),
+      })
+      res.json({ success: true, sheddingPolicy: policy.reason, ackEnvelope })
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message })
+    }
+  })
+
+  router.get('/overload', (_req: Request, res: Response) => {
+    res.json({
+      instanceId,
+      overloaded: currentOverload(),
+      peerSignals: [...peerLoadSignals.entries()].map(([instance, signal]) => ({ instance, ...signal })),
+      gossipCount: gossipLog.length,
+      shedCount: shedAuditLog.length,
+    })
+  })
+
+  // ── 6. Federation Status & Maintenance ─────────────────────────────────
 
   router.get('/status', async (_req: Request, res: Response) => {
     res.json({
@@ -376,6 +585,17 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
       replayCacheEntries: replayCache.size(),
       activeIousCount: [...iouStore.values()].filter((i) => i.status === 'issued').length,
       revocationAuditCount: revocationAuditLog.length,
+      overloaded: currentOverload(),
+      peerShedding: [...peerLoadSignals.entries()].map(([instance, signal]) => ({
+        instance,
+        shedding: signal.shedding,
+      })),
+      sheddingPolicy: resolveSheddingPolicy(
+        currentOverload(),
+        [...peerLoadSignals.values()].some((signal) => signal.shedding),
+      ).reason,
+      gossipCount: gossipLog.length,
+      shedAuditCount: shedAuditLog.length,
     })
   })
 
@@ -394,8 +614,32 @@ export function createFederationRouter(options: FederationRouterOptions = {}) {
     if (!identity) {
       return res.status(400).json({ error: 'identity required' })
     }
-    localRevocations.add(identity)
-    res.json({ success: true, revokedCount: localRevocations.size })
+    if (!localRevocations.has(identity)) {
+      // A revocation changes trust state: rotate the counter so in-flight
+      // envelopes signed under the previous root are superseded too.
+      localRevocations.add(identity)
+      rotationCounter++
+    }
+    res.json({ success: true, rotationCounter, revokedCount: localRevocations.size })
+  })
+
+  // Chaos helper: toggle overload without a real 5,000-connection surge.
+  router.post('/test/overload', async (req: Request, res: Response) => {
+    localOverloaded = Boolean(req.body?.overloaded)
+    let gossiped = false
+    if (localOverloaded && req.body?.gossip) {
+      await gossipShedSignal(req.body?.targetInstance)
+      gossiped = true
+    }
+    res.json({
+      success: true,
+      overloaded: localOverloaded,
+      gossiped,
+      policy: resolveSheddingPolicy(
+        localOverloaded,
+        [...peerLoadSignals.values()].some((signal) => signal.shedding),
+      ).reason,
+    })
   })
 
   return router
