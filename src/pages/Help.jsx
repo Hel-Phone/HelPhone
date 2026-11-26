@@ -88,6 +88,8 @@ import { useClusterer } from "../hooks/useClusterer.js";
 import ClusteredMapLayer from "../components/ClusteredMapLayer.jsx";
 import { useFeatureFlag } from "../lib/featureFlags.js";
 import { useElementSize } from "../hooks/useElementSize.js";
+// #897: BLE relay graceful fallback
+import { isBleGossipEnabled } from "../lib/bleRelay";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 

@@ -137,3 +137,14 @@ export class TelemetryBuffers {
     }
   }
 }
+
+/** BLE relay event for telemetry collection (#897). */
+export interface BleRelayEventData {
+  beaconId: string
+  sourceId: string
+  assemblyTimeMs: number
+  verifyTimeMs: number
+  relayDecision: string
+  hopCount: number
+  timestamp: number
+}
